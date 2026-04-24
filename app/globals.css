@@ -1,0 +1,22 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 248 250 252;
+  --foreground: 15 23 42;
+  --muted: 100 116 139;
+  --border: 226 232 240;
+  --card: 255 255 255;
+}
+
+body {
+  color: rgb(var(--foreground));
+  background: rgb(var(--background));
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
