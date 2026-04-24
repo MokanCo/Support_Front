@@ -5,6 +5,7 @@ const socketUrl = explicitSocket || backendUrl;
 
 const nextConfig = {
   reactStrictMode: true,
+  output: 'export',
   /**
    * Browser Socket.IO uses NEXT_PUBLIC_SOCKET_URL. If unset, reuse BACKEND_API_URL
    * so inbox + ticket sockets work when only the API URL is configured in .env.local.
