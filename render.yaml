@@ -1,0 +1,12 @@
+# Blueprint for a Node **Web Service** (not a Static Site).
+# Static Site + "Publish directory" (build/out) only applies to pre-built HTML;
+# this app needs `next start` so API routes and SSR work.
+#
+# https://render.com/docs/deploy-nextjs-js-app
+services:
+  - type: web
+    name: mokanco-support
+    runtime: node
+    buildCommand: npm ci && npm run build
+    startCommand: npm run start
+    healthCheckPath: /
