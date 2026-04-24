@@ -170,7 +170,7 @@ export function LocationsPageClient({ role }: { role: UserRole }) {
         header: "Name",
         cell: (r) => (
           <Link
-            href={`/dashboard/locations/${r.id}`}
+            href={`/dashboard/locations/view?id=${encodeURIComponent(r.id)}`}
             className="font-medium text-slate-900 hover:text-primary-600 hover:underline"
           >
             {r.name}
@@ -198,7 +198,7 @@ export function LocationsPageClient({ role }: { role: UserRole }) {
         header: "",
         cell: (r) => (
           <Link
-            href={`/dashboard/locations/${r.id}`}
+            href={`/dashboard/locations/view?id=${encodeURIComponent(r.id)}`}
             className="text-xs font-medium text-primary-600 hover:underline"
           >
             Open

@@ -51,10 +51,10 @@ export function titleForPath(pathname: string): string {
   if (pathname === "/dashboard/tickets/new") {
     return "New ticket";
   }
-  if (pathname.startsWith("/dashboard/tickets/") && pathname !== "/dashboard/tickets") {
+  if (pathname === "/dashboard/tickets/view") {
     return "Ticket";
   }
-  if (pathname.startsWith("/dashboard/locations/") && pathname !== "/dashboard/locations") {
+  if (pathname === "/dashboard/locations/view") {
     return "Location";
   }
   const map: Record<string, string> = {

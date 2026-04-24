@@ -5,11 +5,8 @@ const socketUrl = explicitSocket || backendUrl;
 
 const nextConfig = {
   reactStrictMode: true,
-  /**
-   * Static export (`output: "export"`) is incompatible with this app: it uses
-   * dynamic Route Handlers (`app/api/.../[id]`) and a database-backed API,
-   * which require a Node server (`next start`, Vercel, Docker, etc.).
-   */
+  /** Static HTML/JS for CDNs (e.g. Render Static Site). Requires `NEXT_PUBLIC_API_URL` at build time. */
+  output: "export",
   /**
    * Browser Socket.IO uses NEXT_PUBLIC_SOCKET_URL. If unset, reuse BACKEND_API_URL
    * so inbox + ticket sockets work when only the API URL is configured in .env.local.

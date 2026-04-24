@@ -290,7 +290,7 @@ export function TicketsTable({ role }: { role: UserRole }) {
         cell: (t) => (
           <div className="flex flex-wrap items-center gap-2">
             <Link
-              href={`/dashboard/tickets/${t.id}`}
+              href={`/dashboard/tickets/view?id=${encodeURIComponent(t.id)}`}
               className="font-medium text-slate-900 hover:text-primary-600 hover:underline"
             >
               {t.title}

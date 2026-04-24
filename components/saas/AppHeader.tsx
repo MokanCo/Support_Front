@@ -69,7 +69,9 @@ export function AppHeader({
   function onSelectInboxItem(item: MessageInboxItem) {
     clearTicketNotification(item.ticketId);
     setBellOpen(false);
-    router.push(`/dashboard/tickets/${encodeURIComponent(item.ticketId)}?chat=1`);
+    router.push(
+      `/dashboard/tickets/view?id=${encodeURIComponent(item.ticketId)}&chat=1`
+    );
   }
 
   return (

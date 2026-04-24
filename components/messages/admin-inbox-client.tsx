@@ -229,7 +229,7 @@ export function AdminInboxClient() {
                   </p>
                 </div>
                 <Link
-                  href={`/dashboard/tickets/${selectedId}`}
+                  href={`/dashboard/tickets/view?id=${encodeURIComponent(selectedId)}`}
                   className="shrink-0 text-xs font-medium text-primary-600 hover:underline"
                 >
                   Open ticket

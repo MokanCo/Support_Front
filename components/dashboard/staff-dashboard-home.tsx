@@ -253,7 +253,7 @@ export function StaffDashboardHome({ role }: { role: "admin" | "support" }) {
                       <td className="px-6 py-4">
                         <div className="flex flex-wrap items-center gap-2">
                           <Link
-                            href={`/dashboard/tickets/${t.id}`}
+                            href={`/dashboard/tickets/view?id=${encodeURIComponent(t.id)}`}
                             className="font-medium text-slate-900 hover:text-primary-600 hover:underline"
                           >
                             {t.title}
@@ -266,7 +266,7 @@ export function StaffDashboardHome({ role }: { role: "admin" | "support" }) {
                       </td>
                       <td className="px-6 py-4 text-right">
                         <Link
-                          href={`/dashboard/tickets/${t.id}`}
+                          href={`/dashboard/tickets/view?id=${encodeURIComponent(t.id)}`}
                           className="text-xs font-medium text-primary-600 hover:underline"
                         >
                           Open

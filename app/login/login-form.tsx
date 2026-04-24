@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { getAccessToken, setAccessToken } from "@/lib/access-token";
 import { invalidateSessionMeCache } from "@/lib/fetch-session-me";
+import { resolveApiUrl } from "@/lib/api-base";
 
 export function LoginForm() {
   const router = useRouter();
@@ -28,7 +29,7 @@ export function LoginForm() {
     setError(null);
     setLoading(true);
     try {
-      const res = await fetch("/api/auth/login", {
+      const res = await fetch(resolveApiUrl("/api/auth/login"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "omit",

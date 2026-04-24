@@ -39,7 +39,9 @@ export function NewTicketPageClient({ role }: { role: UserRole }) {
             quickTemplateId={quick}
             showCancel
             onCancel={() => router.push("/dashboard")}
-            onSuccess={(id) => router.push(`/dashboard/tickets/${id}`)}
+            onSuccess={(id) =>
+              router.push(`/dashboard/tickets/view?id=${encodeURIComponent(id)}`)
+            }
           />
         </CardBody>
       </Card>
