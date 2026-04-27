@@ -1,6 +1,6 @@
 /**
- * Static export has no same-origin `/api` proxy. Set `NEXT_PUBLIC_API_URL` to your
- * backend origin (e.g. `https://api.example.com`) so the browser calls `/api/...` there.
+ * Static export has no same-origin `/api` proxy. Set `NEXT_PUBLIC_API_URL` (or
+ * `BACKEND_API_URL`, mirrored in `next.config.mjs`) so `/api/...` resolves to your backend.
  * The backend must allow CORS for your static site origin and validate JWTs on `/api/*`.
  */
 export function resolveApiUrl(input: RequestInfo | URL): RequestInfo | URL {
