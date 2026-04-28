@@ -1,12 +1,13 @@
 import type { LucideIcon } from "lucide-react";
 import {
   LayoutDashboard,
+  Kanban,
   LineChart,
   MapPin,
   MessageSquare,
   Ticket,
 } from "lucide-react";
-import type { UserRole } from "@/models/User";
+import type { UserRole } from "@/lib/user-roles";
 
 export type NavItem = {
   href: string;
@@ -18,6 +19,12 @@ export type NavItem = {
 export const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/dashboard/tickets", label: "Tickets", icon: Ticket },
+  {
+    href: "/dashboard/boards",
+    label: "Boards",
+    icon: Kanban,
+    roles: ["admin", "support"],
+  },
   {
     href: "/dashboard/locations",
     label: "Locations",
@@ -48,6 +55,9 @@ export function titleForPath(pathname: string): string {
   if (pathname === "/dashboard/conversations") {
     return "Conversations";
   }
+  if (pathname === "/dashboard/boards") {
+    return "Boards";
+  }
   if (pathname === "/dashboard/tickets/new") {
     return "New ticket";
   }
@@ -64,6 +74,7 @@ export function titleForPath(pathname: string): string {
     "/dashboard/locations": "Locations",
     "/dashboard/conversations": "Conversations",
     "/dashboard/reports": "Reports",
+    "/dashboard/boards": "Boards",
   };
   return map[pathname] ?? "Dashboard";
 }

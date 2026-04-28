@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { USER_ROLES } from "@/models/User";
-import { TICKET_PRIORITIES, TICKET_STATUSES } from "@/models/Ticket";
+import { USER_ROLES } from "@/lib/user-roles";
+import { TICKET_PRIORITIES, TICKET_STATUSES } from "@/lib/ticket-types";
 
 export const loginSchema = z.object({
   email: z.string().email().max(320),

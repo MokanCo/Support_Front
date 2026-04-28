@@ -5,7 +5,7 @@ import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Button } from "@/components/ui/Button";
-import type { UserRole } from "@/models/User";
+import type { UserRole } from "@/lib/user-roles";
 import { apiFetch } from "@/lib/auth-fetch";
 import { parseUsersListJson, unwrapUserResponse } from "@/lib/users-api";
 

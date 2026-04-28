@@ -1,5 +1,5 @@
 import { apiFetch } from "@/lib/auth-fetch";
-import type { UserRole } from "@/models/User";
+import type { UserRole } from "@/lib/user-roles";
 import type { SessionLocation, SessionUser } from "@/lib/session-context";
 
 export type SessionMeResponse = {

@@ -1,4 +1,4 @@
-import type { UserRole } from "@/models/User";
+import type { UserRole } from "@/lib/user-roles";
 import type { JwtPayload } from "@/lib/types";
 
 const ROLES: readonly UserRole[] = ["admin", "support", "partner"];

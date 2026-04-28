@@ -2,6 +2,7 @@
 
 import {
   createContext,
+  Suspense,
   useCallback,
   useContext,
   useEffect,
@@ -10,7 +11,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { normalizeApiMessageRow, type ClientMessageRow } from "@/lib/messages-client";
 import { playIncomingMessageSound } from "@/lib/play-message-sound";
 import { getSocketBaseUrl } from "@/lib/socket-url";
@@ -38,10 +39,35 @@ type MessageInboxContextValue = {
 
 const MessageInboxContext = createContext<MessageInboxContextValue | null>(null);
 
-export function MessageInboxProvider({ children }: { children: ReactNode }) {
+type SearchLike = { get: (name: string) => string | null };
+
+/** Ticket id from URL when user is on ticket detail (`/dashboard/tickets/view?id=…` or dynamic segment). */
+export function resolveDashboardTicketIdFromRoute(
+  pathname: string,
+  searchParams: SearchLike
+): string | null {
+  if (pathname === "/dashboard/tickets/view") {
+    const id = searchParams.get("id")?.trim();
+    return id || null;
+  }
+  const m = /^\/dashboard\/tickets\/([^/]+)$/.exec(pathname);
+  if (m?.[1] && m[1] !== "view" && m[1] !== "new") {
+    return m[1];
+  }
+  return null;
+}
+
+function MessageInboxProviderCore({
+  children,
+  searchParams,
+}: {
+  children: ReactNode;
+  searchParams: SearchLike;
+}) {
   const pathname = usePathname();
   const { user } = useSession();
   const pathnameRef = useRef(pathname);
+  const searchParamsRef = useRef(searchParams);
   const viewerIdRef = useRef(user.id);
   const fabOpenRef = useRef<string | null>(null);
   const adminInlineRef = useRef<string | null>(null);
@@ -49,7 +75,8 @@ export function MessageInboxProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     pathnameRef.current = pathname;
-  }, [pathname]);
+    searchParamsRef.current = searchParams;
+  }, [pathname, searchParams]);
   useEffect(() => {
     viewerIdRef.current = user.id;
   }, [user.id]);
@@ -87,8 +114,8 @@ export function MessageInboxProvider({ children }: { children: ReactNode }) {
       payload.ticket?.ticketCode != null ? String(payload.ticket.ticketCode) : null;
 
     const path = pathnameRef.current;
-    const pathMatch = /^\/dashboard\/tickets\/([^/]+)$/.exec(path);
-    const ticketOnPage = pathMatch?.[1] ?? null;
+    const sp = searchParamsRef.current;
+    const ticketOnPage = resolveDashboardTicketIdFromRoute(path, sp);
     const onConversations = path.startsWith("/dashboard/conversations");
 
     const suppressedForChrome =
@@ -108,10 +135,13 @@ export function MessageInboxProvider({ children }: { children: ReactNode }) {
       return { ...prev, [ticketId]: { ...prev[ticketId], ...next } };
     });
 
-    setLiveBumps((b) => ({
-      ...b,
-      [ticketId]: (b[ticketId] ?? 0) + 1,
-    }));
+    if (!suppressedForChrome) {
+      setLiveBumps((b) => ({
+        ...b,
+        [ticketId]: (b[ticketId] ?? 0) + 1,
+      }));
+    }
+
     setListEpoch((e) => e + 1);
 
     if (!suppressedForChrome) {
@@ -135,12 +165,15 @@ export function MessageInboxProvider({ children }: { children: ReactNode }) {
 
   const clearTicketNotification = useCallback((ticketId: string) => {
     setItemsMap((prev) => {
-      const cur = prev[ticketId];
-      if (!cur || !cur.highlight) return prev;
-      return {
-        ...prev,
-        [ticketId]: { ...cur, highlight: false },
-      };
+      if (!prev[ticketId]) return prev;
+      const next = { ...prev };
+      delete next[ticketId];
+      return next;
+    });
+    setLiveBumps((b) => {
+      const next = { ...b };
+      delete next[ticketId];
+      return next;
     });
   }, []);
 
@@ -150,19 +183,25 @@ export function MessageInboxProvider({ children }: { children: ReactNode }) {
   );
 
   const headerUnreadCount = useMemo(() => {
-    const pathMatch = /^\/dashboard\/tickets\/([^/]+)$/.exec(pathname);
-    const ticketOnPage = pathMatch?.[1] ?? null;
+    const ticketOnPage = resolveDashboardTicketIdFromRoute(pathname, searchParams);
     const onConversations = pathname.startsWith("/dashboard/conversations");
 
-    let c = 0;
+    let sum = 0;
     for (const item of Object.values(itemsMap)) {
       if (!item.highlight) continue;
       if (ticketOnPage && item.ticketId === ticketOnPage) continue;
       if (onConversations && item.ticketId === conversationsSelectedTicketId) continue;
-      c += 1;
+      sum += Math.max(1, liveBumps[item.ticketId] ?? 1);
     }
-    return c;
-  }, [itemsMap, pathname, conversationsSelectedTicketId, listEpoch]);
+    return sum;
+  }, [
+    itemsMap,
+    pathname,
+    searchParams,
+    conversationsSelectedTicketId,
+    listEpoch,
+    liveBumps,
+  ]);
 
   const getLiveBump = useCallback(
     (ticketId: string) => liveBumps[ticketId] ?? 0,
@@ -192,6 +231,27 @@ export function MessageInboxProvider({ children }: { children: ReactNode }) {
 
   return (
     <MessageInboxContext.Provider value={value}>{children}</MessageInboxContext.Provider>
+  );
+}
+
+function MessageInboxProviderWithSearch({ children }: { children: ReactNode }) {
+  const searchParams = useSearchParams();
+  return (
+    <MessageInboxProviderCore searchParams={searchParams}>{children}</MessageInboxProviderCore>
+  );
+}
+
+export function MessageInboxProvider({ children }: { children: ReactNode }) {
+  return (
+    <Suspense
+      fallback={
+        <MessageInboxProviderCore searchParams={new URLSearchParams()}>
+          {children}
+        </MessageInboxProviderCore>
+      }
+    >
+      <MessageInboxProviderWithSearch>{children}</MessageInboxProviderWithSearch>
+    </Suspense>
   );
 }
 

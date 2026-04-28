@@ -65,6 +65,8 @@ type DataTableProps<T> = {
   allSelectedOnPage: boolean;
   loading?: boolean;
   emptyMessage?: string;
+  /** When true, table fills a flex parent and scrolls inside it instead of using a fixed max-height. */
+  fillHeight?: boolean;
 };
 
 export function DataTable<T>({
@@ -78,10 +80,21 @@ export function DataTable<T>({
   allSelectedOnPage,
   loading,
   emptyMessage = "No rows to display.",
+  fillHeight = false,
 }: DataTableProps<T>) {
   return (
-    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-      <div className="max-h-[min(70vh,880px)] overflow-auto">
+    <div
+      className={`overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm ${
+        fillHeight ? "flex min-h-0 flex-1 flex-col" : ""
+      }`}
+    >
+      <div
+        className={
+          fillHeight
+            ? "min-h-0 flex-1 overflow-auto"
+            : "max-h-[min(70vh,880px)] overflow-auto"
+        }
+      >
         <table className="min-w-full text-left text-sm">
           <thead className="sticky top-0 z-20 border-b border-slate-200 bg-slate-50/95 backdrop-blur supports-[backdrop-filter]:bg-slate-50/80">
             <tr className="text-xs font-semibold uppercase tracking-wide text-slate-500">

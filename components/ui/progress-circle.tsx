@@ -24,6 +24,14 @@ export function ProgressCircle({
   const offset = c * (1 - clamped / 100);
   const color = strokeColor(clamped);
   const locked = disabled || clamped >= 100;
+  const title =
+    disabled && clamped < 100
+      ? `${Math.round(clamped)}% progress`
+      : locked
+        ? clamped >= 100
+          ? "Complete"
+          : "Update progress"
+        : "Update progress";
 
   return (
     <button
@@ -35,7 +43,7 @@ export function ProgressCircle({
           ? "cursor-default opacity-90"
           : "cursor-pointer hover:scale-105 active:scale-95"
       }`}
-      title={locked ? "Complete" : "Update progress"}
+      title={title}
     >
       <svg width={size} height={size} className="-rotate-90">
         <circle

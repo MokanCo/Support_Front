@@ -10,7 +10,7 @@ import { Select } from "@/components/ui/Select";
 import { Modal } from "@/components/ui/modal";
 import { DataTable } from "@/components/ui/data-table";
 import type { DataColumn } from "@/components/ui/data-table";
-import type { UserRole } from "@/models/User";
+import type { UserRole } from "@/lib/user-roles";
 import { apiFetch } from "@/lib/auth-fetch";
 
 type Loc = {

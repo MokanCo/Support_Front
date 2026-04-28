@@ -1,6 +1,6 @@
 /**
- * Short notification tone for incoming chat (Web Audio API — no asset files).
- * Respects browser autoplay: may stay silent until the user has interacted with the page.
+ * Short notification chime for incoming chat (Web Audio API — no asset files).
+ * Two-tone pattern reads clearly on laptop speakers; respects browser autoplay policy.
  */
 export function playIncomingMessageSound(): void {
   if (typeof window === "undefined") return;
@@ -19,18 +19,32 @@ export function playIncomingMessageSound(): void {
     if (ctx.state === "suspended") void ctx.resume();
 
     const t0 = ctx.currentTime;
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.type = "sine";
-    osc.frequency.setValueAtTime(740, t0);
-    osc.frequency.exponentialRampToValueAtTime(520, t0 + 0.1);
-    gain.gain.setValueAtTime(0.0001, t0);
-    gain.gain.exponentialRampToValueAtTime(0.11, t0 + 0.015);
-    gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.18);
-    osc.start(t0);
-    osc.stop(t0 + 0.2);
+    const out = ctx.destination;
+
+    function note(
+      start: number,
+      freqHz: number,
+      durationSec: number,
+      peakLinear: number
+    ): void {
+      const osc = ctx.createOscillator();
+      const gn = ctx.createGain();
+      osc.type = "triangle";
+      osc.frequency.setValueAtTime(freqHz, start);
+      osc.connect(gn);
+      gn.connect(out);
+      const end = start + durationSec;
+      gn.gain.setValueAtTime(0.0001, start);
+      gn.gain.exponentialRampToValueAtTime(peakLinear, start + 0.022);
+      gn.gain.setValueAtTime(peakLinear * 0.72, start + durationSec * 0.35);
+      gn.gain.exponentialRampToValueAtTime(0.0001, end);
+      osc.start(start);
+      osc.stop(end + 0.025);
+    }
+
+    // Brighter “ding” then slightly lower “dong” — louder than the old single sine sweep.
+    note(t0, 1050, 0.11, 0.4);
+    note(t0 + 0.095, 784, 0.14, 0.36);
   } catch {
     /* autoplay / privacy mode */
   }

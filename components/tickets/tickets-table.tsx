@@ -25,8 +25,8 @@ import { ProgressCircle } from "@/components/ui/progress-circle";
 import { CreateTicketModal } from "@/components/tickets/create-ticket-modal";
 import { StatusBadge, PriorityBadge, NewBadge } from "@/components/ui/badge";
 import type { SerializedTicket } from "@/lib/serialize-ticket";
-import type { UserRole } from "@/models/User";
-import type { TicketStatus, TicketPriority } from "@/models/Ticket";
+import type { UserRole } from "@/lib/user-roles";
+import type { TicketStatus, TicketPriority } from "@/lib/ticket-types";
 import { apiFetch } from "@/lib/auth-fetch";
 
 type ListResponse = {
@@ -366,8 +366,8 @@ export function TicketsTable({ role }: { role: UserRole }) {
   }, [role]);
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <div className="flex min-h-0 flex-1 flex-col gap-3">
+      <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-slate-900">{pageIntro.title}</h1>
           <p className="mt-1 text-sm text-slate-500">{pageIntro.subtitle}</p>
@@ -424,8 +424,8 @@ export function TicketsTable({ role }: { role: UserRole }) {
         </div>
       </Modal>
 
-      <Card>
-        <CardBody className="space-y-4">
+      <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <CardBody className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden !px-5 !py-4">
           <DataTableToolbar>
             <div className="relative max-w-xl flex-1">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -567,9 +567,10 @@ export function TicketsTable({ role }: { role: UserRole }) {
             allSelectedOnPage={allSelectedOnPage}
             loading={loading}
             emptyMessage="No tickets found."
+            fillHeight
           />
 
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-xs text-slate-500">
               Showing{" "}
               <span className="font-medium text-slate-700">

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
-import type { UserRole } from "@/models/User";
+import type { UserRole } from "@/lib/user-roles";
 import { getQuickTicketTemplate } from "@/lib/quick-ticket-templates";
 import { CreateTicketForm } from "@/components/tickets/create-ticket-form";
 

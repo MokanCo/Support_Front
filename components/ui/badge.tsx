@@ -1,4 +1,4 @@
-import type { TicketPriority, TicketStatus } from "@/models/Ticket";
+import type { TicketPriority, TicketStatus } from "@/lib/ticket-types";
 
 const statusClass: Record<TicketStatus, string> = {
   in_queue: "bg-slate-100 text-slate-700 ring-slate-200/80",

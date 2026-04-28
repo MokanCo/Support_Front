@@ -1,11 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Send } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Search, Send } from "lucide-react";
 import { Card, CardBody } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
-import { Textarea } from "@/components/ui/Textarea";
 import { apiFetch } from "@/lib/auth-fetch";
 import { TicketMessageBubble } from "@/components/messages/ticket-message-bubble";
 import {
@@ -29,6 +29,8 @@ type InboxRow = {
 };
 
 export function AdminInboxClient() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const { user } = useSession();
   const messageInbox = useMessageInbox();
   const messageInboxRef = useRef(messageInbox);
@@ -41,6 +43,31 @@ export function AdminInboxClient() {
   const [messageText, setMessageText] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [inboxQuery, setInboxQuery] = useState("");
+  const threadScrollRef = useRef<HTMLDivElement>(null);
+
+  const scrollThreadToBottom = useCallback(() => {
+    const el = threadScrollRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, []);
+
+  const filteredRows = useMemo(() => {
+    const q = inboxQuery.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter((r) => {
+      const hay = [
+        r.title,
+        r.ticketCode ?? "",
+        r.ticketId,
+        r.locationName ?? "",
+        r.lastMessagePreview,
+      ]
+        .join(" ")
+        .toLowerCase();
+      return hay.includes(q);
+    });
+  }, [rows, inboxQuery]);
 
   const loadInbox = useCallback(async () => {
     setLoadingList(true);
@@ -60,6 +87,13 @@ export function AdminInboxClient() {
   useEffect(() => {
     void loadInbox();
   }, [loadInbox]);
+
+  useEffect(() => {
+    const tid = searchParams.get("ticket")?.trim();
+    if (!tid) return;
+    setSelectedId(tid);
+    router.replace("/dashboard/conversations", { scroll: false });
+  }, [searchParams, router]);
 
   useEffect(() => {
     messageInboxRef.current.setConversationsSelectedTicketId(selectedId);
@@ -117,16 +151,19 @@ export function AdminInboxClient() {
     };
   }, [selectedId, loadThread, loadInbox]);
 
-  async function sendMessage(e: React.FormEvent) {
-    e.preventDefault();
-    if (!selectedId || !messageText.trim()) return;
+  const messageTextRef = useRef(messageText);
+  messageTextRef.current = messageText;
+
+  const sendMessage = useCallback(async () => {
+    const text = messageTextRef.current.trim();
+    if (!selectedId || !text) return;
     setSending(true);
     setError(null);
     try {
       const res = await apiFetch("/api/messages", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ticketId: selectedId, text: messageText.trim() }),
+        body: JSON.stringify({ ticketId: selectedId, text }),
       });
       const data: unknown = await res.json();
       if (!res.ok) throw new Error((data as { error?: string }).error ?? "Failed");
@@ -141,35 +178,88 @@ export function AdminInboxClient() {
     } finally {
       setSending(false);
     }
+  }, [selectedId, loadInbox]);
+
+  async function onSubmitReply(e: React.FormEvent) {
+    e.preventDefault();
+    await sendMessage();
   }
+
+  const onReplyKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        if (!messageTextRef.current.trim() || sending) return;
+        void sendMessage();
+      }
+    },
+    [sendMessage, sending]
+  );
+
+  useEffect(() => {
+    if (!selectedId) return;
+    let cancelled = false;
+    const run = () => {
+      if (!cancelled) scrollThreadToBottom();
+    };
+    run();
+    const id = window.requestAnimationFrame(() => {
+      run();
+      window.requestAnimationFrame(run);
+    });
+    const t = window.setTimeout(run, 0);
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(id);
+      window.clearTimeout(t);
+    };
+  }, [selectedId, messages, loadingThread, scrollThreadToBottom]);
 
   const selected = rows.find((r) => r.ticketId === selectedId);
 
   return (
-    <div className="space-y-6">
-      <div>
+    <div className="flex h-[calc(100dvh-4rem-3rem-10px)] min-h-0 flex-col gap-4 overflow-hidden lg:h-[calc(100dvh-4rem-4rem-10px)]">
+      <div className="shrink-0">
         <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Conversations</h1>
         <p className="mt-1 text-sm text-slate-500">
           All ticket threads with recent activity. Select a conversation to read and reply.
         </p>
       </div>
 
-      {error ? <p className="text-sm text-red-600">{error}</p> : null}
+      {error ? <p className="shrink-0 text-sm text-red-600">{error}</p> : null}
 
-      <div className="grid min-h-[560px] gap-4 lg:grid-cols-[minmax(0,340px)_1fr]">
-        <Card className="flex flex-col overflow-hidden">
-          <div className="border-b border-slate-100 px-4 py-3">
+      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden lg:grid lg:h-full lg:min-h-0 lg:grid-cols-[minmax(0,340px)_1fr] lg:grid-rows-1">
+        <Card className="flex min-h-0 flex-1 flex-col overflow-hidden lg:h-full lg:min-h-0">
+          <div className="shrink-0 border-b border-slate-100 px-4 py-3">
             <h2 className="text-sm font-semibold text-slate-900">Inbox</h2>
             <p className="text-xs text-slate-500">Sorted by latest message</p>
           </div>
-          <CardBody className="flex-1 overflow-y-auto p-0">
+          <div className="shrink-0 border-b border-slate-100 px-3 py-2">
+            <label className="relative block">
+              <span className="sr-only">Search conversations</span>
+              <Search
+                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+                aria-hidden
+              />
+              <input
+                type="search"
+                value={inboxQuery}
+                onChange={(e) => setInboxQuery(e.target.value)}
+                placeholder="Search…"
+                className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
+              />
+            </label>
+          </div>
+          <CardBody className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-0">
             {loadingList ? (
               <p className="px-4 py-8 text-sm text-slate-500">Loading…</p>
             ) : rows.length === 0 ? (
               <p className="px-4 py-8 text-sm text-slate-500">No conversations yet.</p>
+            ) : filteredRows.length === 0 ? (
+              <p className="px-4 py-8 text-sm text-slate-500">No matches.</p>
             ) : (
               <ul className="divide-y divide-slate-100">
-                {rows.map((r) => {
+                {filteredRows.map((r) => {
                   const active = r.ticketId === selectedId;
                   return (
                     <li key={r.ticketId}>
@@ -181,9 +271,7 @@ export function AdminInboxClient() {
                         }`}
                       >
                         <div className="flex items-start justify-between gap-2">
-                          <span className="font-medium text-slate-900 line-clamp-1">
-                            {r.title}
-                          </span>
+                          <span className="line-clamp-1 font-medium text-slate-900">{r.title}</span>
                           {r.unreadCount > 0 ? (
                             <span className="shrink-0 rounded-full bg-red-500 px-2 py-0.5 text-[10px] font-bold text-white">
                               {r.unreadCount > 9 ? "9+" : r.unreadCount}
@@ -209,16 +297,16 @@ export function AdminInboxClient() {
           </CardBody>
         </Card>
 
-        <Card className="flex flex-col overflow-hidden">
+        <Card className="flex min-h-0 flex-1 flex-col overflow-hidden lg:h-full lg:min-h-0">
           {!selectedId ? (
-            <CardBody className="flex flex-1 items-center justify-center p-8">
+            <CardBody className="flex min-h-0 flex-1 items-center justify-center overflow-hidden p-8">
               <p className="text-center text-sm text-slate-500">
                 Select a conversation on the left to view messages.
               </p>
             </CardBody>
           ) : (
             <>
-              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
+              <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
                 <div className="min-w-0">
                   <h2 className="truncate text-base font-semibold text-slate-900">
                     {selected?.title ?? "Ticket"}
@@ -235,37 +323,50 @@ export function AdminInboxClient() {
                   Open ticket
                 </Link>
               </div>
-              <CardBody className="flex min-h-0 flex-1 flex-col gap-4 p-4">
-                <div className="min-h-0 flex-1 space-y-3 overflow-y-auto rounded-2xl border border-slate-100 bg-slate-50/80 p-3">
-                  {loadingThread ? (
-                    <p className="text-center text-sm text-slate-500">Loading…</p>
-                  ) : messages.length === 0 ? (
-                    <p className="text-center text-sm text-slate-500">No messages yet.</p>
-                  ) : (
-                    messages.map((m) => (
-                      <TicketMessageBubble key={m.id} m={m} viewerUserId={user.id} compact />
-                    ))
-                  )}
+              <CardBody className="flex min-h-0 flex-1 flex-col gap-0 overflow-hidden p-0">
+                <div
+                  ref={threadScrollRef}
+                  className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain px-4 py-3"
+                >
+                  <div className="space-y-3 rounded-2xl border border-slate-100 bg-slate-50/80 p-3">
+                    {loadingThread ? (
+                      <p className="text-center text-sm text-slate-500">Loading…</p>
+                    ) : messages.length === 0 ? (
+                      <p className="text-center text-sm text-slate-500">No messages yet.</p>
+                    ) : (
+                      messages.map((m) => (
+                        <TicketMessageBubble key={m.id} m={m} viewerUserId={user.id} compact />
+                      ))
+                    )}
+                  </div>
                 </div>
-                <form onSubmit={sendMessage} className="flex flex-col gap-3 sm:flex-row sm:items-end">
-                  <div className="flex-1">
-                    <Textarea
-                      label="Reply"
+                <form
+                  onSubmit={onSubmitReply}
+                  className="shrink-0 border-t border-slate-100 bg-white px-3 py-2.5"
+                >
+                  <div className="flex min-h-[2.75rem] items-end gap-1.5 rounded-xl border border-slate-200 bg-slate-50/80 px-2 py-1.5 shadow-sm focus-within:border-slate-300 focus-within:ring-2 focus-within:ring-slate-200/80">
+                    <label htmlFor="admin-inbox-reply" className="sr-only">
+                      Reply to conversation (Enter to send, Shift+Enter for new line)
+                    </label>
+                    <textarea
+                      id="admin-inbox-reply"
                       value={messageText}
                       onChange={(e) => setMessageText(e.target.value)}
-                      placeholder="Write a reply…"
-                      className="min-h-[88px]"
-                      required
+                      onKeyDown={onReplyKeyDown}
+                      placeholder="Message…"
+                      rows={1}
+                      className="max-h-28 min-h-[2.25rem] w-0 min-w-0 flex-1 resize-none overflow-y-auto border-0 bg-transparent px-1.5 py-1.5 text-sm leading-5 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-0"
                     />
+                    <Button
+                      type="submit"
+                      disabled={sending || !messageText.trim()}
+                      className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-3"
+                      aria-label="Send message"
+                    >
+                      <Send className="h-4 w-4" />
+                      <span className="hidden sm:inline">{sending ? "Sending…" : "Send"}</span>
+                    </Button>
                   </div>
-                  <Button
-                    type="submit"
-                    disabled={sending}
-                    className="inline-flex shrink-0 items-center gap-2 sm:!h-[88px] sm:!self-stretch"
-                  >
-                    <Send className="h-4 w-4" />
-                    {sending ? "Sending…" : "Send"}
-                  </Button>
                 </form>
               </CardBody>
             </>

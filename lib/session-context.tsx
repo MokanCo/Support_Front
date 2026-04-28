@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext } from "react";
-import type { UserRole } from "@/models/User";
+import type { UserRole } from "@/lib/user-roles";
 
 export type SessionUser = {
   id: string;

@@ -8,11 +8,6 @@ import { TicketDetailClient } from "@/components/tickets/ticket-detail-client";
 function TicketViewInner() {
   const sp = useSearchParams();
   const id = sp.get("id") ?? "";
-  const openChat =
-    sp.get("chat") === "1" ||
-    sp.get("chat") === "true" ||
-    sp.get("openChat") === "1" ||
-    sp.get("openChat") === "true";
 
   if (!id) {
     return (
@@ -26,8 +21,8 @@ function TicketViewInner() {
   }
 
   return (
-    <div className="mx-auto max-w-4xl">
-      <TicketDetailClient ticketId={id} initialOpenChat={openChat} />
+    <div className="mx-auto w-full max-w-7xl">
+      <TicketDetailClient ticketId={id} />
     </div>
   );
 }
@@ -36,7 +31,7 @@ export default function TicketViewPage() {
   return (
     <Suspense
       fallback={
-        <div className="mx-auto max-w-4xl p-6 text-sm text-slate-500">Loading…</div>
+        <div className="mx-auto max-w-7xl p-6 text-sm text-slate-500">Loading…</div>
       }
     >
       <TicketViewInner />

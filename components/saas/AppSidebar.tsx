@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChevronRight, PanelLeftClose } from "lucide-react";
-import type { UserRole } from "@/models/User";
+import type { UserRole } from "@/lib/user-roles";
 import { navItemsForRole } from "@/components/saas/nav-config";
 
 export const SIDEBAR_STORAGE_KEY = "mokanco_sidebar_collapsed";

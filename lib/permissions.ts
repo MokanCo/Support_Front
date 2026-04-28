@@ -1,4 +1,4 @@
-import type { UserRole } from "@/models/User";
+import type { UserRole } from "@/lib/user-roles";
 
 export function isAdmin(role: UserRole): boolean {
   return role === "admin";

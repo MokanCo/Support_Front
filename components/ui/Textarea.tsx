@@ -3,19 +3,28 @@ import type { TextareaHTMLAttributes } from "react";
 type Props = TextareaHTMLAttributes<HTMLTextAreaElement> & {
   label: string;
   error?: string;
+  /** When true, label is only for screen readers (compact toolbars). */
+  hideLabel?: boolean;
 };
 
 export function Textarea({
   label,
   id,
   error,
+  hideLabel,
   className = "",
   ...props
 }: Props) {
   const tid = id ?? props.name;
   return (
-    <label className="block space-y-1.5">
-      <span className="text-sm font-medium text-slate-700">{label}</span>
+    <label className={hideLabel ? "block w-full" : "block space-y-1.5"}>
+      <span
+        className={
+          hideLabel ? "sr-only" : "text-sm font-medium text-slate-700"
+        }
+      >
+        {label}
+      </span>
       <textarea
         id={tid}
         rows={4}

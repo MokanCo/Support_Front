@@ -6,8 +6,8 @@ import { Input } from "@/components/ui/Input";
 import { Textarea } from "@/components/ui/Textarea";
 import { Select } from "@/components/ui/Select";
 import { Button } from "@/components/ui/Button";
-import type { UserRole } from "@/models/User";
-import type { TicketPriority } from "@/models/Ticket";
+import type { UserRole } from "@/lib/user-roles";
+import type { TicketPriority } from "@/lib/ticket-types";
 import { getQuickTicketTemplate } from "@/lib/quick-ticket-templates";
 import { apiFetch } from "@/lib/auth-fetch";
 

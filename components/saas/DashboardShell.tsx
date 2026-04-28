@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AppHeader } from "@/components/saas/AppHeader";
 import { AppSidebar, SIDEBAR_STORAGE_KEY } from "@/components/saas/AppSidebar";
-import type { UserRole } from "@/models/User";
+import type { UserRole } from "@/lib/user-roles";
 import { apiFetch } from "@/lib/auth-fetch";
 import { clearAccessToken } from "@/lib/access-token";
 import { invalidateSessionMeCache } from "@/lib/fetch-session-me";
@@ -51,7 +51,7 @@ export function DashboardShell({
   const sidebarWidth = collapsed ? "lg:pl-14" : "lg:pl-48";
 
   return (
-    <div className="min-h-screen bg-slate-100">
+    <div className="flex min-h-dvh flex-col bg-slate-100">
       {mobileOpen ? (
         <button
           type="button"
@@ -69,7 +69,9 @@ export function DashboardShell({
         onMobileClose={() => setMobileOpen(false)}
       />
 
-      <div className={`min-h-screen transition-[padding] duration-300 ease-out ${sidebarWidth}`}>
+      <div
+        className={`flex min-h-dvh flex-1 flex-col transition-[padding] duration-300 ease-out ${sidebarWidth}`}
+      >
         <AppHeader
           name={userName}
           email={email}
@@ -78,7 +80,7 @@ export function DashboardShell({
           onMenuClick={() => setMobileOpen(true)}
           onLogout={logout}
         />
-        <main className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6 lg:px-10 lg:py-8">
+        <main className="mx-auto flex min-h-0 w-full max-w-[1600px] flex-1 flex-col overflow-y-auto px-4 py-6 sm:px-6 lg:px-10 lg:py-8">
           {children}
         </main>
       </div>

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Bell, ChevronDown, LogOut, Menu } from "lucide-react";
 import { titleForPath } from "@/components/saas/nav-config";
-import type { UserRole } from "@/models/User";
+import type { UserRole } from "@/lib/user-roles";
 import {
   messageInboxPreviewText,
   useMessageInbox,
@@ -69,6 +69,12 @@ export function AppHeader({
   function onSelectInboxItem(item: MessageInboxItem) {
     clearTicketNotification(item.ticketId);
     setBellOpen(false);
+    if (role === "admin") {
+      router.push(
+        `/dashboard/conversations?ticket=${encodeURIComponent(item.ticketId)}`
+      );
+      return;
+    }
     router.push(
       `/dashboard/tickets/view?id=${encodeURIComponent(item.ticketId)}&chat=1`
     );
@@ -111,8 +117,8 @@ export function AppHeader({
           >
             <Bell className="h-[18px] w-[18px]" />
             {headerUnreadCount > 0 ? (
-              <span className="absolute -right-0.5 -top-0.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white ring-2 ring-white">
-                {headerUnreadCount > 9 ? "9+" : headerUnreadCount}
+              <span className="absolute -right-0.5 -top-0.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold tabular-nums text-white ring-2 ring-white">
+                {headerUnreadCount > 99 ? "99+" : headerUnreadCount}
               </span>
             ) : null}
           </button>
@@ -128,17 +134,17 @@ export function AppHeader({
               {dropdownItems.length === 0 ? (
                 <p className="px-3 py-4 text-sm text-slate-500">No recent notifications.</p>
               ) : (
-                <ul className="space-y-1 px-2">
+                <ul className="flex flex-col gap-3 px-3 pb-2">
                   {dropdownItems.map((item) => (
                     <li key={item.ticketId}>
                       <button
                         type="button"
                         role="menuitem"
                         onClick={() => onSelectInboxItem(item)}
-                        className={`w-full rounded-lg px-3 py-2.5 text-left text-sm transition ${
+                        className={`w-full rounded-xl border px-3 py-3 text-left text-sm shadow-sm transition ${
                           item.highlight
-                            ? "bg-primary-50 ring-2 ring-primary-200 ring-offset-1 ring-offset-white"
-                            : "hover:bg-slate-50"
+                            ? "border-primary-200 bg-primary-50 ring-2 ring-primary-200/60 ring-offset-1 ring-offset-white"
+                            : "border-slate-100 bg-white hover:border-slate-200 hover:bg-slate-50"
                         }`}
                       >
                         <p className="font-medium text-slate-900">

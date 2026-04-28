@@ -1,7 +1,7 @@
 "use client";
 
 import { Modal } from "@/components/ui/modal";
-import type { UserRole } from "@/models/User";
+import type { UserRole } from "@/lib/user-roles";
 import { CreateTicketForm } from "@/components/tickets/create-ticket-form";
 
 export function CreateTicketModal({

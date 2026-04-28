@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { Suspense, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "@/lib/session-context";
 import { canAccessConversationsInbox } from "@/lib/permissions";
@@ -15,5 +15,13 @@ export default function ConversationsPage() {
   }, [user.role, router]);
 
   if (!canAccessConversationsInbox(user.role)) return null;
-  return <AdminInboxClient />;
+  return (
+    <Suspense
+      fallback={
+        <div className="p-6 text-sm text-slate-500">Loading conversations…</div>
+      }
+    >
+      <AdminInboxClient />
+    </Suspense>
+  );
 }
