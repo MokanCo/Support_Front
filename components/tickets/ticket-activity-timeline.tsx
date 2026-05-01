@@ -8,7 +8,7 @@ function kindAccent(kind: TicketActivityKind): string {
     case "ticket_created":
       return "bg-emerald-500";
     case "status_changed":
-      return "bg-sky-500";
+      return "bg-primary-500";
     case "priority_changed":
       return "bg-amber-500";
     case "assignee_changed":

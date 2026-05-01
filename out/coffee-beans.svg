@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800" viewBox="0 0 1200 800">
+  <defs>
+    <filter id="soft" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="0.6" />
+    </filter>
+    <g id="bean" filter="url(#soft)">
+      <ellipse cx="0" cy="0" rx="26" ry="18" fill="#0f172a" opacity="0.9"/>
+      <path d="M-2 -14 C 6 -6, 6 6, -2 14" stroke="#e2e8f0" stroke-opacity="0.55" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+    </g>
+  </defs>
+
+  <rect width="1200" height="800" fill="transparent"/>
+
+  <!-- Scatter beans (intentionally simple; blurred via CSS overlay) -->
+  <g opacity="0.9">
+    <use href="#bean" transform="translate(110 90) rotate(-18) scale(1.05)"/>
+    <use href="#bean" transform="translate(260 140) rotate(24) scale(0.95)"/>
+    <use href="#bean" transform="translate(420 90) rotate(-8) scale(1.1)"/>
+    <use href="#bean" transform="translate(560 160) rotate(16) scale(0.9)"/>
+    <use href="#bean" transform="translate(700 110) rotate(-28) scale(1.0)"/>
+    <use href="#bean" transform="translate(860 170) rotate(10) scale(1.08)"/>
+    <use href="#bean" transform="translate(1020 120) rotate(32) scale(0.92)"/>
+
+    <use href="#bean" transform="translate(140 270) rotate(18) scale(0.92)"/>
+    <use href="#bean" transform="translate(320 320) rotate(-22) scale(1.05)"/>
+    <use href="#bean" transform="translate(500 300) rotate(8) scale(0.96)"/>
+    <use href="#bean" transform="translate(690 310) rotate(-10) scale(1.12)"/>
+    <use href="#bean" transform="translate(870 290) rotate(26) scale(0.9)"/>
+    <use href="#bean" transform="translate(1040 340) rotate(-16) scale(1.02)"/>
+
+    <use href="#bean" transform="translate(120 480) rotate(-30) scale(1.1)"/>
+    <use href="#bean" transform="translate(300 520) rotate(12) scale(0.9)"/>
+    <use href="#bean" transform="translate(470 470) rotate(-4) scale(1.02)"/>
+    <use href="#bean" transform="translate(650 520) rotate(22) scale(0.98)"/>
+    <use href="#bean" transform="translate(820 480) rotate(-14) scale(1.08)"/>
+    <use href="#bean" transform="translate(1000 520) rotate(30) scale(0.92)"/>
+
+    <use href="#bean" transform="translate(190 660) rotate(18) scale(0.96)"/>
+    <use href="#bean" transform="translate(380 690) rotate(-24) scale(1.06)"/>
+    <use href="#bean" transform="translate(560 650) rotate(10) scale(0.9)"/>
+    <use href="#bean" transform="translate(740 690) rotate(-12) scale(1.12)"/>
+    <use href="#bean" transform="translate(920 650) rotate(26) scale(0.98)"/>
+    <use href="#bean" transform="translate(1090 700) rotate(-18) scale(1.05)"/>
+  </g>
+</svg>
+

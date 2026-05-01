@@ -9,6 +9,16 @@ const nextConfig = {
   reactStrictMode: true,
   /** Static HTML/JS for CDNs (e.g. Render Static Site). Requires `NEXT_PUBLIC_API_URL` at build time. */
   output: "export",
+  images: {
+    unoptimized: true,
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "mokanco.com",
+        pathname: "/wp-content/uploads/**",
+      },
+    ],
+  },
   /**
    * Browser `fetch("/api/...")` uses NEXT_PUBLIC_API_URL via `resolveApiUrl`. If unset,
    * reuse BACKEND_API_URL so login and API calls work when only the backend origin is in .env.local.

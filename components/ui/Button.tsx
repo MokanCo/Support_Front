@@ -14,7 +14,7 @@ export function Button({
     "inline-flex items-center justify-center rounded-xl px-4 py-2.5 text-sm font-medium transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-50 disabled:pointer-events-none";
   const styles = {
     primary:
-      "bg-primary-600 text-white shadow-sm hover:bg-primary-700 focus-visible:outline-primary-600",
+      "bg-gradient-to-r from-primary-700 via-primary-600 to-primary-500 text-white shadow-sm hover:from-primary-800 hover:via-primary-700 hover:to-primary-600 focus-visible:outline-primary-600",
     secondary:
       "bg-white text-slate-900 border border-slate-200 shadow-sm hover:bg-slate-50 focus-visible:outline-slate-400",
     ghost: "text-slate-700 hover:bg-slate-100 focus-visible:outline-slate-400",

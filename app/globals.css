@@ -3,16 +3,50 @@
 @tailwind utilities;
 
 :root {
-  --background: 248 250 252;
-  --foreground: 15 23 42;
-  --muted: 100 116 139;
-  --border: 226 232 240;
-  --card: 255 255 255;
+  --background: 248 243 238;
+  --foreground: 46 30 22;
+  --muted: 124 94 74;
+  --border: 226 210 196;
+  --card: 255 251 247;
+}
+
+html,
+body {
+  min-height: 100%;
+  color: rgb(var(--foreground));
+  background:
+    radial-gradient(1200px circle at 14% 18%, rgba(140, 92, 63, 0.20), transparent 62%),
+    radial-gradient(1050px circle at 86% 16%, rgba(198, 152, 110, 0.18), transparent 64%),
+    radial-gradient(1100px circle at 78% 84%, rgba(122, 85, 61, 0.20), transparent 62%),
+    radial-gradient(900px circle at 18% 86%, rgba(90, 56, 38, 0.12), transparent 60%),
+    radial-gradient(1400px circle at 50% 50%, rgba(250, 245, 239, 1), rgba(241, 231, 221, 1) 55%, rgba(250, 245, 239, 1) 100%);
+  background-attachment: fixed;
+  background-repeat: no-repeat;
 }
 
 body {
-  color: rgb(var(--foreground));
-  background: rgb(var(--background));
+  position: relative;
+}
+
+/* Blurry coffee bean texture overlay */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image: url("/coffee-beans.svg");
+  background-size: 820px auto;
+  background-repeat: repeat;
+  opacity: 0.10;
+  filter: blur(10px) saturate(0.9);
+  transform: translateZ(0);
+}
+
+/* Ensure app content stays above the texture layer */
+body > * {
+  position: relative;
+  z-index: 1;
 }
 
 @layer utilities {

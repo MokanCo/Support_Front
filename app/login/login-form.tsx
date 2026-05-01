@@ -2,6 +2,7 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
+import { Check } from "lucide-react";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { getAccessToken, setAccessToken } from "@/lib/access-token";
@@ -15,6 +16,7 @@ export function LoginForm() {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [rememberMe, setRememberMe] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -42,7 +44,7 @@ export function LoginForm() {
       }
       if (typeof data.token === "string" && data.token.length > 0) {
         invalidateSessionMeCache();
-        setAccessToken(data.token);
+        setAccessToken(data.token, { persist: rememberMe });
       } else {
         setError("Server did not return a token");
         return;
@@ -74,8 +76,31 @@ export function LoginForm() {
         onChange={(e) => setPassword(e.target.value)}
         required
       />
+      <label className="flex cursor-pointer select-none items-center justify-between gap-3">
+        <span className="flex items-center gap-2">
+          <span className="relative inline-flex h-4 w-4 shrink-0 items-center justify-center">
+            <input
+              type="checkbox"
+              checked={rememberMe}
+              onChange={(e) => setRememberMe(e.target.checked)}
+              className="peer sr-only"
+            />
+            <span
+              aria-hidden
+              className="pointer-events-none flex h-4 w-4 items-center justify-center rounded border-2 border-primary-600 bg-white/95 transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-primary-500/50 peer-focus-visible:ring-offset-1 peer-focus-visible:ring-offset-white/90 peer-checked:border-primary-900 peer-checked:bg-primary-700 [&_svg]:opacity-0 peer-checked:[&_svg]:opacity-100"
+            >
+              <Check className="h-3 w-3 text-amber-50" strokeWidth={2.75} />
+            </span>
+          </span>
+          <span className="text-sm text-slate-600">Remember me</span>
+        </span>
+      </label>
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
-      <Button type="submit" className="w-full" disabled={loading}>
+      <Button
+        type="submit"
+        className="w-full"
+        disabled={loading}
+      >
         {loading ? "Signing in…" : "Continue"}
       </Button>
     </form>

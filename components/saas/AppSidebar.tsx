@@ -35,7 +35,7 @@ function SidebarContent({
   return (
     <div className="flex h-full flex-col">
       <div
-        className={`flex h-16 items-center border-b border-white/5 px-4 ${
+        className={`flex h-16 items-center border-b border-white/5 px-3 ${
           collapsed ? "justify-center" : "justify-between gap-2"
         }`}
       >
