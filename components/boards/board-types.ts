@@ -28,6 +28,9 @@ export type BoardTaskRow = {
   columnId: string;
   assignedTo: { id: string; name: string; email: string } | null;
   priority: TicketPriority;
+  cardColor: string;
+  progress: number;
+  commentCount: number;
   deadline: string | null;
   status: TicketStatus;
   order: number;
@@ -47,5 +50,22 @@ export type TaskCommentRow = {
   taskId: string;
   user: { id: string; name: string; email: string };
   comment: string;
+  createdAt: string;
+};
+
+export type BoardMemberRow = {
+  id: string;
+  name: string;
+  email: string;
+  role?: string;
+};
+
+export type TaskAttachmentRow = {
+  id: string;
+  taskId: string;
+  originalName: string;
+  mimeType: string;
+  size: number;
+  uploadedBy: string;
   createdAt: string;
 };

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { Card, CardBody } from "@/components/ui/Card";
 import { StatusBadge, PriorityBadge, NewBadge } from "@/components/ui/badge";
@@ -27,6 +27,7 @@ import {
   type TicketSnapshot,
 } from "@/lib/ticket-activity";
 import { TicketActivityTimeline } from "@/components/tickets/ticket-activity-timeline";
+import { TicketChatFab } from "@/components/messages/ticket-chat-fab";
 
 type Ticket = {
   id: string;
@@ -68,6 +69,8 @@ type UserOption = { id: string; name: string; email: string };
 
 export function TicketDetailClient({ ticketId }: { ticketId: string }) {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const session = useSession();
   const [ticket, setTicket] = useState<Ticket | null>(null);
   const [users, setUsers] = useState<UserOption[]>([]);
@@ -88,6 +91,29 @@ export function TicketDetailClient({ ticketId }: { ticketId: string }) {
   const canManage = role === "admin" || role === "support";
   const isPartner = role === "partner";
   const showActivityPanel = canManage;
+
+  const initialChatOpen =
+    searchParams.get("chat") === "1" || searchParams.get("openChat") === "1";
+
+  const stripOpenChatQuery = useCallback(() => {
+    const next = new URLSearchParams(searchParams.toString());
+    let changed = false;
+    if (next.has("chat")) {
+      next.delete("chat");
+      changed = true;
+    }
+    if (next.has("openChat")) {
+      next.delete("openChat");
+      changed = true;
+    }
+    if (!changed) return;
+    const qs = next.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  }, [pathname, router, searchParams]);
+
+  const ticketClosed =
+    ticket?.status === "completed" || ticket?.status === "cancelled";
+  const partnerComposerDisabled = isPartner && Boolean(ticketClosed);
 
   const mergeActivityAfterMutation = useCallback(
     async (before: Ticket, after: Ticket) => {
@@ -490,6 +516,26 @@ export function TicketDetailClient({ ticketId }: { ticketId: string }) {
           </aside>
         ) : null}
       </div>
+
+      {isPartner ? (
+      <TicketChatFab
+        ticketId={ticketId}
+        viewerUserId={session.user.id}
+        ticketHeader={{
+          status: ticket.status,
+          assignedTo: ticket.assignedTo,
+          assignedToName: ticket.assignedToName,
+        }}
+        initialAutoOpen={initialChatOpen}
+        onStripOpenChatQuery={stripOpenChatQuery}
+        composerDisabled={partnerComposerDisabled}
+        composerDisabledMessage={
+          partnerComposerDisabled
+            ? "This ticket is closed. You can read messages but cannot send new ones."
+            : undefined
+        }
+      />
+      ) : null}
     </div>
   );
 }

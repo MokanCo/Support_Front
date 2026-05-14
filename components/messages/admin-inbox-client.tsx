@@ -14,7 +14,6 @@ import {
   parseMessagesListResponse,
 } from "@/lib/messages-client";
 import { useSession } from "@/lib/session-context";
-import { useMessageInbox } from "@/lib/message-inbox-context";
 import { useTicketSocket } from "@/lib/use-ticket-socket";
 
 type InboxRow = {
@@ -32,9 +31,6 @@ export function AdminInboxClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user } = useSession();
-  const messageInbox = useMessageInbox();
-  const messageInboxRef = useRef(messageInbox);
-  messageInboxRef.current = messageInbox;
   const [rows, setRows] = useState<InboxRow[]>([]);
   const [loadingList, setLoadingList] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -94,11 +90,6 @@ export function AdminInboxClient() {
     setSelectedId(tid);
     router.replace("/dashboard/conversations", { scroll: false });
   }, [searchParams, router]);
-
-  useEffect(() => {
-    messageInboxRef.current.setConversationsSelectedTicketId(selectedId);
-    return () => messageInboxRef.current.setConversationsSelectedTicketId(null);
-  }, [selectedId]);
 
   const loadThread = useCallback(async (ticketId: string) => {
     setLoadingThread(true);
