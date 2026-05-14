@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { Bell, ChevronDown, LogOut, Menu } from "lucide-react";
+import { Bell, ChevronDown, LogOut, Menu, X } from "lucide-react";
 import { titleForPath } from "@/components/saas/nav-config";
 import type { UserRole } from "@/lib/user-roles";
 import {
@@ -10,6 +10,44 @@ import {
   useMessageInbox,
   type MessageInboxItem,
 } from "@/lib/message-inbox-context";
+import { useStatusNotifications, type StatusNotificationRow } from "@/lib/use-status-notifications";
+
+const READ_STORAGE_KEY = "mokanco:bellReadKeys";
+
+function readKeysFromStorage(): Set<string> {
+  if (typeof window === "undefined") return new Set();
+  try {
+    const raw = sessionStorage.getItem(READ_STORAGE_KEY);
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw) as unknown;
+    if (!Array.isArray(arr)) return new Set();
+    return new Set(arr.filter((x): x is string => typeof x === "string"));
+  } catch {
+    return new Set();
+  }
+}
+
+function persistReadKeys(next: Set<string>) {
+  try {
+    sessionStorage.setItem(READ_STORAGE_KEY, JSON.stringify([...next]));
+  } catch {
+    /* ignore */
+  }
+}
+
+type MergedRow =
+  | {
+      kind: "status";
+      readKey: string;
+      sortAt: number;
+      status: StatusNotificationRow;
+    }
+  | {
+      kind: "message";
+      readKey: string;
+      sortAt: number;
+      message: MessageInboxItem;
+    };
 
 export function AppHeader({
   name,
@@ -29,8 +67,26 @@ export function AppHeader({
   const pathname = usePathname();
   const router = useRouter();
   const title = titleForPath(pathname);
-  const { items, headerUnreadCount, clearTicketNotification } =
+  const { items, headerUnreadCount, clearTicketNotification, clearAllMessageNotifications } =
     useMessageInbox();
+  const { items: statusItems, load: loadStatus, dismissOne, dismissAll } =
+    useStatusNotifications(true);
+
+  const [readKeys, setReadKeys] = useState<Set<string>>(() => new Set());
+
+  useEffect(() => {
+    setReadKeys(readKeysFromStorage());
+  }, []);
+
+  const markRead = useCallback((key: string) => {
+    setReadKeys((prev) => {
+      if (prev.has(key)) return prev;
+      const next = new Set(prev);
+      next.add(key);
+      persistReadKeys(next);
+      return next;
+    });
+  }, []);
 
   const initials =
     (name ?? email)
@@ -46,6 +102,35 @@ export function AppHeader({
   const [bellOpen, setBellOpen] = useState(false);
   const bellRef = useRef<HTMLDivElement>(null);
 
+  const hideMessageBellSection = pathname.startsWith("/dashboard/conversations");
+
+  const messageDropdownItems = hideMessageBellSection
+    ? []
+    : items.filter((i) => i.highlight).length > 0
+      ? items.filter((i) => i.highlight)
+      : items.slice(0, 12);
+
+  const mergedRows = useMemo((): MergedRow[] => {
+    const out: MergedRow[] = [];
+    for (const s of statusItems) {
+      const sortAt = new Date(s.createdAt || 0).getTime() || 0;
+      out.push({ kind: "status", readKey: `s:${s.id}`, sortAt, status: s });
+    }
+    for (const m of messageDropdownItems) {
+      const sortAt = new Date(m.lastMessage.createdAt || 0).getTime() || 0;
+      out.push({ kind: "message", readKey: `m:${m.ticketId}`, sortAt, message: m });
+    }
+    out.sort((a, b) => b.sortAt - a.sortAt);
+    return out;
+  }, [statusItems, messageDropdownItems]);
+
+  const unreadStatusCount = useMemo(
+    () => statusItems.filter((s) => !readKeys.has(`s:${s.id}`)).length,
+    [statusItems, readKeys]
+  );
+
+  const totalBellCount = headerUnreadCount + unreadStatusCount;
+
   useEffect(() => {
     function onDocClick(e: MouseEvent) {
       const t = e.target as Node;
@@ -58,23 +143,112 @@ export function AppHeader({
     }
   }, [userMenuOpen, bellOpen]);
 
-  const dropdownItems =
-    items.filter((i) => i.highlight).length > 0
-      ? items.filter((i) => i.highlight)
-      : items.slice(0, 12);
+  useEffect(() => {
+    if (bellOpen) void loadStatus();
+  }, [bellOpen, loadStatus]);
 
-  function onSelectInboxItem(item: MessageInboxItem) {
-    clearTicketNotification(item.ticketId);
-    setBellOpen(false);
-    if (role === "admin") {
+  const goToTicketFromBell = useCallback(
+    (ticketId: string) => {
+      if (role === "admin" || role === "support") {
+        router.push(`/dashboard/conversations?ticket=${encodeURIComponent(ticketId)}`);
+        return;
+      }
+      router.push(`/dashboard/tickets/view?id=${encodeURIComponent(ticketId)}`);
+    },
+    [role, router]
+  );
+
+  const onSelectInboxItem = useCallback(
+    (item: MessageInboxItem) => {
+      markRead(`m:${item.ticketId}`);
+      clearTicketNotification(item.ticketId);
+      setBellOpen(false);
+      if (role === "admin" || role === "support") {
+        router.push(
+          `/dashboard/conversations?ticket=${encodeURIComponent(item.ticketId)}`
+        );
+        return;
+      }
       router.push(
-        `/dashboard/conversations?ticket=${encodeURIComponent(item.ticketId)}`,
+        `/dashboard/tickets/view?id=${encodeURIComponent(item.ticketId)}&chat=1`
       );
-      return;
+    },
+    [clearTicketNotification, markRead, role, router]
+  );
+
+  const onStatusNotificationClick = useCallback(
+    (s: StatusNotificationRow) => {
+      markRead(`s:${s.id}`);
+      setBellOpen(false);
+      if (s.ticketId) goToTicketFromBell(s.ticketId);
+    },
+    [markRead, goToTicketFromBell]
+  );
+
+  const onDismissStatus = useCallback(
+    async (e: React.MouseEvent, id: string) => {
+      e.preventDefault();
+      e.stopPropagation();
+      await dismissOne(id);
+    },
+    [dismissOne]
+  );
+
+  const onClearAllNotifications = useCallback(async () => {
+    await dismissAll();
+    clearAllMessageNotifications();
+    setReadKeys(new Set());
+    persistReadKeys(new Set());
+  }, [dismissAll, clearAllMessageNotifications]);
+
+  const bellAria =
+    totalBellCount > 0
+      ? `${totalBellCount} unread notification${totalBellCount === 1 ? "" : "s"}`
+      : "Notifications";
+
+  function rowVisual(
+    entry: MergedRow
+  ): { muted: boolean; boxClass: string; label: string } {
+    const read = readKeys.has(entry.readKey);
+    if (entry.kind === "status") {
+      const s = entry.status;
+      const isNewTicket = s.kind === "ticket_created";
+      const label = isNewTicket ? "New ticket" : "Update";
+      if (read) {
+        return {
+          muted: true,
+          label,
+          boxClass:
+            "border-slate-100 bg-slate-50/95 opacity-[0.72] ring-0 shadow-sm hover:brightness-[0.98]",
+        };
+      }
+      const boxClass = isNewTicket
+        ? "border-sky-200/90 bg-sky-50/90 ring-2 ring-sky-200/50 ring-offset-1 ring-offset-white shadow-sm hover:brightness-[0.98]"
+        : "border-amber-200/90 bg-amber-50/90 ring-2 ring-amber-200/50 ring-offset-1 ring-offset-white shadow-sm hover:brightness-[0.98]";
+      return { muted: false, label, boxClass };
     }
-    router.push(
-      `/dashboard/tickets/view?id=${encodeURIComponent(item.ticketId)}&chat=1`,
-    );
+    if (read) {
+      return {
+        muted: true,
+        label: "Message",
+        boxClass:
+          "border-slate-100 bg-slate-50/95 opacity-[0.72] ring-0 shadow-sm hover:brightness-[0.98]",
+      };
+    }
+    if (entry.message.highlight) {
+      return {
+        muted: false,
+        label: "Message",
+        boxClass:
+          "border-primary-200 bg-primary-50 ring-2 ring-primary-200/60 ring-offset-1 ring-offset-white shadow-sm hover:brightness-[0.98]",
+      };
+    }
+    return {
+      muted: false,
+      label: "Message",
+      boxClass:
+        "border-slate-100 bg-white shadow-sm hover:border-slate-200 hover:bg-slate-50 hover:brightness-[0.98]",
+    };
   }
 
   return (
@@ -104,62 +278,100 @@ export function AppHeader({
             type="button"
             onClick={() => setBellOpen((o) => !o)}
             className="relative inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
-            aria-label={
-              headerUnreadCount > 0
-                ? `${headerUnreadCount} unread message notifications`
-                : "Notifications"
-            }
+            aria-label={bellAria}
             aria-expanded={bellOpen}
           >
             <Bell className="h-[18px] w-[18px]" />
-            {headerUnreadCount > 0 ? (
+            {totalBellCount > 0 ? (
               <span className="absolute -right-0.5 -top-0.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold tabular-nums text-white ring-2 ring-white">
-                {headerUnreadCount > 99 ? "99+" : headerUnreadCount}
+                {totalBellCount > 99 ? "99+" : totalBellCount}
               </span>
             ) : null}
           </button>
 
           {bellOpen ? (
             <div
-              className="absolute right-0 top-full z-50 mt-2 w-[min(100vw-2rem,360px)] max-h-[min(70vh,420px)] overflow-y-auto rounded-xl border border-slate-200 bg-white py-2 shadow-lg ring-1 ring-slate-900/5"
+              className="absolute right-0 top-full z-50 mt-2 w-[min(100vw-2rem,380px)] max-h-[min(70vh,480px)] overflow-y-auto rounded-xl border border-slate-200 bg-white py-2 shadow-lg ring-1 ring-slate-900/5"
               role="menu"
             >
-              <p className="px-3 pb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Messages
-              </p>
-              {dropdownItems.length === 0 ? (
+              <div className="flex items-center justify-between gap-2 px-3 pb-2 pt-0.5">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Notifications
+                </p>
+                {statusItems.length > 0 || messageDropdownItems.length > 0 ? (
+                  <button
+                    type="button"
+                    className="shrink-0 rounded-lg px-2 py-1 text-xs font-medium text-primary-700 transition hover:bg-primary-50"
+                    onClick={() => void onClearAllNotifications()}
+                  >
+                    Clear all
+                  </button>
+                ) : null}
+              </div>
+
+              {mergedRows.length === 0 ? (
                 <p className="px-3 py-4 text-sm text-slate-500">
-                  No recent notifications.
+                  {hideMessageBellSection
+                    ? "Nothing new. Message alerts are hidden while you are on Messages."
+                    : "No notifications."}
                 </p>
               ) : (
-                <ul className="flex flex-col gap-3 px-3 pb-2">
-                  {dropdownItems.map((item) => (
-                    <li key={item.ticketId}>
-                      <button
-                        type="button"
-                        role="menuitem"
-                        onClick={() => onSelectInboxItem(item)}
-                        className={`w-full rounded-xl border px-3 py-3 text-left text-sm shadow-sm transition ${
-                          item.highlight
-                            ? "border-primary-200 bg-primary-50 ring-2 ring-primary-200/60 ring-offset-1 ring-offset-white"
-                            : "border-slate-100 bg-white hover:border-slate-200 hover:bg-slate-50"
-                        }`}
-                      >
-                        <p className="font-medium text-slate-900">
-                          {item.ticketCode ? (
-                            <span className="text-primary-700">
-                              {item.ticketCode}
-                            </span>
-                          ) : null}
-                          {item.ticketCode ? " · " : null}
-                          {item.title}
-                        </p>
-                        <p className="mt-0.5 line-clamp-2 text-xs text-slate-600">
-                          {messageInboxPreviewText(item)}
-                        </p>
-                      </button>
-                    </li>
-                  ))}
+                <ul className="flex flex-col gap-2 px-3 pb-2">
+                  {mergedRows.map((entry) => {
+                    const v = rowVisual(entry);
+                    if (entry.kind === "status") {
+                      const s = entry.status;
+                      return (
+                        <li key={`s-${s.id}`} className="relative">
+                          <button
+                            type="button"
+                            role="menuitem"
+                            onClick={() => onStatusNotificationClick(s)}
+                            className={`w-full rounded-xl border py-2.5 pl-3 pr-10 text-left text-sm shadow-sm transition hover:brightness-[0.98] ${v.boxClass}`}
+                          >
+                            <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                              {v.label}
+                            </p>
+                            <p className="font-medium text-slate-900">{s.title}</p>
+                            <p className="mt-0.5 line-clamp-3 text-xs text-slate-700">{s.body}</p>
+                          </button>
+                          <button
+                            type="button"
+                            className="absolute right-2 top-2 inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:bg-white/90 hover:text-slate-800"
+                            aria-label="Dismiss update"
+                            onClick={(e) => void onDismissStatus(e, s.id)}
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        </li>
+                      );
+                    }
+                    const m = entry.message;
+                    return (
+                      <li key={`m-${m.ticketId}`}>
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onClick={() => onSelectInboxItem(m)}
+                          className={`w-full rounded-xl border px-3 py-3 text-left text-sm shadow-sm transition hover:brightness-[0.98] ${v.boxClass}`}
+                        >
+                          <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                            {v.label}
+                          </p>
+                          <p className="font-medium text-slate-900">
+                            {m.ticketCode ? (
+                              <span className="text-primary-700">{m.ticketCode}</span>
+                            ) : null}
+                            {m.ticketCode ? " · " : null}
+                            {m.title}
+                          </p>
+                          <p className="mt-0.5 line-clamp-2 text-xs text-slate-600">
+                            {messageInboxPreviewText(m)}
+                          </p>
+                        </button>
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </div>

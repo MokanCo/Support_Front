@@ -32,8 +32,9 @@ type MessageInboxContextValue = {
   headerUnreadCount: number;
   setFabOpenTicketId: (ticketId: string | null) => void;
   setAdminInlineTicketId: (ticketId: string | null) => void;
-  setConversationsSelectedTicketId: (ticketId: string | null) => void;
   clearTicketNotification: (ticketId: string) => void;
+  /** Clears every in-memory message row used by the header bell (does not touch the server). */
+  clearAllMessageNotifications: () => void;
   getLiveBump: (ticketId: string) => number;
 };
 
@@ -71,7 +72,6 @@ function MessageInboxProviderCore({
   const viewerIdRef = useRef(user.id);
   const fabOpenRef = useRef<string | null>(null);
   const adminInlineRef = useRef<string | null>(null);
-  const conversationsRef = useRef<string | null>(null);
 
   useEffect(() => {
     pathnameRef.current = pathname;
@@ -87,15 +87,6 @@ function MessageInboxProviderCore({
 
   const setAdminInlineTicketId = useCallback((ticketId: string | null) => {
     adminInlineRef.current = ticketId;
-  }, []);
-
-  const [conversationsSelectedTicketId, setConversationsTicketState] = useState<string | null>(
-    null
-  );
-
-  const setConversationsSelectedTicketId = useCallback((ticketId: string | null) => {
-    conversationsRef.current = ticketId;
-    setConversationsTicketState(ticketId);
   }, []);
 
   const [itemsMap, setItemsMap] = useState<Record<string, MessageInboxItem>>({});
@@ -119,9 +110,9 @@ function MessageInboxProviderCore({
     const onConversations = path.startsWith("/dashboard/conversations");
 
     const suppressedForChrome =
+      onConversations ||
       (ticketOnPage === ticketId &&
-        (fabOpenRef.current === ticketId || adminInlineRef.current === ticketId)) ||
-      (onConversations && conversationsRef.current === ticketId);
+        (fabOpenRef.current === ticketId || adminInlineRef.current === ticketId));
 
     setItemsMap((prev) => {
       const next: MessageInboxItem = {
@@ -177,6 +168,12 @@ function MessageInboxProviderCore({
     });
   }, []);
 
+  const clearAllMessageNotifications = useCallback(() => {
+    setItemsMap({});
+    setLiveBumps({});
+    setListEpoch((e) => e + 1);
+  }, []);
+
   const items = useMemo(
     () => Object.values(itemsMap).sort((a, b) => b.updatedAt - a.updatedAt),
     [itemsMap, listEpoch]
@@ -188,9 +185,9 @@ function MessageInboxProviderCore({
 
     let sum = 0;
     for (const item of Object.values(itemsMap)) {
+      if (onConversations) continue;
       if (!item.highlight) continue;
       if (ticketOnPage && item.ticketId === ticketOnPage) continue;
-      if (onConversations && item.ticketId === conversationsSelectedTicketId) continue;
       sum += Math.max(1, liveBumps[item.ticketId] ?? 1);
     }
     return sum;
@@ -198,7 +195,6 @@ function MessageInboxProviderCore({
     itemsMap,
     pathname,
     searchParams,
-    conversationsSelectedTicketId,
     listEpoch,
     liveBumps,
   ]);
@@ -214,8 +210,8 @@ function MessageInboxProviderCore({
       headerUnreadCount,
       setFabOpenTicketId,
       setAdminInlineTicketId,
-      setConversationsSelectedTicketId,
       clearTicketNotification,
+      clearAllMessageNotifications,
       getLiveBump,
     }),
     [
@@ -223,8 +219,8 @@ function MessageInboxProviderCore({
       headerUnreadCount,
       setFabOpenTicketId,
       setAdminInlineTicketId,
-      setConversationsSelectedTicketId,
       clearTicketNotification,
+      clearAllMessageNotifications,
       getLiveBump,
     ]
   );

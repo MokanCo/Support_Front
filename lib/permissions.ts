@@ -41,7 +41,7 @@ export function canAccessTicketReports(role: UserRole): boolean {
 }
 
 export function canAccessConversationsInbox(role: UserRole): boolean {
-  return role === "admin";
+  return role === "admin" || role === "support";
 }
 
 export function canAssignOrUpdateTicketStatus(role: UserRole): boolean {
