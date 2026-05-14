@@ -1,4 +1,4 @@
-// File: /Users/muneeb/Desktop/untitled folder/FrontEnd/app/layout.tsx
+// File: C:\Users\work9\OneDrive\Desktop\TicketingApp\Support_Front\app\layout.tsx
 import * as entry from '../../../app/layout.js'
 import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
 

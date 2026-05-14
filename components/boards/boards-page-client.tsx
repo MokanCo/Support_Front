@@ -43,7 +43,7 @@ export function BoardsPageClient() {
   const [taskColumnId, setTaskColumnId] = useState("");
   const [taskTicketId, setTaskTicketId] = useState("");
   const [taskAssignee, setTaskAssignee] = useState("");
-  const [taskPriority, setTaskPriority] = useState("medium");
+  const [taskPriority, setTaskPriority] = useState("p2");
   const [taskDeadline, setTaskDeadline] = useState("");
 
   const loadBoards = useCallback(async () => {
@@ -206,7 +206,7 @@ export function BoardsPageClient() {
       setTaskDesc("");
       setTaskTicketId("");
       setTaskAssignee("");
-      setTaskPriority("medium");
+      setTaskPriority("p2");
       setTaskDeadline("");
       await loadBundle(selectedId);
     } catch (e) {
@@ -424,10 +424,11 @@ export function BoardsPageClient() {
             ))}
           </Select>
           <Select label="Priority" value={taskPriority} onChange={(e) => setTaskPriority(e.target.value)}>
-            <option value="low">Low</option>
-            <option value="medium">Medium</option>
-            <option value="high">High</option>
-            <option value="urgent">Urgent</option>
+            <option value="p0">P0</option>
+            <option value="p1">P1</option>
+            <option value="p2">P2</option>
+            <option value="p3">P3</option>
+            <option value="p4">P4</option>
           </Select>
           <Input
             label="Deadline"

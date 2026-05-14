@@ -40,7 +40,7 @@ export function ReportsClient() {
             <Button
               type="button"
               variant="secondary"
-              className="inline-flex items-center justify-center gap-2 !py-3"
+              className="gap-2"
               onClick={() => download("daily")}
             >
               <Download className="h-4 w-4" />
@@ -49,7 +49,7 @@ export function ReportsClient() {
             <Button
               type="button"
               variant="secondary"
-              className="inline-flex items-center justify-center gap-2 !py-3"
+              className="gap-2"
               onClick={() => download("monthly")}
             >
               <Download className="h-4 w-4" />
@@ -58,7 +58,7 @@ export function ReportsClient() {
             <Button
               type="button"
               variant="secondary"
-              className="inline-flex items-center justify-center gap-2 !py-3"
+              className="gap-2"
               onClick={() => download("yearly")}
             >
               <Download className="h-4 w-4" />

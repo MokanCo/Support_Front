@@ -40,7 +40,10 @@ function SidebarContent({
         }`}
       >
         {!collapsed ? (
-          <Link href="/dashboard" className="truncate text-sm font-semibold tracking-tight">
+          <Link
+            href="/dashboard"
+            className="truncate text-sm font-semibold tracking-tight"
+          >
             <span className="text-white">Mokanco</span>
             <span className="text-slate-500"> Desk</span>
           </Link>
@@ -68,10 +71,14 @@ function SidebarContent({
             >
               <Icon
                 className={`h-[18px] w-[18px] shrink-0 transition-colors duration-200 ${
-                  active ? "text-primary-200" : "text-slate-400 group-hover:text-white"
+                  active
+                    ? "text-primary-200"
+                    : "text-slate-400 group-hover:text-white"
                 }`}
               />
-              {!collapsed ? <span className="truncate">{item.label}</span> : null}
+              {!collapsed ? (
+                <span className="truncate">{item.label}</span>
+              ) : null}
             </Link>
           );
         })}
@@ -100,7 +107,11 @@ export function AppSidebar({
       <aside
         className={`fixed inset-y-0 left-0 z-40 hidden border-r border-white/5 bg-slate-950 transition-[width] duration-300 ease-out lg:block ${rail}`}
       >
-        <SidebarContent role={role} collapsed={collapsed} onMobileClose={() => {}} />
+        <SidebarContent
+          role={role}
+          collapsed={collapsed}
+          onMobileClose={() => {}}
+        />
         <div className="absolute bottom-0 left-0 right-0 border-t border-white/5 p-3">
           <button
             type="button"
@@ -125,7 +136,11 @@ export function AppSidebar({
           mobileOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        <SidebarContent role={role} collapsed={false} onMobileClose={onMobileClose} />
+        <SidebarContent
+          role={role}
+          collapsed={false}
+          onMobileClose={onMobileClose}
+        />
       </aside>
     </>
   );

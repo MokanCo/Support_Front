@@ -15,7 +15,6 @@ type Loc = { id: string; name: string };
 
 type Props = {
   role: UserRole;
-  /** Prefill from quick-ticket template id (URL `quick=`) */
   quickTemplateId?: string | null;
   onSuccess?: (ticketId: string) => void;
   onCancel?: () => void;
@@ -36,7 +35,7 @@ export function CreateTicketForm({
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState("General");
   const [locationId, setLocationId] = useState("");
-  const [priority, setPriority] = useState<TicketPriority>("medium");
+  const [priority, setPriority] = useState<TicketPriority>("p2");
   const [deadlineLocal, setDeadlineLocal] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -89,16 +88,11 @@ export function CreateTicketForm({
     setSaving(true);
     setError(null);
     try {
-      const body: Record<string, unknown> = {
-        title,
-        description,
-        category,
-      };
+      const body: Record<string, unknown> = { title, description, category };
       if (showPriorityDeadline) {
         body.priority = priority;
-        if (deadlineLocal) {
+        if (deadlineLocal)
           body.deadline = new Date(deadlineLocal).toISOString();
-        }
       }
       if (needsLoc) {
         if (!locationId) {
@@ -140,13 +134,20 @@ export function CreateTicketForm({
         </Select>
       ) : null}
 
-      <Input label="Title" value={title} onChange={(e) => setTitle(e.target.value)} required />
       <Input
         label="Category"
         value={category}
         onChange={(e) => setCategory(e.target.value)}
         required
       />
+
+      <Input
+        label="Title"
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+        required
+      />
+
       <Textarea
         label="Description"
         value={description}
@@ -156,22 +157,23 @@ export function CreateTicketForm({
 
       {showPriorityDeadline ? (
         <>
+          <Select
+            label="Priority"
+            value={priority}
+            onChange={(e) => setPriority(e.target.value as TicketPriority)}
+          >
+            <option value="p0">P0</option>
+            <option value="p1">P1</option>
+            <option value="p2">P2</option>
+            <option value="p3">P3</option>
+            <option value="p4">P4</option>
+          </Select>
           <Input
             label="Deadline"
             type="datetime-local"
             value={deadlineLocal}
             onChange={(e) => setDeadlineLocal(e.target.value)}
           />
-          <Select
-            label="Priority"
-            value={priority}
-            onChange={(e) => setPriority(e.target.value as TicketPriority)}
-          >
-            <option value="low">Low</option>
-            <option value="medium">Medium</option>
-            <option value="high">High</option>
-            <option value="urgent">Urgent</option>
-          </Select>
         </>
       ) : null}
 
@@ -183,7 +185,10 @@ export function CreateTicketForm({
             Cancel
           </Button>
         ) : null}
-        <Button type="submit" disabled={saving || (needsLoc && locs.length === 0)}>
+        <Button
+          type="submit"
+          disabled={saving || (needsLoc && locs.length === 0)}
+        >
           {saving ? (
             <span className="inline-flex items-center gap-2">
               <Loader2 className="h-4 w-4 animate-spin" />

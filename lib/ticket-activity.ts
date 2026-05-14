@@ -39,14 +39,27 @@ const STATUS_LABEL: Record<TicketStatus, string> = {
   cancelled: "Cancelled",
 };
 
-const PRIORITY_LABEL: Record<TicketPriority, string> = {
+const PRIORITY_LABEL: Record<string, string> = {
+  p0: "P0",
+  p1: "P1",
+  p2: "P2",
+  p3: "P3",
+  p4: "P4",
   low: "Low",
   medium: "Medium",
   high: "High",
   urgent: "Urgent",
 };
 
-function displayName(name: string | null | undefined, fallback: string): string {
+function priorityLabel(p: string | null | undefined): string {
+  if (!p) return "None";
+  return PRIORITY_LABEL[p] ?? p;
+}
+
+function displayName(
+  name: string | null | undefined,
+  fallback: string,
+): string {
   const t = name?.trim();
   return t && t.length > 0 ? t : fallback;
 }
@@ -61,7 +74,9 @@ function formatDeadline(d: string | null): string {
 }
 
 function normalizeKind(raw: unknown): TicketActivityKind {
-  const s = String(raw ?? "").toLowerCase().replace(/-/g, "_");
+  const s = String(raw ?? "")
+    .toLowerCase()
+    .replace(/-/g, "_");
   const map: Record<string, TicketActivityKind> = {
     ticket_created: "ticket_created",
     created: "ticket_created",
@@ -82,7 +97,10 @@ function normalizeKind(raw: unknown): TicketActivityKind {
   return map[s] ?? "unknown";
 }
 
-function summaryFromServerRow(r: Record<string, unknown>, kind: TicketActivityKind): string {
+function summaryFromServerRow(
+  r: Record<string, unknown>,
+  kind: TicketActivityKind,
+): string {
   const explicit = r.summary ?? r.message ?? r.description ?? r.text;
   if (typeof explicit === "string" && explicit.trim()) return explicit.trim();
   const from = r.from ?? r.previousValue ?? r.old;
@@ -99,7 +117,12 @@ function summaryFromServerRow(r: Record<string, unknown>, kind: TicketActivityKi
   return "Ticket updated";
 }
 
-function idFromRow(r: Record<string, unknown>, at: string, kind: TicketActivityKind, index: number): string {
+function idFromRow(
+  r: Record<string, unknown>,
+  at: string,
+  kind: TicketActivityKind,
+  index: number,
+): string {
   if (typeof r.id === "string" && r.id) return r.id;
   if (typeof r._id === "string" && r._id) return r._id;
   if (r._id != null) return String(r._id);
@@ -129,7 +152,7 @@ function parseActivityRows(raw: unknown[]): TicketActivityItem[] {
           : typeof r.userName === "string"
             ? r.userName
             : null,
-      "Someone"
+      "Someone",
     );
     const id = idFromRow(r, at, kind, index);
     index += 1;
@@ -138,7 +161,14 @@ function parseActivityRows(raw: unknown[]): TicketActivityItem[] {
     for (const k of ["from", "to", "meta", "payload"]) {
       if (r[k] !== undefined) meta[k] = r[k] as unknown;
     }
-    out.push({ id, at, kind, actorName, summary, meta: Object.keys(meta).length ? meta : undefined });
+    out.push({
+      id,
+      at,
+      kind,
+      actorName,
+      summary,
+      meta: Object.keys(meta).length ? meta : undefined,
+    });
   }
   return out;
 }
@@ -152,9 +182,13 @@ export function parseTicketActivities(json: unknown): TicketActivityItem[] {
   return parseActivityRows(raw);
 }
 
-export async function fetchTicketActivityList(ticketId: string): Promise<TicketActivityItem[] | null> {
+export async function fetchTicketActivityList(
+  ticketId: string,
+): Promise<TicketActivityItem[] | null> {
   try {
-    const res = await apiFetch(`/api/tickets/${encodeURIComponent(ticketId)}/activity`);
+    const res = await apiFetch(
+      `/api/tickets/${encodeURIComponent(ticketId)}/activity`,
+    );
     if (!res.ok) return null;
     const json: unknown = await res.json();
     return sortActivitiesAscending(parseTicketActivities(json));
@@ -171,7 +205,9 @@ export type RemoteActivityAppend = {
   meta?: Record<string, unknown>;
 };
 
-export function ticketActivityItemsToRemotePayload(items: TicketActivityItem[]): RemoteActivityAppend[] {
+export function ticketActivityItemsToRemotePayload(
+  items: TicketActivityItem[],
+): RemoteActivityAppend[] {
   return items.map((e) => ({
     kind: e.kind,
     summary: e.summary,
@@ -183,31 +219,36 @@ export function ticketActivityItemsToRemotePayload(items: TicketActivityItem[]):
 
 export async function appendTicketActivitiesRemote(
   ticketId: string,
-  items: RemoteActivityAppend[]
+  items: RemoteActivityAppend[],
 ): Promise<boolean> {
   if (items.length === 0) return true;
   try {
-    const res = await apiFetch(`/api/tickets/${encodeURIComponent(ticketId)}/activity`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        activities: items.map((i) => ({
-          type: i.kind,
-          kind: i.kind,
-          summary: i.summary,
-          actorName: i.actorName,
-          createdAt: i.createdAt,
-          meta: i.meta,
-        })),
-      }),
-    });
+    const res = await apiFetch(
+      `/api/tickets/${encodeURIComponent(ticketId)}/activity`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          activities: items.map((i) => ({
+            type: i.kind,
+            kind: i.kind,
+            summary: i.summary,
+            actorName: i.actorName,
+            createdAt: i.createdAt,
+            meta: i.meta,
+          })),
+        }),
+      },
+    );
     return res.ok;
   } catch {
     return false;
   }
 }
 
-export function buildCreatedActivity(ticket: TicketSnapshot): TicketActivityItem {
+export function buildCreatedActivity(
+  ticket: TicketSnapshot,
+): TicketActivityItem {
   const title =
     ticket.title.length > 72 ? `${ticket.title.slice(0, 72)}…` : ticket.title;
   return {
@@ -222,10 +263,13 @@ export function buildCreatedActivity(ticket: TicketSnapshot): TicketActivityItem
 export function buildActivitiesFromTicketDiff(
   prev: TicketSnapshot,
   next: TicketSnapshot,
-  actorName: string
+  actorName: string,
 ): TicketActivityItem[] {
   const actor = displayName(actorName, "Someone");
-  const mk = (kind: TicketActivityKind, summary: string): TicketActivityItem => ({
+  const mk = (
+    kind: TicketActivityKind,
+    summary: string,
+  ): TicketActivityItem => ({
     id: `local-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
     at: new Date().toISOString(),
     kind,
@@ -238,34 +282,40 @@ export function buildActivitiesFromTicketDiff(
     out.push(
       mk(
         "status_changed",
-        `Changed status to ${STATUS_LABEL[next.status]} (was ${STATUS_LABEL[prev.status]})`
-      )
+        `Changed status to ${STATUS_LABEL[next.status]} (was ${STATUS_LABEL[prev.status]})`,
+      ),
     );
   }
   if (prev.priority !== next.priority) {
     out.push(
       mk(
         "priority_changed",
-        `Changed priority to ${PRIORITY_LABEL[next.priority]} (was ${PRIORITY_LABEL[prev.priority]})`
-      )
+        `Changed priority to ${priorityLabel(next.priority)} (was ${priorityLabel(prev.priority)})`,
+      ),
     );
   }
-  const prevAssignee = displayName(prev.assignedToName, prev.assignedTo ? "Unknown" : "Unassigned");
-  const nextAssignee = displayName(next.assignedToName, next.assignedTo ? "Unknown" : "Unassigned");
-  if (prev.assignedTo !== next.assignedTo || prev.assignedToName !== next.assignedToName) {
+  const prevAssignee = displayName(
+    prev.assignedToName,
+    prev.assignedTo ? "Unknown" : "Unassigned",
+  );
+  const nextAssignee = displayName(
+    next.assignedToName,
+    next.assignedTo ? "Unknown" : "Unassigned",
+  );
+  if (
+    prev.assignedTo !== next.assignedTo ||
+    prev.assignedToName !== next.assignedToName
+  ) {
     out.push(
-      mk(
-        "assignee_changed",
-        `Assignment: ${prevAssignee} → ${nextAssignee}`
-      )
+      mk("assignee_changed", `Assignment: ${prevAssignee} → ${nextAssignee}`),
     );
   }
   if (prev.progress !== next.progress) {
     out.push(
       mk(
         "progress_changed",
-        `Progress set to ${next.progress}% (was ${prev.progress}%)`
-      )
+        `Progress set to ${next.progress}% (was ${prev.progress}%)`,
+      ),
     );
   }
   const prevDl = prev.deadline ? new Date(prev.deadline).getTime() : null;
@@ -274,16 +324,28 @@ export function buildActivitiesFromTicketDiff(
     if (!next.deadline) {
       out.push(mk("deadline_changed", "Removed deadline"));
     } else if (!prev.deadline) {
-      out.push(mk("deadline_changed", `Set deadline to ${formatDeadline(next.deadline)}`));
+      out.push(
+        mk(
+          "deadline_changed",
+          `Set deadline to ${formatDeadline(next.deadline)}`,
+        ),
+      );
     } else {
-      out.push(mk("deadline_changed", `Deadline updated to ${formatDeadline(next.deadline)}`));
+      out.push(
+        mk(
+          "deadline_changed",
+          `Deadline updated to ${formatDeadline(next.deadline)}`,
+        ),
+      );
     }
   }
 
   return out;
 }
 
-export function buildMessageSentActivity(actorName: string): TicketActivityItem {
+export function buildMessageSentActivity(
+  actorName: string,
+): TicketActivityItem {
   return {
     id: `local-msg-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
     at: new Date().toISOString(),
@@ -293,14 +355,19 @@ export function buildMessageSentActivity(actorName: string): TicketActivityItem 
   };
 }
 
-export function sortActivitiesAscending(items: TicketActivityItem[]): TicketActivityItem[] {
-  return [...items].sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
+export function sortActivitiesAscending(
+  items: TicketActivityItem[],
+): TicketActivityItem[] {
+  return [...items].sort(
+    (a, b) => new Date(a.at).getTime() - new Date(b.at).getTime(),
+  );
 }
 
 export function mergeActivitiesPreferServer(
   remote: TicketActivityItem[] | null,
-  seedWhenEmptyOrFailed: TicketActivityItem[]
+  seedWhenEmptyOrFailed: TicketActivityItem[],
 ): TicketActivityItem[] {
-  if (remote !== null && remote.length > 0) return sortActivitiesAscending(remote);
+  if (remote !== null && remote.length > 0)
+    return sortActivitiesAscending(remote);
   return sortActivitiesAscending(seedWhenEmptyOrFailed);
 }

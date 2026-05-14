@@ -47,7 +47,7 @@ export const NAV_ITEMS: NavItem[] = [
 
 export function navItemsForRole(role: UserRole): NavItem[] {
   return NAV_ITEMS.filter(
-    (item) => !item.roles || (item.roles as readonly string[]).includes(role)
+    (item) => !item.roles || (item.roles as readonly string[]).includes(role),
   );
 }
 

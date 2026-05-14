@@ -564,7 +564,7 @@ export function AdminDashboardInsights() {
               key={opt.id}
               type="button"
               variant={period === opt.id ? "primary" : "ghost"}
-              className="!rounded-lg !px-3 !py-2 !text-xs font-medium"
+              size="sm"
               onClick={() => setPeriod(opt.id)}
             >
               {opt.label}
@@ -596,24 +596,24 @@ export function AdminDashboardInsights() {
           spark={ticketSpark}
           stroke="#6366f1"
         />
-        <Card className="min-h-0 overflow-hidden border-0 bg-gradient-to-br from-primary-600 to-indigo-700 text-white shadow-lg">
+        <Card className="min-h-0 overflow-hidden border-0 bg-gradient-to-br from-primary-500 to-primary-700 text-white shadow-lg">
           <CardBody className="p-5">
             <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0 flex-1">
-                <p className="text-xs font-semibold uppercase tracking-wide text-indigo-100">Top closer</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-primary-100">Top closer</p>
                 {spotlightCloser.name ? (
                   <p className="mt-2 truncate text-lg font-semibold leading-tight sm:text-xl">
                     {spotlightCloser.name}
                   </p>
                 ) : (
-                  <p className="mt-2 text-sm text-indigo-200/90">No assignee data</p>
+                  <p className="mt-2 text-sm text-primary-200/90">No assignee data</p>
                 )}
               </div>
               <div className="shrink-0 border-t border-white/20 pt-4 text-left sm:border-l sm:border-t-0 sm:pl-6 sm:pt-0 sm:text-right">
                 <p className="text-3xl font-bold tabular-nums leading-none sm:text-4xl">
                   {spotlightCloser.tickets}
                 </p>
-                <p className="mt-1.5 text-[10px] font-medium uppercase tracking-wide text-indigo-100">
+                <p className="mt-1.5 text-[10px] font-medium uppercase tracking-wide text-primary-100">
                   Items closed
                 </p>
               </div>

@@ -1,4 +1,4 @@
-// File: /Users/muneeb/Desktop/untitled folder/FrontEnd/app/dashboard/tickets/(compact)/page.tsx
+// File: C:\Users\work9\OneDrive\Desktop\TicketingApp\Support_Front\app\dashboard\tickets\(compact)\page.tsx
 import * as entry from '../../../../../../app/dashboard/tickets/(compact)/page.js'
 import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
 

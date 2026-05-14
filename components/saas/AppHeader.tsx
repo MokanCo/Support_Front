@@ -29,11 +29,8 @@ export function AppHeader({
   const pathname = usePathname();
   const router = useRouter();
   const title = titleForPath(pathname);
-  const {
-    items,
-    headerUnreadCount,
-    clearTicketNotification,
-  } = useMessageInbox();
+  const { items, headerUnreadCount, clearTicketNotification } =
+    useMessageInbox();
 
   const initials =
     (name ?? email)
@@ -71,12 +68,12 @@ export function AppHeader({
     setBellOpen(false);
     if (role === "admin") {
       router.push(
-        `/dashboard/conversations?ticket=${encodeURIComponent(item.ticketId)}`
+        `/dashboard/conversations?ticket=${encodeURIComponent(item.ticketId)}`,
       );
       return;
     }
     router.push(
-      `/dashboard/tickets/view?id=${encodeURIComponent(item.ticketId)}&chat=1`
+      `/dashboard/tickets/view?id=${encodeURIComponent(item.ticketId)}&chat=1`,
     );
   }
 
@@ -93,11 +90,10 @@ export function AppHeader({
         </button>
         <div className="min-w-0">
           <p className="truncate text-lg font-semibold tracking-tight text-slate-900">
-            {title}
+            Workspace
           </p>
           <p className="hidden truncate text-xs text-slate-500 sm:block">
-            {locationName ? `${locationName} · ` : null}
-            Workspace
+            {locationName ? `${locationName}` : null}
           </p>
         </div>
       </div>
@@ -132,7 +128,9 @@ export function AppHeader({
                 Messages
               </p>
               {dropdownItems.length === 0 ? (
-                <p className="px-3 py-4 text-sm text-slate-500">No recent notifications.</p>
+                <p className="px-3 py-4 text-sm text-slate-500">
+                  No recent notifications.
+                </p>
               ) : (
                 <ul className="flex flex-col gap-3 px-3 pb-2">
                   {dropdownItems.map((item) => (
@@ -149,7 +147,9 @@ export function AppHeader({
                       >
                         <p className="font-medium text-slate-900">
                           {item.ticketCode ? (
-                            <span className="text-primary-700">{item.ticketCode}</span>
+                            <span className="text-primary-700">
+                              {item.ticketCode}
+                            </span>
                           ) : null}
                           {item.ticketCode ? " · " : null}
                           {item.title}
@@ -180,8 +180,12 @@ export function AppHeader({
               {initials}
             </div>
             <div className="hidden min-w-0 text-left sm:block">
-              <p className="truncate text-sm font-medium text-slate-900">{name ?? email}</p>
-              <p className="truncate text-xs capitalize text-slate-500">{role}</p>
+              <p className="truncate text-sm font-medium text-slate-900">
+                {name ?? email}
+              </p>
+              <p className="truncate text-xs capitalize text-slate-500">
+                {role}
+              </p>
             </div>
             <ChevronDown
               className={`mr-1 hidden h-4 w-4 shrink-0 text-slate-400 transition sm:block ${
@@ -196,8 +200,12 @@ export function AppHeader({
               role="menu"
             >
               <div className="border-b border-slate-100 px-3 py-2 sm:hidden">
-                <p className="truncate text-sm font-medium text-slate-900">{name ?? email}</p>
-                <p className="truncate text-xs capitalize text-slate-500">{role}</p>
+                <p className="truncate text-sm font-medium text-slate-900">
+                  {name ?? email}
+                </p>
+                <p className="truncate text-xs capitalize text-slate-500">
+                  {role}
+                </p>
               </div>
               <button
                 type="button"

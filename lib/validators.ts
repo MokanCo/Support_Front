@@ -15,14 +15,14 @@ const optionalEmail = z
 export const locationCreateSchema = z.object({
   name: z.string().min(1).max(200).trim(),
   email: optionalEmail,
-  phone: z.string().max(50).trim().optional(),
+  phone: z.union([z.string().regex(/^\(\d{3}\) \d{3}-\d{4}$/), z.literal("")]).optional().transform((v) => (v === "" ? undefined : v)),
   address: z.string().max(500).trim().optional(),
 });
 
 export const locationPatchSchema = z.object({
   name: z.string().min(1).max(200).trim().optional(),
   email: optionalEmail,
-  phone: z.string().max(50).trim().optional(),
+  phone: z.union([z.string().regex(/^\(\d{3}\) \d{3}-\d{4}$/), z.literal("")]).optional().transform((v) => (v === "" ? undefined : v)),
   address: z.string().max(500).trim().optional(),
 });
 

@@ -7,6 +7,7 @@ import { Card, CardBody } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/modal";
+import { ConfirmModal } from "@/components/ui/confirm-modal";
 import {
   DataTable,
   DataTableBulkBar,
@@ -15,6 +16,9 @@ import {
 import type { DataColumn } from "@/components/ui/data-table";
 import type { UserRole } from "@/lib/user-roles";
 import { apiFetch } from "@/lib/auth-fetch";
+import { formatUSPhone } from "@/lib/format";
+import { AddressAutocomplete } from "@/components/ui/address-autocomplete";
+import type { AddressSuggestion } from "@/components/ui/address-autocomplete";
 
 type Loc = {
   id: string;
@@ -22,6 +26,9 @@ type Loc = {
   email: string;
   phone: string;
   address: string;
+  city: string;
+  state: string;
+  zip: string;
   createdAt: string;
 };
 
@@ -47,11 +54,15 @@ export function LocationsPageClient({ role }: { role: UserRole }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
+  const [city, setCity] = useState("");
+  const [state, setState] = useState("");
+  const [zip, setZip] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -122,7 +133,7 @@ export function LocationsPageClient({ role }: { role: UserRole }) {
 
   async function bulkDelete() {
     if (!isAdmin || selected.size === 0) return;
-    if (!window.confirm(`Delete ${selected.size} location(s)?`)) return;
+    setConfirmOpen(false);
     try {
       const res = await apiFetch("/api/locations/bulk", {
         method: "POST",
@@ -146,7 +157,7 @@ export function LocationsPageClient({ role }: { role: UserRole }) {
       const res = await apiFetch("/api/locations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email: email || undefined, phone, address }),
+        body: JSON.stringify({ name, email: email || undefined, phone, address, city, state, zip }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed");
@@ -155,6 +166,9 @@ export function LocationsPageClient({ role }: { role: UserRole }) {
       setEmail("");
       setPhone("");
       setAddress("");
+      setCity("");
+      setState("");
+      setZip("");
       void load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed");
@@ -244,8 +258,37 @@ export function LocationsPageClient({ role }: { role: UserRole }) {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
           />
-          <Input label="Phone" value={phone} onChange={(e) => setPhone(e.target.value)} />
-          <Input label="Address" value={address} onChange={(e) => setAddress(e.target.value)} />
+          <Input
+            label="Phone"
+            type="tel"
+            placeholder="(555) 000-0000"
+            maxLength={14}
+            value={phone}
+            onChange={(e) => setPhone(formatUSPhone(e.target.value))}
+          />
+          <AddressAutocomplete
+            label="Address"
+            value={address}
+            required
+            onChange={(v) => setAddress(v)}
+            onSelect={(s: AddressSuggestion) => {
+              setAddress(s.street || s.displayName.split(",")[0]);
+              setCity(s.city);
+              setState(s.state);
+              setZip(s.zip);
+            }}
+          />
+          <div className="grid grid-cols-3 gap-3">
+            <div className="col-span-1">
+              <Input label="City" value={city} onChange={(e) => setCity(e.target.value)} />
+            </div>
+            <div className="col-span-1">
+              <Input label="State" value={state} onChange={(e) => setState(e.target.value)} />
+            </div>
+            <div className="col-span-1">
+              <Input label="Zip" value={zip} onChange={(e) => setZip(e.target.value)} />
+            </div>
+          </div>
           {error ? <p className="text-sm text-red-600">{error}</p> : null}
           <div className="flex justify-end gap-2">
             <Button type="button" variant="ghost" onClick={() => setModalOpen(false)}>
@@ -283,7 +326,7 @@ export function LocationsPageClient({ role }: { role: UserRole }) {
               <Button
                 type="button"
                 variant="secondary"
-                className="!py-2"
+                size="sm"
                 onClick={() => setOrder((o) => (o === "asc" ? "desc" : "asc"))}
               >
                 {order === "asc" ? "Asc" : "Desc"}
@@ -296,12 +339,21 @@ export function LocationsPageClient({ role }: { role: UserRole }) {
               <Button
                 type="button"
                 variant="danger"
-                className="inline-flex items-center gap-2 !py-2 !text-xs"
-                onClick={() => void bulkDelete()}
+                size="sm"
+                className="gap-2"
+                onClick={() => setConfirmOpen(true)}
               >
                 <Trash2 className="h-4 w-4" />
                 Delete selected
               </Button>
+              <ConfirmModal
+                open={confirmOpen}
+                title="Delete locations"
+                message={`Are you sure you want to delete ${selected.size} location(s)? This cannot be undone.`}
+                confirmLabel="Delete"
+                onConfirm={() => void bulkDelete()}
+                onClose={() => setConfirmOpen(false)}
+              />
             </DataTableBulkBar>
           ) : null}
 
@@ -334,8 +386,9 @@ export function LocationsPageClient({ role }: { role: UserRole }) {
               <Button
                 type="button"
                 variant="secondary"
+                size="sm"
                 disabled={page <= 1}
-                className="inline-flex items-center gap-1 !py-2 !text-xs"
+                className="gap-1"
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
               >
                 <ChevronLeft className="h-4 w-4" />
@@ -347,8 +400,9 @@ export function LocationsPageClient({ role }: { role: UserRole }) {
               <Button
                 type="button"
                 variant="secondary"
+                size="sm"
                 disabled={page >= totalPages}
-                className="inline-flex items-center gap-1 !py-2 !text-xs"
+                className="gap-1"
                 onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               >
                 Next

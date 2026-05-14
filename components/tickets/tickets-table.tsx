@@ -14,6 +14,7 @@ import { Card, CardBody } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Select } from "@/components/ui/Select";
 import { Modal } from "@/components/ui/modal";
+import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { Input } from "@/components/ui/Input";
 import {
   DataTable,
@@ -71,10 +72,13 @@ export function TicketsTable({ role }: { role: UserRole }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [bulkStatus, setBulkStatus] = useState<TicketStatus | "">("");
   const [bulkPriority, setBulkPriority] = useState<TicketPriority | "">("");
-  const [progressTicket, setProgressTicket] = useState<SerializedTicket | null>(null);
+  const [progressTicket, setProgressTicket] = useState<SerializedTicket | null>(
+    null,
+  );
   const [progressInput, setProgressInput] = useState("0");
 
   const showLocFilter = role === "admin";
@@ -83,7 +87,7 @@ export function TicketsTable({ role }: { role: UserRole }) {
   const sortOptions = useMemo(() => {
     if (role === "partner") {
       return SORT_OPTIONS.filter(
-        (o) => o.value !== "deadline" && o.value !== "priority"
+        (o) => o.value !== "deadline" && o.value !== "priority",
       );
     }
     return [...SORT_OPTIONS];
@@ -99,12 +103,14 @@ export function TicketsTable({ role }: { role: UserRole }) {
     if (role === "support") {
       return {
         title: "Your assigned tickets",
-        subtitle: "Only tickets assigned to you appear here. Use filters to narrow your queue.",
+        subtitle:
+          "Only tickets assigned to you appear here. Use filters to narrow your queue.",
       };
     }
     return {
       title: "Ticket history",
-      subtitle: "All tickets for your location—open, in progress, and completed.",
+      subtitle:
+        "All tickets for your location—open, in progress, and completed.",
     };
   }, [role]);
 
@@ -118,7 +124,12 @@ export function TicketsTable({ role }: { role: UserRole }) {
     let cancelled = false;
     void (async () => {
       try {
-        const params = new URLSearchParams({ page: "1", pageSize: "200", sort: "name", order: "asc" });
+        const params = new URLSearchParams({
+          page: "1",
+          pageSize: "200",
+          sort: "name",
+          order: "asc",
+        });
         const res = await apiFetch(`/api/locations?${params}`);
         const data = await res.json();
         if (!cancelled && res.ok) setLocs(data.locations ?? []);
@@ -157,7 +168,18 @@ export function TicketsTable({ role }: { role: UserRole }) {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, sort, order, status, priority, search, locationId, showLocFilter, overdue]);
+  }, [
+    page,
+    pageSize,
+    sort,
+    order,
+    status,
+    priority,
+    search,
+    locationId,
+    showLocFilter,
+    overdue,
+  ]);
 
   useEffect(() => {
     void load();
@@ -205,25 +227,19 @@ export function TicketsTable({ role }: { role: UserRole }) {
     }
   }
 
-  async function bulkPost(
-    body: Record<string, unknown>
-  ) {
-    const res = await apiFetch("/api/tickets/bulk", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error ?? "Bulk action failed");
-    setSelected(new Set());
-    void load();
-  }
-
   async function bulkDelete() {
     if (!canBulk || selected.size === 0) return;
-    if (!window.confirm(`Delete ${selected.size} ticket(s)?`)) return;
+    setConfirmOpen(false);
     try {
-      await bulkPost({ action: "delete", ids: [...selected] });
+      const res = await apiFetch("/api/tickets/bulk-delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: [...selected] }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Bulk delete failed");
+      setSelected(new Set());
+      void load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed");
     }
@@ -232,12 +248,19 @@ export function TicketsTable({ role }: { role: UserRole }) {
   async function bulkApplyStatus() {
     if (!bulkStatus || selected.size === 0) return;
     try {
-      await bulkPost({
-        action: "status",
-        ids: [...selected],
-        status: bulkStatus,
+      const res = await apiFetch("/api/tickets/bulk-update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ids: [...selected],
+          updates: { status: bulkStatus },
+        }),
       });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Bulk update failed");
       setBulkStatus("");
+      setSelected(new Set());
+      void load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed");
     }
@@ -246,12 +269,19 @@ export function TicketsTable({ role }: { role: UserRole }) {
   async function bulkApplyPriority() {
     if (!bulkPriority || selected.size === 0) return;
     try {
-      await bulkPost({
-        action: "priority",
-        ids: [...selected],
-        priority: bulkPriority,
+      const res = await apiFetch("/api/tickets/bulk-update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ids: [...selected],
+          updates: { priority: bulkPriority },
+        }),
       });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Bulk update failed");
       setBulkPriority("");
+      setSelected(new Set());
+      void load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed");
     }
@@ -281,7 +311,9 @@ export function TicketsTable({ role }: { role: UserRole }) {
         id: "code",
         header: "Ticket ID",
         cell: (t) => (
-          <span className="font-mono text-xs text-slate-600">{t.ticketCode ?? "—"}</span>
+          <span className="font-mono text-xs text-slate-600">
+            {t.ticketCode ?? "—"}
+          </span>
         ),
       },
       {
@@ -303,30 +335,6 @@ export function TicketsTable({ role }: { role: UserRole }) {
         id: "loc",
         header: "Location",
         cell: (t) => t.locationName ?? "—",
-      },
-      {
-        id: "st",
-        header: "Status",
-        cell: (t) => <StatusBadge status={t.status} />,
-      },
-      {
-        id: "pr",
-        header: "Priority",
-        cell: (t) => <PriorityBadge priority={t.priority} />,
-      },
-      {
-        id: "prog",
-        header: "Progress",
-        cell: (t) => (
-          <ProgressCircle
-            value={t.progress}
-            disabled={t.progress >= 100}
-            onClick={() => {
-              setProgressTicket(t);
-              setProgressInput(String(t.progress));
-            }}
-          />
-        ),
       },
       {
         id: "dl",
@@ -356,11 +364,34 @@ export function TicketsTable({ role }: { role: UserRole }) {
         header: "Assigned",
         cell: (t) => t.assignedToName ?? "—",
       },
+      {
+        id: "st",
+        header: "",
+        cell: (t) => <StatusBadge status={t.status} />,
+      },
+      {
+        id: "pr",
+        header: "",
+        cell: (t) => <PriorityBadge priority={t.priority} />,
+      },
+      {
+        id: "prog",
+        header: "",
+        cell: (t) => (
+          <ProgressCircle
+            value={t.progress}
+            disabled={role === "partner" || t.progress >= 100}
+            onClick={() => {
+              if (role === "partner") return;
+              setProgressTicket(t);
+              setProgressInput(String(t.progress));
+            }}
+          />
+        ),
+      },
     ];
     if (role === "partner") {
-      return all.filter(
-        (c) => !["loc", "pr", "dl"].includes(c.id)
-      );
+      return all.filter((c) => !["loc", "pr"].includes(c.id));
     }
     return all;
   }, [role]);
@@ -369,7 +400,9 @@ export function TicketsTable({ role }: { role: UserRole }) {
     <div className="flex min-h-0 flex-1 flex-col gap-3">
       <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">{pageIntro.title}</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
+            {pageIntro.title}
+          </h1>
           <p className="mt-1 text-sm text-slate-500">{pageIntro.subtitle}</p>
         </div>
         {role === "partner" ? (
@@ -414,7 +447,11 @@ export function TicketsTable({ role }: { role: UserRole }) {
             onChange={(e) => setProgressInput(e.target.value)}
           />
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="ghost" onClick={() => setProgressTicket(null)}>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setProgressTicket(null)}
+            >
               Cancel
             </Button>
             <Button type="button" onClick={() => void saveProgress()}>
@@ -451,7 +488,11 @@ export function TicketsTable({ role }: { role: UserRole }) {
                   ))}
                 </Select>
               ) : null}
-              <Select value={status} onChange={(e) => setStatus(e.target.value)} className="!min-w-[140px]">
+              <Select
+                value={status}
+                onChange={(e) => setStatus(e.target.value)}
+                className="!min-w-[140px]"
+              >
                 <option value="">All statuses</option>
                 <option value="in_queue">In queue</option>
                 <option value="in_progress">In progress</option>
@@ -465,10 +506,11 @@ export function TicketsTable({ role }: { role: UserRole }) {
                   className="!min-w-[140px]"
                 >
                   <option value="">All priorities</option>
-                  <option value="low">Low</option>
-                  <option value="medium">Medium</option>
-                  <option value="high">High</option>
-                  <option value="urgent">Urgent</option>
+                  <option value="p0">P0</option>
+                  <option value="p1">P1</option>
+                  <option value="p2">P2</option>
+                  <option value="p3">P3</option>
+                  <option value="p4">P4</option>
                 </Select>
               ) : null}
               {role !== "partner" ? (
@@ -481,7 +523,11 @@ export function TicketsTable({ role }: { role: UserRole }) {
                   Overdue
                 </label>
               ) : null}
-              <Select value={sort} onChange={(e) => setSort(e.target.value)} className="!min-w-[140px]">
+              <Select
+                value={sort}
+                onChange={(e) => setSort(e.target.value)}
+                className="!min-w-[140px]"
+              >
                 {sortOptions.map((o) => (
                   <option key={o.value} value={o.value}>
                     Sort: {o.label}
@@ -491,7 +537,7 @@ export function TicketsTable({ role }: { role: UserRole }) {
               <Button
                 type="button"
                 variant="secondary"
-                className="inline-flex items-center gap-2 !py-2.5"
+                className="gap-2"
                 onClick={() => toggleSort(sort)}
               >
                 <ArrowDownUp className="h-4 w-4" />
@@ -501,19 +547,33 @@ export function TicketsTable({ role }: { role: UserRole }) {
           </DataTableToolbar>
 
           {selected.size > 0 && canBulk ? (
-            <DataTableBulkBar count={selected.size} onClear={() => setSelected(new Set())}>
+            <DataTableBulkBar
+              count={selected.size}
+              onClear={() => setSelected(new Set())}
+            >
               <Button
                 type="button"
                 variant="danger"
-                className="inline-flex items-center gap-1 !py-2 !text-xs"
-                onClick={() => void bulkDelete()}
+                size="sm"
+                className="gap-1"
+                onClick={() => setConfirmOpen(true)}
               >
                 <Trash2 className="h-4 w-4" />
                 Delete
               </Button>
+              <ConfirmModal
+                open={confirmOpen}
+                title="Delete tickets"
+                message={`Are you sure you want to delete ${selected.size} ticket(s)? This cannot be undone.`}
+                confirmLabel="Delete"
+                onConfirm={() => void bulkDelete()}
+                onClose={() => setConfirmOpen(false)}
+              />
               <Select
                 value={bulkStatus}
-                onChange={(e) => setBulkStatus(e.target.value as TicketStatus | "")}
+                onChange={(e) =>
+                  setBulkStatus(e.target.value as TicketStatus | "")
+                }
                 className="!min-w-[140px]"
               >
                 <option value="">Set status…</option>
@@ -525,7 +585,7 @@ export function TicketsTable({ role }: { role: UserRole }) {
               <Button
                 type="button"
                 variant="secondary"
-                className="!py-2 !text-xs"
+                size="sm"
                 disabled={!bulkStatus}
                 onClick={() => void bulkApplyStatus()}
               >
@@ -533,19 +593,22 @@ export function TicketsTable({ role }: { role: UserRole }) {
               </Button>
               <Select
                 value={bulkPriority}
-                onChange={(e) => setBulkPriority(e.target.value as TicketPriority | "")}
+                onChange={(e) =>
+                  setBulkPriority(e.target.value as TicketPriority | "")
+                }
                 className="!min-w-[140px]"
               >
                 <option value="">Set priority…</option>
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
-                <option value="urgent">Urgent</option>
+                <option value="p0">P0</option>
+                <option value="p1">P1</option>
+                <option value="p2">P2</option>
+                <option value="p3">P3</option>
+                <option value="p4">P4</option>
               </Select>
               <Button
                 type="button"
                 variant="secondary"
-                className="!py-2 !text-xs"
+                size="sm"
                 disabled={!bulkPriority}
                 onClick={() => void bulkApplyPriority()}
               >
@@ -574,7 +637,8 @@ export function TicketsTable({ role }: { role: UserRole }) {
             <p className="text-xs text-slate-500">
               Showing{" "}
               <span className="font-medium text-slate-700">
-                {total === 0 ? 0 : (page - 1) * pageSize + 1}–{Math.min(page * pageSize, total)}
+                {total === 0 ? 0 : (page - 1) * pageSize + 1}–
+                {Math.min(page * pageSize, total)}
               </span>{" "}
               of <span className="font-medium text-slate-700">{total}</span>
             </p>
@@ -582,8 +646,9 @@ export function TicketsTable({ role }: { role: UserRole }) {
               <Button
                 type="button"
                 variant="secondary"
+                size="sm"
                 disabled={page <= 1}
-                className="inline-flex items-center gap-1 !py-2 !text-xs"
+                className="gap-1"
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
               >
                 <ChevronLeft className="h-4 w-4" />
@@ -595,8 +660,9 @@ export function TicketsTable({ role }: { role: UserRole }) {
               <Button
                 type="button"
                 variant="secondary"
+                size="sm"
                 disabled={page >= totalPages}
-                className="inline-flex items-center gap-1 !py-2 !text-xs"
+                className="gap-1"
                 onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               >
                 Next

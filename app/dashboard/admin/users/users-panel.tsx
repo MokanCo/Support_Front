@@ -5,6 +5,7 @@ import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Button } from "@/components/ui/Button";
+import { Modal } from "@/components/ui/modal";
 import type { UserRole } from "@/lib/user-roles";
 import { apiFetch } from "@/lib/auth-fetch";
 import { parseUsersListJson, unwrapUserResponse } from "@/lib/users-api";
@@ -94,7 +95,12 @@ export function UsersPanel() {
         }),
       });
       const data: unknown = await res.json();
-      if (!res.ok) throw new Error((data as { error?: string }).error ?? "Failed to create user");
+      if (!res.ok) {
+        const msg = (data as { error?: string }).error ?? "Failed to create user";
+        throw new Error(
+          res.status === 409 ? "This email already exists with another user." : msg,
+        );
+      }
       const created = unwrapUserResponse(data);
       if (!created?.id) throw new Error("Invalid create response");
       const locId = created.locationId != null ? String(created.locationId) : "";
@@ -227,27 +233,27 @@ export function UsersPanel() {
           ) : (
             <div className="overflow-x-auto">
               <table className="min-w-full text-left text-sm">
-                <thead className="border-b border-slate-100 bg-slate-50/80 text-xs font-medium uppercase tracking-wide text-slate-500">
+                <thead className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50/95 text-xs font-semibold uppercase tracking-wide text-slate-500 backdrop-blur supports-[backdrop-filter]:bg-slate-50/80">
                   <tr>
-                    <th className="px-6 py-3">Name</th>
-                    <th className="px-6 py-3">Email</th>
-                    <th className="px-6 py-3">Role</th>
-                    <th className="px-6 py-3">Location</th>
-                    <th className="px-6 py-3" />
+                    <th className="px-4 py-3">Name</th>
+                    <th className="px-4 py-3">Email</th>
+                    <th className="px-4 py-3">Role</th>
+                    <th className="px-4 py-3">Location</th>
+                    <th className="px-4 py-3" />
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {users.map((u) => (
-                    <tr key={u.id} className="text-slate-700">
-                      <td className="px-6 py-4 font-medium text-slate-900">{u.name}</td>
-                      <td className="px-6 py-4">{u.email}</td>
-                      <td className="px-6 py-4 capitalize">{u.role}</td>
-                      <td className="px-6 py-4">{u.locationName ?? "—"}</td>
-                      <td className="px-6 py-4 text-right">
+                    <tr key={u.id} className="transition-colors hover:bg-slate-50/90">
+                      <td className="px-4 py-3 font-medium text-slate-900">{u.name}</td>
+                      <td className="px-4 py-3 text-slate-700">{u.email}</td>
+                      <td className="px-4 py-3 capitalize text-slate-700">{u.role}</td>
+                      <td className="px-4 py-3 text-slate-700">{u.locationName ?? "—"}</td>
+                      <td className="px-4 py-3 text-right">
                         <Button
                           type="button"
                           variant="ghost"
-                          className="!py-1.5 !text-xs"
+                          size="sm"
                           onClick={() => openEdit(u)}
                         >
                           Edit
@@ -262,45 +268,44 @@ export function UsersPanel() {
         </CardBody>
       </Card>
 
-      {editUser ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
-          <Card className="w-full max-w-md shadow-xl">
-            <CardHeader title="Edit user" description={editUser.email} />
-            <CardBody>
-              <form onSubmit={saveEdit} className="space-y-4">
-                <Select
-                  label="Role"
-                  value={editRole}
-                  onChange={(e) => setEditRole(e.target.value as UserRole)}
-                >
-                  <option value="admin">admin</option>
-                  <option value="support">support</option>
-                  <option value="partner">partner</option>
-                </Select>
-                <Select
-                  label="Location"
-                  value={editLoc}
-                  onChange={(e) => setEditLoc(e.target.value)}
-                >
-                  {locs.map((l) => (
-                    <option key={l.id} value={l.id}>
-                      {l.name}
-                    </option>
-                  ))}
-                </Select>
-                <div className="flex justify-end gap-2 pt-2">
-                  <Button type="button" variant="ghost" onClick={() => setEditUser(null)}>
-                    Cancel
-                  </Button>
-                  <Button type="submit" disabled={savingEdit}>
-                    {savingEdit ? "Saving…" : "Save"}
-                  </Button>
-                </div>
-              </form>
-            </CardBody>
-          </Card>
-        </div>
-      ) : null}
+      <Modal
+        open={editUser !== null}
+        title="Edit user"
+        description={editUser?.email}
+        onClose={() => setEditUser(null)}
+      >
+        <form onSubmit={saveEdit} className="space-y-4">
+          <Select
+            label="Role"
+            value={editRole}
+            onChange={(e) => setEditRole(e.target.value as UserRole)}
+          >
+            <option value="admin">admin</option>
+            <option value="support">support</option>
+            <option value="partner">partner</option>
+          </Select>
+          <Select
+            label="Location"
+            value={editLoc}
+            onChange={(e) => setEditLoc(e.target.value)}
+          >
+            {locs.map((l) => (
+              <option key={l.id} value={l.id}>
+                {l.name}
+              </option>
+            ))}
+          </Select>
+          {error ? <p className="text-sm text-red-600">{error}</p> : null}
+          <div className="flex justify-end gap-2 pt-2">
+            <Button type="button" variant="ghost" onClick={() => setEditUser(null)}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={savingEdit}>
+              {savingEdit ? "Saving…" : "Save"}
+            </Button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }
