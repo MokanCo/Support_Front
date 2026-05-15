@@ -633,17 +633,17 @@ export function BoardsPageClient() {
               ))}
             </div>
           </div>
-          <Input
-            label="Progress (%)"
-            type="number"
-            min={0}
-            max={100}
+          <Select
+            label="Progress"
             value={String(taskProgress)}
-            onChange={(e) => {
-              const n = Number(e.target.value);
-              setTaskProgress(Number.isFinite(n) ? Math.min(100, Math.max(0, Math.round(n))) : 0);
-            }}
-          />
+            onChange={(e) => setTaskProgress(Number(e.target.value))}
+          >
+            <option value="0">0%</option>
+            <option value="25">25%</option>
+            <option value="50">50%</option>
+            <option value="75">75%</option>
+            <option value="100">100%</option>
+          </Select>
           <Input
             label="Deadline"
             type="datetime-local"

@@ -19,12 +19,12 @@ export type NavItem = {
 export const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/dashboard/tickets", label: "Tickets", icon: Ticket },
-  {
-    href: "/dashboard/boards",
-    label: "Boards",
-    icon: Kanban,
-    roles: ["admin", "support"],
-  },
+  // {
+  //   href: "/dashboard/boards",
+  //   label: "Boards",
+  //   icon: Kanban,
+  //   roles: ["admin", "support"],
+  // },
   {
     href: "/dashboard/locations",
     label: "Locations",
@@ -37,12 +37,12 @@ export const NAV_ITEMS: NavItem[] = [
     icon: MessageSquare,
     roles: ["admin", "support"],
   },
-  {
-    href: "/dashboard/reports",
-    label: "Reports",
-    icon: LineChart,
-    roles: ["admin"],
-  },
+  // {
+  //   href: "/dashboard/reports",
+  //   label: "Reports",
+  //   icon: LineChart,
+  //   roles: ["admin"],
+  // },
 ];
 
 export function navItemsForRole(role: UserRole): NavItem[] {
