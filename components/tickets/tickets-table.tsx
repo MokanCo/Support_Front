@@ -79,7 +79,7 @@ export function TicketsTable({ role }: { role: UserRole }) {
   const [progressTicket, setProgressTicket] = useState<SerializedTicket | null>(
     null,
   );
-  const [progressInput, setProgressInput] = useState("0");
+  const [progressInput, setProgressInput] = useState<number>(0);
 
   const showLocFilter = role === "admin";
   const canBulk = role === "admin" || role === "support";
@@ -289,7 +289,7 @@ export function TicketsTable({ role }: { role: UserRole }) {
 
   async function saveProgress() {
     if (!progressTicket) return;
-    const v = Math.min(100, Math.max(0, Number(progressInput)));
+    const v = progressInput;
     try {
       const res = await apiFetch(`/api/tickets/${progressTicket.id}`, {
         method: "PATCH",
@@ -384,7 +384,7 @@ export function TicketsTable({ role }: { role: UserRole }) {
             onClick={() => {
               if (role === "partner") return;
               setProgressTicket(t);
-              setProgressInput(String(t.progress));
+              setProgressInput(t.progress);
             }}
           />
         ),
@@ -397,7 +397,7 @@ export function TicketsTable({ role }: { role: UserRole }) {
   }, [role]);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3">
+    <div className="flex h-[calc(100dvh-8rem)] flex-col gap-3">
       <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
@@ -438,14 +438,17 @@ export function TicketsTable({ role }: { role: UserRole }) {
         description={progressTicket?.title}
       >
         <div className="space-y-4">
-          <Input
-            label="Progress (%)"
-            type="number"
-            min={0}
-            max={100}
-            value={progressInput}
-            onChange={(e) => setProgressInput(e.target.value)}
-          />
+          <Select
+            label="Progress"
+            value={String(progressInput)}
+            onChange={(e) => setProgressInput(Number(e.target.value))}
+          >
+            <option value="0">0%</option>
+            <option value="25">25%</option>
+            <option value="50">50%</option>
+            <option value="75">75%</option>
+            <option value="100">100%</option>
+          </Select>
           <div className="flex justify-end gap-2">
             <Button
               type="button"

@@ -81,10 +81,10 @@ export function TicketDetailClient({ ticketId }: { ticketId: string }) {
   const [priority, setPriority] = useState<TicketPriority>("p2");
   const [assignee, setAssignee] = useState<string>("");
   const [deadlineLocal, setDeadlineLocal] = useState("");
-  const [progressEdit, setProgressEdit] = useState("0");
+  const [progressEdit, setProgressEdit] = useState<number>(0);
   const [savingTicket, setSavingTicket] = useState(false);
   const [progressModal, setProgressModal] = useState(false);
-  const [progressInput, setProgressInput] = useState("0");
+  const [progressInput, setProgressInput] = useState<number>(0);
   const [activities, setActivities] = useState<TicketActivityItem[]>([]);
 
   const role = session.user.role;
@@ -152,7 +152,7 @@ export function TicketDetailClient({ ticketId }: { ticketId: string }) {
       setStatus(tJson.status);
       setPriority(tJson.priority ?? "p2");
       setAssignee(tJson.assignedTo ?? "");
-      setProgressEdit(String(tJson.progress ?? 0));
+      setProgressEdit(tJson.progress ?? 0);
       setDeadlineLocal(
         tJson.deadline
           ? new Date(tJson.deadline).toISOString().slice(0, 16)
@@ -232,7 +232,7 @@ export function TicketDetailClient({ ticketId }: { ticketId: string }) {
         status,
         priority,
         assignedTo: assignee === "" ? null : assignee,
-        progress: Math.min(100, Math.max(0, Number(progressEdit) || 0)),
+        progress: progressEdit,
         deadline: deadlineLocal ? new Date(deadlineLocal).toISOString() : null,
       };
       const res = await apiFetch(`/api/tickets/${ticketId}`, {
@@ -247,7 +247,7 @@ export function TicketDetailClient({ ticketId }: { ticketId: string }) {
       setStatus(data.status);
       setPriority(data.priority ?? "p2");
       setAssignee(data.assignedTo ?? "");
-      setProgressEdit(String(data.progress ?? 0));
+      setProgressEdit(data.progress ?? 0);
       setDeadlineLocal(
         data.deadline ? new Date(data.deadline).toISOString().slice(0, 16) : "",
       );
@@ -260,7 +260,7 @@ export function TicketDetailClient({ ticketId }: { ticketId: string }) {
   }
 
   async function saveProgressFromModal() {
-    const v = Math.min(100, Math.max(0, Number(progressInput) || 0));
+    const v = progressInput;
     if (!ticket) return;
     const prevSnap = ticket;
     setSavingTicket(true);
@@ -274,7 +274,7 @@ export function TicketDetailClient({ ticketId }: { ticketId: string }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed to update");
       setTicket(data);
-      setProgressEdit(String(data.progress ?? 0));
+      setProgressEdit(data.progress ?? 0);
       setProgressModal(false);
       void mergeActivityAfterMutation(prevSnap, data as unknown as Ticket);
     } catch (e) {
@@ -315,7 +315,7 @@ export function TicketDetailClient({ ticketId }: { ticketId: string }) {
   if (!ticket) return null;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-6">
+    <div className="flex h-[calc(100dvh-8rem)] flex-col gap-6">
       <Modal
         open={progressModal}
         onClose={() => setProgressModal(false)}
@@ -323,14 +323,17 @@ export function TicketDetailClient({ ticketId }: { ticketId: string }) {
         description={ticket.title}
       >
         <div className="space-y-4">
-          <Input
-            label="Progress (%)"
-            type="number"
-            min={0}
-            max={100}
-            value={progressInput}
-            onChange={(e) => setProgressInput(e.target.value)}
-          />
+          <Select
+            label="Progress"
+            value={String(progressInput)}
+            onChange={(e) => setProgressInput(Number(e.target.value))}
+          >
+            <option value="0">0%</option>
+            <option value="25">25%</option>
+            <option value="50">50%</option>
+            <option value="75">75%</option>
+            <option value="100">100%</option>
+          </Select>
           <div className="flex justify-end gap-2">
             <Button
               type="button"
@@ -348,18 +351,18 @@ export function TicketDetailClient({ ticketId }: { ticketId: string }) {
 
       <Link
         href="/dashboard/tickets"
-        className="inline-flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-slate-900"
+        className="inline-flex shrink-0 items-center gap-2 text-sm font-medium text-slate-600 hover:text-slate-900"
       >
         <ArrowLeft className="h-4 w-4" />
         Tickets
       </Link>
 
       <div
-        className={`grid gap-6 ${!isPartner ? "lg:grid-cols-[minmax(0,1fr)_288px] xl:grid-cols-[minmax(0,1fr)_320px]" : ""}`}
+        className={`grid min-h-0 flex-1 gap-6 lg:items-stretch ${!isPartner ? "lg:grid-cols-[minmax(0,1fr)_288px] xl:grid-cols-[minmax(0,1fr)_320px]" : ""}`}
       >
-        <div className="min-w-0 space-y-6">
-          <Card className="overflow-hidden">
-            <div className="border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white px-6 py-5">
+        <div className="flex min-h-0 min-w-0 flex-col">
+          <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            <div className="shrink-0 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white px-6 py-5">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div className="min-w-0 space-y-2">
                   <div className="flex flex-wrap items-center gap-2">
@@ -389,21 +392,18 @@ export function TicketDetailClient({ ticketId }: { ticketId: string }) {
                         isPartner
                           ? undefined
                           : () => {
-                              setProgressInput(String(ticket.progress));
+                              setProgressInput(ticket.progress);
                               setProgressModal(true);
                             }
                       }
                     />
-                    <span className="text-[10px] text-slate-400">Progress</span>
                   </div>
                 </div>
               </div>
             </div>
 
-            <CardBody className="space-y-5">
-              <div
-                className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"
-              >
+            <CardBody className="min-h-0 flex-1 space-y-5 overflow-y-auto">
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
                     Requester
@@ -454,7 +454,7 @@ export function TicketDetailClient({ ticketId }: { ticketId: string }) {
               {canManage ? (
                 <form
                   onSubmit={saveTicketMeta}
-                  className="grid gap-4 border-t border-slate-100 pt-5 sm:grid-cols-2 lg:grid-cols-3"
+                  className="grid items-end gap-4 border-t border-slate-100 pt-5 sm:grid-cols-2 lg:grid-cols-3"
                 >
                   <Select
                     label="Status"
@@ -491,14 +491,17 @@ export function TicketDetailClient({ ticketId }: { ticketId: string }) {
                       </option>
                     ))}
                   </Select>
-                  <Input
-                    label="Progress (%)"
-                    type="number"
-                    min={0}
-                    max={100}
-                    value={progressEdit}
-                    onChange={(e) => setProgressEdit(e.target.value)}
-                  />
+                  <Select
+                    label="Progress"
+                    value={String(progressEdit)}
+                    onChange={(e) => setProgressEdit(Number(e.target.value))}
+                  >
+                    <option value="0">0%</option>
+                    <option value="25">25%</option>
+                    <option value="50">50%</option>
+                    <option value="75">75%</option>
+                    <option value="100">100%</option>
+                  </Select>
                   <div className="sm:col-span-1 lg:col-span-2">
                     <Input
                       label="Deadline"
@@ -507,7 +510,7 @@ export function TicketDetailClient({ ticketId }: { ticketId: string }) {
                       onChange={(e) => setDeadlineLocal(e.target.value)}
                     />
                   </div>
-                  <div className="flex items-end justify-end sm:col-span-2 lg:col-span-3">
+                  <div className="flex items-center justify-end sm:col-span-2 lg:col-span-3">
                     {error && ticket ? (
                       <p className="mr-auto text-sm text-red-600">{error}</p>
                     ) : null}
@@ -526,30 +529,30 @@ export function TicketDetailClient({ ticketId }: { ticketId: string }) {
         </div>
 
         {!isPartner && showActivityPanel ? (
-          <aside className="min-w-0 lg:sticky lg:top-24 lg:self-start">
+          <aside className="flex min-h-0 min-w-0 flex-col">
             <TicketActivityTimeline items={activities} />
           </aside>
         ) : null}
       </div>
 
       {isPartner ? (
-      <TicketChatFab
-        ticketId={ticketId}
-        viewerUserId={session.user.id}
-        ticketHeader={{
-          status: ticket.status,
-          assignedTo: ticket.assignedTo,
-          assignedToName: ticket.assignedToName,
-        }}
-        initialAutoOpen={initialChatOpen}
-        onStripOpenChatQuery={stripOpenChatQuery}
-        composerDisabled={partnerComposerDisabled}
-        composerDisabledMessage={
-          partnerComposerDisabled
-            ? "This ticket is closed. You can read messages but cannot send new ones."
-            : undefined
-        }
-      />
+        <TicketChatFab
+          ticketId={ticketId}
+          viewerUserId={session.user.id}
+          ticketHeader={{
+            status: ticket.status,
+            assignedTo: ticket.assignedTo,
+            assignedToName: ticket.assignedToName,
+          }}
+          initialAutoOpen={initialChatOpen}
+          onStripOpenChatQuery={stripOpenChatQuery}
+          composerDisabled={partnerComposerDisabled}
+          composerDisabledMessage={
+            partnerComposerDisabled
+              ? "This ticket is closed. You can read messages but cannot send new ones."
+              : undefined
+          }
+        />
       ) : null}
     </div>
   );

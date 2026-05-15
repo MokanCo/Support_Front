@@ -186,7 +186,7 @@ export function LocationDetailClient({
     .join(", ");
 
   return (
-    <div className="space-y-6">
+    <div className="flex h-[calc(100dvh-4rem-4rem)] flex-col gap-6">
       <div className="flex items-center gap-3">
         <Link
           href="/dashboard/locations"
@@ -197,23 +197,27 @@ export function LocationDetailClient({
         </Link>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[300px_1fr]">
+      <div className="grid min-h-0 flex-1 gap-6 lg:grid-cols-[300px_1fr]">
         {/* ── Left: location info card ── */}
-        <div className="lg:sticky lg:top-24 lg:self-start">
-          <Card className="overflow-hidden">
+        <div className="flex min-h-0 flex-col">
+          <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
             {/* Header */}
-            <div className="bg-gradient-to-br from-primary-600 to-primary-700 px-6 py-8 text-white">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/20 backdrop-blur-sm">
-                <Building2 className="h-6 w-6 text-white" />
+            <div className="bg-gradient-to-br from-primary-600 to-primary-700 px-6 py-6 text-white">
+              <div className="flex items-center gap-4">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white/20 backdrop-blur-sm">
+                  <Building2 className="h-6 w-6 text-white" />
+                </div>
+                <div className="min-w-0">
+                  <h1 className="truncate text-xl font-semibold leading-snug">{location.name}</h1>
+                  <p className="mt-0.5 text-sm text-primary-100">
+                    Added {new Date(location.createdAt).toLocaleDateString()}
+                  </p>
+                </div>
               </div>
-              <h1 className="mt-4 text-xl font-semibold leading-snug">{location.name}</h1>
-              <p className="mt-1 text-sm text-primary-100">
-                Added {new Date(location.createdAt).toLocaleDateString()}
-              </p>
             </div>
 
             {/* Contact details */}
-            <CardBody className="space-y-4 py-6">
+            <CardBody className="min-h-0 flex-1 space-y-4 overflow-y-auto py-6">
               <InfoRow
                 icon={<Mail className="h-4 w-4" />}
                 label="Email"
@@ -243,8 +247,8 @@ export function LocationDetailClient({
         </div>
 
         {/* ── Right: users panel ── */}
-        <Card className="min-w-0">
-          <div className="flex items-center justify-between border-b border-slate-100 px-6 py-5">
+        <Card className="flex min-h-0 min-w-0 flex-col">
+          <div className="flex shrink-0 items-center justify-between border-b border-slate-100 px-6 py-5">
             <div>
               <h2 className="text-base font-semibold text-slate-900">Users</h2>
               <p className="mt-0.5 text-sm text-slate-500">
@@ -265,7 +269,7 @@ export function LocationDetailClient({
             ) : null}
           </div>
 
-          <CardBody>
+          <CardBody className="min-h-0 flex-1 overflow-y-auto">
             <DataTable
               columns={userColumns}
               rows={users}

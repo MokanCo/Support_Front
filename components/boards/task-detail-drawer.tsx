@@ -451,19 +451,16 @@ export function TaskDetailDrawer({
             <div className="min-w-[100px] w-28">
               <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Progress</p>
               {canEdit ? (
-                <input
-                  type="number"
-                  min={0}
-                  max={100}
-                  className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-sm text-slate-900 shadow-sm focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-100"
+                <Select
                   value={String(draftProgress)}
-                  onChange={(e) => {
-                    const n = Number(e.target.value);
-                    setDraftProgress(
-                      Number.isFinite(n) ? Math.min(100, Math.max(0, Math.round(n))) : 0
-                    );
-                  }}
-                />
+                  onChange={(e) => setDraftProgress(Number(e.target.value))}
+                >
+                  <option value="0">0%</option>
+                  <option value="25">25%</option>
+                  <option value="50">50%</option>
+                  <option value="75">75%</option>
+                  <option value="100">100%</option>
+                </Select>
               ) : (
                 <p className="mt-2 text-sm font-semibold text-slate-800">{task.progress ?? 0}%</p>
               )}

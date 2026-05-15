@@ -660,25 +660,23 @@ export function AdminDashboardInsights() {
                         <span className="text-xs text-slate-400">·</span>
                         <span className="text-xs text-slate-500">{t.locationName ?? "—"}</span>
                       </div>
-                      <div className="flex max-w-[58%] shrink-0 flex-nowrap items-center justify-end gap-1.5 overflow-x-auto">
-                        <span className="whitespace-nowrap rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">
-                          {t.category}
-                        </span>
-                        <PriorityBadge priority={t.priority} />
-                        <StatusBadge status={t.status} />
-                        {t.isNew ? <NewBadge /> : null}
-                        <ProgressCircle value={t.progress} disabled size={32} />
-                        <Link
-                          href={`/dashboard/tickets/view?id=${encodeURIComponent(t.id)}`}
-                          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-primary-600"
-                          aria-label="View ticket"
-                        >
-                          <Eye className="h-4 w-4" />
-                        </Link>
-                      </div>
+                      <Link
+                        href={`/dashboard/tickets/view?id=${encodeURIComponent(t.id)}`}
+                        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-primary-600"
+                        aria-label="View ticket"
+                      >
+                        <Eye className="h-4 w-4" />
+                      </Link>
                     </div>
                     <p className="mt-0.5 line-clamp-2 text-sm leading-snug text-slate-600">{t.title}</p>
-                    <div className="mt-1 flex justify-end">
+                    <div className="mt-1 flex flex-wrap items-center justify-end gap-1.5">
+                      <span className="whitespace-nowrap rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">
+                        {t.category}
+                      </span>
+                      <PriorityBadge priority={t.priority} />
+                      <StatusBadge status={t.status} />
+                      {t.isNew ? <NewBadge /> : null}
+                      <ProgressCircle value={t.progress} disabled size={32} />
                       <time
                         className="text-xs text-slate-500"
                         dateTime={new Date(t.updatedAt).toISOString()}
