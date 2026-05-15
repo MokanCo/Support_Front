@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { Suspense, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "@/lib/session-context";
 import { BoardsPageClient } from "@/components/boards/boards-page-client";
@@ -14,5 +14,9 @@ export default function BoardsPage() {
   }, [user.role, router]);
 
   if (user.role === "partner") return null;
-  return <BoardsPageClient />;
+  return (
+    <Suspense fallback={<p className="p-6 text-sm text-slate-500">Loading boards…</p>}>
+      <BoardsPageClient />
+    </Suspense>
+  );
 }

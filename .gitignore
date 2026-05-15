@@ -2,3 +2,9 @@ node_modules/
 .env
 *.log
 .DS_Store
+# Next.js build output and cache
+/.next/
+/out/
+
+# VS Code specific settings
+/.vscode/
