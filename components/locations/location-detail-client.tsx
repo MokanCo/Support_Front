@@ -330,10 +330,11 @@ export function LocationDetailClient({
         header: "Password",
         cell: () => (
           <span
-            className="text-xs text-slate-600"
-            title="Saved passwords are stored as a one-way hash only. The API never returns the real password—use Edit or Change password to set a new one."
+            className="font-mono text-sm tracking-widest text-slate-600"
+            title="Password is hashed. Use Edit or Change password to set a new one."
+            aria-label="Password hidden"
           >
-            Not retrievable
+            ****
           </span>
         ),
       },
