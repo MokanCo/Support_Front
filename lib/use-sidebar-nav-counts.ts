@@ -1,6 +1,5 @@
 "use client";
 
-import { usePathname } from "next/navigation";
 import { useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { UserRole } from "@/lib/user-roles";
@@ -10,7 +9,8 @@ import {
   sidebarCountsQueryKey,
 } from "@/lib/queries/sidebar";
 
-const POLL_MS = 45_000;
+/** Fallback poll when socket/cache miss; keep high to avoid duplicating inbox HTTP. */
+const POLL_MS = 120_000;
 
 export type SidebarNavCounts = {
   newTicketsCount: number | null;
@@ -31,13 +31,12 @@ export function formatSidebarBadgeCount(n: number): string {
  * Loads new-queue ticket count + inbox unread for admin/support sidebar badges.
  */
 export function useSidebarNavCounts(role: UserRole): SidebarNavCounts {
-  const pathname = usePathname();
   const queryClient = useQueryClient();
   const enabled = role === "admin" || role === "support";
 
   const { data } = useQuery({
     queryKey: sidebarCountsQueryKey(role),
-    queryFn: () => fetchSidebarNavCounts(role),
+    queryFn: () => fetchSidebarNavCounts(role, queryClient),
     enabled,
     refetchInterval: enabled ? POLL_MS : false,
     refetchIntervalInBackground: false,
@@ -64,17 +63,6 @@ export function useSidebarNavCounts(role: UserRole): SidebarNavCounts {
       window.removeEventListener(SIDEBAR_COUNTS_REFRESH_EVENT, onRefresh);
     };
   }, [enabled, queryClient, role]);
-
-  useEffect(() => {
-    if (!enabled) return;
-    if (!pathname.startsWith("/dashboard/conversations")) return;
-    const t = window.setTimeout(() => {
-      void queryClient.invalidateQueries({
-        queryKey: sidebarCountsQueryKey(role),
-      });
-    }, 400);
-    return () => window.clearTimeout(t);
-  }, [pathname, enabled, queryClient, role]);
 
   if (!enabled) return emptyCounts;
   return data ?? emptyCounts;

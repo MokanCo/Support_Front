@@ -15,6 +15,7 @@ import {
   parseCreatedMessageResponse,
 } from "@/lib/messages-client";
 import { useSession } from "@/lib/session-context";
+import { useMessageInbox } from "@/lib/message-inbox-context";
 import { useTicketSocket } from "@/lib/use-ticket-socket";
 import { requestSidebarCountsRefresh } from "@/lib/sidebar-counts-refresh";
 import {
@@ -22,13 +23,18 @@ import {
   inboxQueryOptions,
   type InboxRow,
 } from "@/lib/queries/conversations";
+import {
+  patchInboxAfterMessage,
+  patchInboxMarkRead,
+  upsertThreadMessage,
+} from "@/lib/queries/conversation-cache";
 import { queryKeys } from "@/lib/query-keys";
-import { invalidateConversations } from "@/lib/queries/invalidate";
 
 export function AdminInboxClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user } = useSession();
+  const inboxCtx = useMessageInbox();
   const queryClient = useQueryClient();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [messageText, setMessageText] = useState("");
@@ -73,10 +79,6 @@ export function AdminInboxClient() {
   const messages = messagesQuery.data ?? [];
   const loadingThread = messagesQuery.isPending && Boolean(selectedId) && !messagesQuery.data;
 
-  const refreshInbox = useCallback(() => {
-    void invalidateConversations(queryClient);
-  }, [queryClient]);
-
   useEffect(() => {
     const tid = searchParams.get("ticket")?.trim();
     if (!tid) return;
@@ -87,17 +89,14 @@ export function AdminInboxClient() {
   const onSocketMessage = useCallback(
     (row: ClientMessageRow) => {
       if (!selectedId) return;
-      queryClient.setQueryData<ClientMessageRow[]>(
-        queryKeys.conversations.messages(selectedId),
-        (prev) => {
-          const list = prev ?? [];
-          return list.some((m) => m.id === row.id) ? list : [...list, row];
-        },
-      );
-      void refreshInbox();
+      upsertThreadMessage(queryClient, selectedId, row);
+      patchInboxAfterMessage(queryClient, selectedId, row, {
+        clearUnread: true,
+        viewerUserId: user.id,
+      });
       requestSidebarCountsRefresh();
     },
-    [selectedId, queryClient, refreshInbox],
+    [selectedId, queryClient, user.id],
   );
 
   useTicketSocket(selectedId, Boolean(selectedId), onSocketMessage, {
@@ -105,22 +104,27 @@ export function AdminInboxClient() {
   });
 
   useEffect(() => {
+    inboxCtx.setAdminInlineTicketId(selectedId);
+    return () => inboxCtx.setAdminInlineTicketId(null);
+  }, [selectedId, inboxCtx]);
+
+  useEffect(() => {
     if (!selectedId) return;
     let cancelled = false;
     void (async () => {
-      await apiFetch("/api/messages/mark-read", {
+      const res = await apiFetch("/api/messages/mark-read", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ticketId: selectedId }),
       });
-      if (cancelled) return;
-      refreshInbox();
+      if (cancelled || !res.ok) return;
+      patchInboxMarkRead(queryClient, selectedId);
       requestSidebarCountsRefresh();
     })();
     return () => {
       cancelled = true;
     };
-  }, [selectedId, refreshInbox]);
+  }, [selectedId, queryClient]);
 
   const messageTextRef = useRef(messageText);
   messageTextRef.current = messageText;
@@ -140,23 +144,24 @@ export function AdminInboxClient() {
       if (!res.ok) throw new Error((data as { error?: string }).error ?? "Failed");
       const row = parseCreatedMessageResponse(data);
       if (row) {
-        queryClient.setQueryData<ClientMessageRow[]>(
-          queryKeys.conversations.messages(selectedId),
-          (prev) => {
-            const list = prev ?? [];
-            return list.some((m) => m.id === row.id) ? list : [...list, row];
-          },
-        );
+        const inboxRow = rows.find((r) => r.ticketId === selectedId);
+        upsertThreadMessage(queryClient, selectedId, row);
+        patchInboxAfterMessage(queryClient, selectedId, row, {
+          clearUnread: true,
+          viewerUserId: user.id,
+          ticket: inboxRow
+            ? { title: inboxRow.title, ticketCode: inboxRow.ticketCode }
+            : undefined,
+        });
       }
       setMessageText("");
-      refreshInbox();
       requestSidebarCountsRefresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed");
     } finally {
       setSending(false);
     }
-  }, [selectedId, queryClient, refreshInbox]);
+  }, [selectedId, queryClient, user.id, rows]);
 
   async function onSubmitReply(e: React.FormEvent) {
     e.preventDefault();

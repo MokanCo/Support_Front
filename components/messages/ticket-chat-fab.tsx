@@ -17,8 +17,13 @@ import { useMessageInbox } from "@/lib/message-inbox-context";
 import { useTicketSocket } from "@/lib/use-ticket-socket";
 import { queryKeys } from "@/lib/query-keys";
 import {
+  patchInboxAfterMessage,
+  upsertThreadMessage,
+} from "@/lib/queries/conversation-cache";
+import {
   fetchMessageSummary,
   fetchTicketMessages,
+  type MessageSummary,
 } from "@/lib/queries/conversations";
 import { requestSidebarCountsRefresh } from "@/lib/sidebar-counts-refresh";
 import { SkeletonMessageBubbles } from "@/components/ui/skeleton";
@@ -104,9 +109,9 @@ export function TicketChatFab({
 
   const liveBump = inbox.getLiveBump(ticketId);
   useEffect(() => {
-    if (open) return;
+    if (open || liveBump === 0) return;
     void summaryQuery.refetch();
-  }, [liveBump, open, summaryQuery, ticketId]);
+  }, [liveBump, open, summaryQuery]);
 
   useEffect(() => {
     inboxRef.current.setFabOpenTicketId(open ? ticketId : null);
@@ -123,11 +128,16 @@ export function TicketChatFab({
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ticketId }),
-    }).then(() => {
-      void summaryQuery.refetch();
+    }).then((res) => {
+      if (!res.ok) return;
+      queryClient.setQueryData<MessageSummary>(queryKeys.messages.summary(ticketId), {
+        unreadCount: 0,
+        preview: summary?.preview ?? "",
+        hasUnread: false,
+      });
       requestSidebarCountsRefresh();
     });
-  }, [open, ticketId, onStripOpenChatQuery, summaryQuery]);
+  }, [open, ticketId, onStripOpenChatQuery, queryClient, summary?.preview]);
 
   useEffect(() => {
     if (!open) return;
@@ -165,24 +175,27 @@ export function TicketChatFab({
       if (!res.ok) throw new Error((data as { error?: string }).error ?? "Failed");
       const row = parseCreatedMessageResponse(data);
       if (row) {
-        queryClient.setQueryData<ClientMessageRow[]>(
-          queryKeys.conversations.messages(ticketId),
-          (prev) => {
-            const list = prev ?? [];
-            return list.some((m) => m.id === row.id) ? list : [...list, row];
-          },
-        );
+        upsertThreadMessage(queryClient, ticketId, row);
+        patchInboxAfterMessage(queryClient, ticketId, row, {
+          clearUnread: true,
+          viewerUserId,
+        });
+        queryClient.setQueryData<MessageSummary>(queryKeys.messages.summary(ticketId), {
+          unreadCount: 0,
+          preview: row.text.slice(0, 200),
+          hasUnread: false,
+        });
       }
       setMessageText("");
-      void summaryQuery.refetch();
-      refreshChat();
-    } catch {
-      /* ignore */
+      requestSidebarCountsRefresh();
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn("[chat] send failed", err);
     } finally {
       postInFlightRef.current = false;
       setSending(false);
     }
-  }, [ticketId, queryClient, summaryQuery, refreshChat, composerDisabled]);
+  }, [ticketId, queryClient, viewerUserId, ticketHeader, composerDisabled]);
 
   async function sendMessage(e: React.FormEvent) {
     e.preventDefault();

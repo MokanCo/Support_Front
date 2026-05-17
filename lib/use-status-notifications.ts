@@ -2,12 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { io, type Socket } from "socket.io-client";
 import { apiFetch } from "@/lib/auth-fetch";
 import { statusNotificationsQueryOptions } from "@/lib/queries/notifications";
 import { getAccessToken } from "@/lib/access-token";
 import { queryKeys } from "@/lib/query-keys";
-import { getSocketBaseUrl } from "@/lib/socket-url";
+import { subscribeNotificationNew } from "@/lib/socket-client";
 
 export type StatusNotificationRow = {
   id: string;
@@ -95,9 +94,6 @@ export function parseNotificationSocketPayload(raw: unknown): StatusNotification
   };
 }
 
-const RETRY_MS = 400;
-const RETRY_MAX_MS = 20_000;
-
 const STATUS_STALE_MS = 5 * 60 * 1000;
 
 /**
@@ -133,72 +129,10 @@ export function useStatusNotifications(enabled: boolean) {
 
   useEffect(() => {
     if (!queryEnabled) return;
-    let cancelled = false;
-    let socket: Socket | null = null;
-    let retryTimer: ReturnType<typeof setInterval> | null = null;
-    let stopRetry: ReturnType<typeof setTimeout> | null = null;
-
-    const cleanupSocket = () => {
-      if (socket) {
-        socket.off("notification:new", onNotif);
-        socket.disconnect();
-        socket = null;
-      }
-    };
-
-    const onNotif = (payload: unknown) => {
+    return subscribeNotificationNew((payload) => {
       const row = parseNotificationSocketPayload(payload);
       if (row) mergeRef.current(row);
-    };
-
-    function tryConnect(): boolean {
-      if (cancelled) return false;
-      if (socket) return true;
-      const base = getSocketBaseUrl();
-      const token = getAccessToken();
-      if (!base || !token) return false;
-
-      const s: Socket = io(base, {
-        path: "/socket.io",
-        auth: { token },
-        transports: ["websocket", "polling"],
-        reconnection: true,
-        reconnectionAttempts: 8,
-        reconnectionDelay: 1000,
-      });
-      socket = s;
-      s.on("notification:new", onNotif);
-
-      if (retryTimer) {
-        clearInterval(retryTimer);
-        retryTimer = null;
-      }
-      if (stopRetry) {
-        clearTimeout(stopRetry);
-        stopRetry = null;
-      }
-      return true;
-    }
-
-    if (!tryConnect()) {
-      retryTimer = setInterval(() => {
-        if (cancelled) return;
-        tryConnect();
-      }, RETRY_MS);
-      stopRetry = setTimeout(() => {
-        if (retryTimer) {
-          clearInterval(retryTimer);
-          retryTimer = null;
-        }
-      }, RETRY_MAX_MS);
-    }
-
-    return () => {
-      cancelled = true;
-      if (retryTimer) clearInterval(retryTimer);
-      if (stopRetry) clearTimeout(stopRetry);
-      cleanupSocket();
-    };
+    });
   }, [queryEnabled]);
 
   const load = useCallback(async () => {
