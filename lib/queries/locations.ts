@@ -12,7 +12,19 @@ export type LocationRow = {
   zip?: string;
   createdAt?: string;
   isDisabled?: boolean;
+  isPrimary?: boolean;
 };
+
+export async function makeLocationPrimary(locationId: string): Promise<LocationRow> {
+  const res = await apiFetch(
+    `/api/locations/${encodeURIComponent(locationId)}/make-primary`,
+    { method: "POST" },
+  );
+  const data = (await res.json()) as { location?: LocationRow; error?: string };
+  if (!res.ok) throw new Error(data.error ?? "Failed to set primary location");
+  if (!data.location) throw new Error("Invalid response");
+  return data.location;
+}
 
 export type LocationsListResponse = {
   locations: LocationRow[];

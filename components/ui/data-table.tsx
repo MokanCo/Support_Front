@@ -71,6 +71,10 @@ type DataTableProps<T> = {
   fillHeight?: boolean;
   /** Navigate or act when the row is clicked; clicks on links, buttons, inputs, etc. are ignored. */
   onRowClick?: (row: T) => void;
+  /** When false, row cannot be bulk-selected (checkbox hidden). */
+  isRowSelectable?: (row: T) => boolean;
+  /** Replaces the checkbox (e.g. primary badge). Implies not selectable. */
+  renderRowSelect?: (row: T) => React.ReactNode | null;
 };
 
 function isRowClickFromInteractiveTarget(target: EventTarget | null): boolean {
@@ -93,7 +97,12 @@ export function DataTable<T>({
   emptyMessage = "No rows to display.",
   fillHeight = false,
   onRowClick,
+  isRowSelectable,
+  renderRowSelect,
 }: DataTableProps<T>) {
+  const selectableRows = isRowSelectable
+    ? rows.filter((row) => isRowSelectable(row))
+    : rows;
   return (
     <div
       className={`overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm ${
@@ -112,13 +121,18 @@ export function DataTable<T>({
             <tr className="text-xs font-semibold uppercase tracking-wide text-slate-500">
               {selectable ? (
                 <th className="w-10 px-4 py-3">
-                  <input
-                    type="checkbox"
-                    checked={allSelectedOnPage}
-                    onChange={onToggleAllPage}
-                    aria-label="Select all on page"
-                    className="h-4 w-4 rounded border-slate-300 text-primary-600 focus:ring-primary-500"
-                  />
+                  {selectableRows.length > 0 ? (
+                    <input
+                      type="checkbox"
+                      checked={
+                        selectableRows.length > 0 &&
+                        selectableRows.every((row) => selectedIds.has(rowId(row)))
+                      }
+                      onChange={onToggleAllPage}
+                      aria-label="Select all on page"
+                      className="h-4 w-4 rounded border-slate-300 text-primary-600 focus:ring-primary-500"
+                    />
+                  ) : null}
                 </th>
               ) : null}
               {columns.map((c) => (
@@ -167,12 +181,16 @@ export function DataTable<T>({
                   >
                     {selectable ? (
                       <td className="px-4 py-3">
-                        <input
-                          type="checkbox"
-                          checked={selectedIds.has(id)}
-                          onChange={() => onToggleRow(id)}
-                          className="h-4 w-4 rounded border-slate-300 text-primary-600 focus:ring-primary-500"
-                        />
+                        {renderRowSelect?.(row) ?? (
+                          isRowSelectable && !isRowSelectable(row) ? null : (
+                            <input
+                              type="checkbox"
+                              checked={selectedIds.has(id)}
+                              onChange={() => onToggleRow(id)}
+                              className="h-4 w-4 rounded border-slate-300 text-primary-600 focus:ring-primary-500"
+                            />
+                          )
+                        )}
                       </td>
                     ) : null}
                     {columns.map((c) => (

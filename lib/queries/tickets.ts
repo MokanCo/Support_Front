@@ -71,24 +71,13 @@ export async function fetchAssignableUsersForTicket(
     email: string;
     role?: string;
   }[];
-  const assignable = list.filter((u) => u.role === "support");
-  let options: AssignableUser[] = assignable.map((u) => ({
-    id: u.id,
-    name: u.name,
-    email: u.email,
-  }));
-  const assignedId = ticket.assignedTo ?? null;
-  if (assignedId && !options.some((o) => o.id === assignedId)) {
-    options = [
-      ...options,
-      {
-        id: assignedId,
-        name: ticket.assignedToName ?? "Current assignee",
-        email: "",
-      },
-    ];
-  }
-  return options;
+  return list
+    .filter((u) => u.role === "support")
+    .map((u) => ({
+      id: u.id,
+      name: u.name,
+      email: u.email,
+    }));
 }
 
 function ticketToSnapshot(t: TicketDetail): TicketSnapshot {

@@ -124,9 +124,12 @@ export function LocationDetailClient({
   });
 
   const location = (detailQuery.data?.location as Loc | undefined) ?? null;
-  const users = Array.isArray(detailQuery.data?.users)
-    ? (detailQuery.data.users as unknown[]).map(mapUserRow)
-    : [];
+  const users = useMemo(() => {
+    const list = Array.isArray(detailQuery.data?.users)
+      ? (detailQuery.data.users as unknown[]).map(mapUserRow)
+      : [];
+    return [...list].sort((a, b) => a.name.localeCompare(b.name));
+  }, [detailQuery.data?.users]);
   const loading = detailQuery.isPending && !detailQuery.data;
 
   useEffect(() => {
@@ -363,26 +366,26 @@ export function LocationDetailClient({
       cols.push({
         id: "actions",
         header: <span className="sr-only">Actions</span>,
-        cell: (r) => (
-          <RowActionsMenu
-            aria-label={`Actions for ${r.email}`}
-            items={[
-              { id: "edit", label: "Edit", onClick: () => openEditUser(r) },
-              { id: "password", label: "Change password", onClick: () => openPwdUser(r) },
-              {
-                id: "toggle",
-                label: r.isDisabled ? "Enable" : "Disable",
-                onClick: () => void toggleUserDisabled(r),
-              },
-              {
-                id: "delete",
-                label: "Delete",
-                danger: true,
-                onClick: () => void confirmDeleteUser(r),
-              },
-            ]}
-          />
-        ),
+        cell: (r) => {
+          const items = [
+            { id: "edit", label: "Edit", onClick: () => openEditUser(r) },
+            { id: "password", label: "Change password", onClick: () => openPwdUser(r) },
+            {
+              id: "toggle",
+              label: r.isDisabled ? "Enable" : "Disable",
+              onClick: () => void toggleUserDisabled(r),
+            },
+            {
+              id: "delete",
+              label: "Delete",
+              danger: true,
+              onClick: () => void confirmDeleteUser(r),
+            },
+          ];
+          return (
+            <RowActionsMenu aria-label={`Actions for ${r.email}`} items={items} />
+          );
+        },
       });
     }
     return cols;
