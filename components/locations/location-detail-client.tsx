@@ -172,7 +172,7 @@ export function LocationDetailClient({
       void Swal.fire({
         icon: "success",
         title: "User created",
-        text: `Account created for ${email}. Invite email is being sent in the background.`,
+        text: `Account created for ${email}. An invite email with login credentials will arrive shortly.`,
         timer: 4000,
         showConfirmButton: true,
       });
