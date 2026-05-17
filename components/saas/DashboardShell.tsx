@@ -28,7 +28,7 @@ export function DashboardShell({
 }) {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
   const [mobileOpen, setMobileOpen] = useState(false);
 
   useEffect(() => {
@@ -36,10 +36,7 @@ export function DashboardShell({
     const stored = localStorage.getItem(SIDEBAR_STORAGE_KEY);
     if (stored === "0") setCollapsed(false);
     else if (stored === "1") setCollapsed(true);
-    else {
-      setCollapsed(true);
-      localStorage.setItem(SIDEBAR_STORAGE_KEY, "1");
-    }
+    else localStorage.setItem(SIDEBAR_STORAGE_KEY, "1");
   }, []);
 
   useEffect(() => {
