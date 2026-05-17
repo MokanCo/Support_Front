@@ -1,9 +1,16 @@
 /** Chat header + presence derived from ticket assignment and lifecycle status. */
 
+export type SupportTeamMember = {
+  id: string;
+  name: string;
+  online: boolean;
+};
+
 export type SupportChatHeaderModel = {
   status: string;
   assignedTo: string | null;
   assignedToName?: string | null;
+  supportTeam?: SupportTeamMember[];
 };
 
 export function initialsFromDisplayName(name: string): string {
@@ -28,45 +35,67 @@ export function avatarBackgroundFromSeed(seed: string): string {
 }
 
 export function getSupportChatHeaderDisplay(
-  ticket: SupportChatHeaderModel | null | undefined
+  ticket: SupportChatHeaderModel | null | undefined,
 ): {
   title: string;
-  initials: string;
-  presence: "online" | "offline" | "none";
-  colorSeed: string;
+  members: SupportTeamMember[];
+  stacked: boolean;
 } {
   if (!ticket) {
     return {
       title: "Support Team",
-      initials: "ST",
-      presence: "none",
-      colorSeed: "support-team",
+      members: [{ id: "support-team", name: "Support Team", online: false }],
+      stacked: false,
     };
   }
+
+  const team = ticket.supportTeam ?? [];
   const assigned = Boolean(ticket.assignedTo && String(ticket.assignedTo).trim());
-  const name = ticket.assignedToName?.trim() ?? "";
   const terminal = ticket.status === "completed" || ticket.status === "cancelled";
+  const name = ticket.assignedToName?.trim() ?? "";
+
+  if (assigned && team.length > 0) {
+    const member = team[0];
+    return {
+      title: name || member.name || "Support team member",
+      members: [
+        {
+          ...member,
+          online: terminal ? false : member.online,
+        },
+      ],
+      stacked: false,
+    };
+  }
 
   if (assigned && name) {
     return {
       title: name,
-      initials: initialsFromDisplayName(name),
-      presence: terminal ? "offline" : "online",
-      colorSeed: name,
+      members: [
+        {
+          id: String(ticket.assignedTo),
+          name,
+          online: !terminal,
+        },
+      ],
+      stacked: false,
     };
   }
-  if (assigned) {
+
+  if (team.length > 0) {
     return {
-      title: "Support team member",
-      initials: "SM",
-      presence: terminal ? "offline" : "online",
-      colorSeed: String(ticket.assignedTo),
+      title: "Support Team",
+      members: team.map((m) => ({
+        ...m,
+        online: terminal ? false : m.online,
+      })),
+      stacked: team.length > 1,
     };
   }
+
   return {
     title: "Support Team",
-    initials: "ST",
-    presence: "none",
-    colorSeed: "support-team",
+    members: [{ id: "support-team", name: "Support Team", online: false }],
+    stacked: false,
   };
 }

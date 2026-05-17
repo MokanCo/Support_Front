@@ -13,7 +13,18 @@ import {
   parseCreatedMessageResponse,
 } from "@/lib/messages-client";
 import type { SupportChatHeaderModel } from "@/lib/support-chat-display";
+import {
+  fetchPartnerChatHeader,
+  headerFromTicketProps,
+  parsePartnerChatHeader,
+  patchPresenceOnHeader,
+  type PartnerChatHeaderState,
+} from "@/lib/partner-chat-header";
 import { useMessageInbox } from "@/lib/message-inbox-context";
+import {
+  subscribePresenceUpdate,
+  subscribeTicketUpdated,
+} from "@/lib/socket-client";
 import { useTicketSocket } from "@/lib/use-ticket-socket";
 import { queryKeys } from "@/lib/query-keys";
 import {
@@ -57,6 +68,20 @@ export function TicketChatFab({
   const messageTextRef = useRef(messageText);
   messageTextRef.current = messageText;
   const postInFlightRef = useRef(false);
+  const [headerState, setHeaderState] = useState<PartnerChatHeaderState>(() =>
+    headerFromTicketProps(
+      ticketHeader ?? { status: "open", assignedTo: null, assignedToName: null },
+    ),
+  );
+
+  useEffect(() => {
+    if (!ticketHeader) return;
+    setHeaderState(headerFromTicketProps(ticketHeader));
+  }, [ticketHeader?.assignedTo, ticketHeader?.assignedToName, ticketHeader?.status]);
+
+  const applyChatHeader = useCallback((header: PartnerChatHeaderState) => {
+    setHeaderState(header);
+  }, []);
 
   const scrollThreadToBottom = useCallback(() => {
     const el = threadScrollRef.current;
@@ -82,26 +107,52 @@ export function TicketChatFab({
   const messages = messagesQuery.data ?? [];
   const loadingThread = open && messagesQuery.isFetching && !messagesQuery.data;
 
-  const refreshChat = useCallback(() => {
-    void messagesQuery.refetch();
-    void summaryQuery.refetch();
-  }, [messagesQuery, summaryQuery]);
-
   const onSocketMessage = useCallback(
     (row: ClientMessageRow) => {
-      queryClient.setQueryData<ClientMessageRow[]>(
-        queryKeys.conversations.messages(ticketId),
-        (prev) => {
-          const list = prev ?? [];
-          return list.some((m) => m.id === row.id) ? list : [...list, row];
-        },
-      );
-      void summaryQuery.refetch();
+      upsertThreadMessage(queryClient, ticketId, row);
+      if (open) {
+        queryClient.setQueryData<MessageSummary>(queryKeys.messages.summary(ticketId), (prev) => ({
+          unreadCount: 0,
+          preview: row.text.slice(0, 200),
+          hasUnread: false,
+        }));
+      }
     },
-    [queryClient, ticketId, summaryQuery],
+    [queryClient, ticketId, open],
   );
 
-  useTicketSocket(ticketId, open, onSocketMessage, { viewerUserId });
+  useTicketSocket(ticketId, Boolean(ticketId), onSocketMessage, {
+    viewerUserId,
+    onChatHeader: applyChatHeader,
+  });
+
+  useEffect(() => {
+    if (!ticketId) return;
+    const unsubTicket = subscribeTicketUpdated((raw) => {
+      const payload = raw as { ticketId?: string; chatHeader?: unknown };
+      if (String(payload.ticketId) !== ticketId) return;
+      const header = parsePartnerChatHeader(payload.chatHeader);
+      if (header) setHeaderState(header);
+    });
+    const unsubPresence = subscribePresenceUpdate((raw) => {
+      const payload = raw as { userId?: string; online?: boolean };
+      if (!payload.userId) return;
+      setHeaderState((prev) =>
+        patchPresenceOnHeader(prev, String(payload.userId), Boolean(payload.online)),
+      );
+    });
+    return () => {
+      unsubTicket();
+      unsubPresence();
+    };
+  }, [ticketId]);
+
+  useEffect(() => {
+    if (!open || !ticketId) return;
+    void fetchPartnerChatHeader(ticketId).then((header) => {
+      if (header) setHeaderState(header);
+    });
+  }, [open, ticketId]);
 
   useEffect(() => {
     setPortalReady(true);
@@ -195,7 +246,7 @@ export function TicketChatFab({
       postInFlightRef.current = false;
       setSending(false);
     }
-  }, [ticketId, queryClient, viewerUserId, ticketHeader, composerDisabled]);
+  }, [ticketId, queryClient, viewerUserId, composerDisabled]);
 
   async function sendMessage(e: React.FormEvent) {
     e.preventDefault();
@@ -231,7 +282,7 @@ export function TicketChatFab({
           <div className="flex flex-shrink-0 items-stretch border-b border-slate-100">
             <div className="min-w-0 flex-1">
               <TicketChatHeader
-                ticket={ticketHeader}
+                ticket={headerState}
                 subtitle="This ticket only"
                 className="border-0 bg-transparent px-4 sm:px-5"
               />

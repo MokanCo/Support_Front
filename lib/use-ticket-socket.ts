@@ -2,12 +2,19 @@
 
 import { useEffect, useRef } from "react";
 import { normalizeApiMessageRow, type ClientMessageRow } from "@/lib/messages-client";
+import { parsePartnerChatHeader, type PartnerChatHeaderState } from "@/lib/partner-chat-header";
 import { playIncomingMessageSound } from "@/lib/play-message-sound";
-import { joinTicketRoom, leaveTicketRoom, subscribeMessageNew } from "@/lib/socket-client";
+import {
+  joinTicketRoom,
+  leaveTicketRoom,
+  subscribeMessageNew,
+  type JoinTicketAck,
+} from "@/lib/socket-client";
 
 export type TicketSocketOptions = {
   viewerUserId?: string | null;
   playIncomingSound?: boolean;
+  onChatHeader?: (header: PartnerChatHeaderState) => void;
 };
 
 type Payload = {
@@ -36,10 +43,15 @@ export function useTicketSocket(
     if (!enabled || !ticketId) return;
 
     const tid = String(ticketId);
-    joinTicketRoom(tid, (ack) => {
+    joinTicketRoom(tid, (ack: JoinTicketAck) => {
       if (ack && ack.ok === false && ack.error) {
         // eslint-disable-next-line no-console
         console.warn("[socket] join_ticket failed:", ack.error);
+        return;
+      }
+      if (ack?.chatHeader) {
+        const header = parsePartnerChatHeader(ack.chatHeader);
+        if (header) optionsRef.current?.onChatHeader?.(header);
       }
     });
 
