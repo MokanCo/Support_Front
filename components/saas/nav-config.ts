@@ -14,11 +14,13 @@ export type NavItem = {
   label: string;
   icon: LucideIcon;
   roles?: readonly UserRole[];
+  /** When set, staff sidebar shows a numeric badge (admin + support only). */
+  badgeSource?: "tickets" | "conversations";
 };
 
 export const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/dashboard/tickets", label: "Tickets", icon: Ticket },
+  { href: "/dashboard/tickets", label: "Tickets", icon: Ticket, badgeSource: "tickets" },
   // {
   //   href: "/dashboard/boards",
   //   label: "Boards",
@@ -36,6 +38,7 @@ export const NAV_ITEMS: NavItem[] = [
     label: "Conversations",
     icon: MessageSquare,
     roles: ["admin", "support"],
+    badgeSource: "conversations",
   },
   // {
   //   href: "/dashboard/reports",

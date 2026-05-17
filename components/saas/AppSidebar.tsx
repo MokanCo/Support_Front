@@ -4,13 +4,43 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChevronRight, PanelLeftClose } from "lucide-react";
 import type { UserRole } from "@/lib/user-roles";
-import { navItemsForRole } from "@/components/saas/nav-config";
+import { navItemsForRole, type NavItem } from "@/components/saas/nav-config";
+import {
+  formatSidebarBadgeCount,
+  useSidebarNavCounts,
+  type SidebarNavCounts,
+} from "@/lib/use-sidebar-nav-counts";
 
 export const SIDEBAR_STORAGE_KEY = "mokanco_sidebar_collapsed";
 
 function isNavActive(href: string, pathname: string) {
   if (href === "/dashboard") return pathname === "/dashboard";
   return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+function staffNavBadge(
+  item: NavItem,
+  role: UserRole,
+  counts: SidebarNavCounts,
+): { text: string; title: string } | null {
+  if (role !== "admin" && role !== "support") return null;
+  if (item.badgeSource === "tickets" && counts.newTicketsCount != null) {
+    const n = counts.newTicketsCount;
+    if (n <= 0) return null;
+    return {
+      text: formatSidebarBadgeCount(n),
+      title: `${n} new ticket${n === 1 ? "" : "s"} in queue (0% progress)`,
+    };
+  }
+  if (item.badgeSource === "conversations" && counts.messagesUnreadTotal != null) {
+    const u = counts.messagesUnreadTotal;
+    if (u <= 0) return null;
+    return {
+      text: formatSidebarBadgeCount(u),
+      title: `${u} unread message${u === 1 ? "" : "s"}`,
+    };
+  }
+  return null;
 }
 
 function SidebarContent({
@@ -24,6 +54,7 @@ function SidebarContent({
 }) {
   const pathname = usePathname();
   const items = navItemsForRole(role);
+  const counts = useSidebarNavCounts(role);
 
   const linkClass = (active: boolean) =>
     `group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200 ${
@@ -57,28 +88,72 @@ function SidebarContent({
         )}
       </div>
 
-      <nav className="flex-1 space-y-1 overflow-y-auto p-3">
+      <nav
+        className="flex-1 space-y-1 overflow-y-auto p-3"
+        data-tour={role === "partner" ? "partner-sidebar-nav" : undefined}
+      >
         {items.map((item) => {
           const Icon = item.icon;
           const active = isNavActive(item.href, pathname);
+          const badge = staffNavBadge(item, role, counts);
+          const badgeClass =
+            "bg-amber-400 text-amber-950 shadow-sm ring-1 ring-amber-500/60";
           return (
             <Link
               key={item.href}
               href={item.href}
               onClick={() => onMobileClose()}
+              data-tour={
+                role === "partner" && item.href === "/dashboard/tickets"
+                  ? "partner-nav-tickets"
+                  : undefined
+              }
               className={linkClass(active)}
-              title={collapsed ? item.label : undefined}
+              title={
+                collapsed
+                  ? badge
+                    ? `${item.label} (${badge.title})`
+                    : item.label
+                  : undefined
+              }
             >
-              <Icon
-                className={`h-[18px] w-[18px] shrink-0 transition-colors duration-200 ${
-                  active
-                    ? "text-primary-200"
-                    : "text-slate-400 group-hover:text-white"
-                }`}
-              />
-              {!collapsed ? (
-                <span className="truncate">{item.label}</span>
-              ) : null}
+              {collapsed ? (
+                <span className="relative inline-flex shrink-0">
+                  <Icon
+                    className={`h-[18px] w-[18px] transition-colors duration-200 ${
+                      active
+                        ? "text-primary-200"
+                        : "text-slate-400 group-hover:text-white"
+                    }`}
+                  />
+                  {badge ? (
+                    <span
+                      className={`absolute -right-2 -top-2 flex h-[15px] min-w-[15px] items-center justify-center rounded-full px-0.5 text-[9px] font-bold leading-none ${badgeClass}`}
+                    >
+                      {badge.text}
+                    </span>
+                  ) : null}
+                </span>
+              ) : (
+                <>
+                  <Icon
+                    className={`h-[18px] w-[18px] shrink-0 transition-colors duration-200 ${
+                      active
+                        ? "text-primary-200"
+                        : "text-slate-400 group-hover:text-white"
+                    }`}
+                  />
+                  <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                  {badge ? (
+                    <span
+                      title={badge.title}
+                      className={`ml-1 shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-bold tabular-nums ${badgeClass}`}
+                    >
+                      {badge.text}
+                    </span>
+                  ) : null}
+                </>
+              )}
             </Link>
           );
         })}

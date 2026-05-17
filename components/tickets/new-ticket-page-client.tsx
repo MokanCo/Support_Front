@@ -32,7 +32,7 @@ export function NewTicketPageClient({ role }: { role: UserRole }) {
             description={
               template
                 ? "Review the pre-filled details and submit when ready."
-                : "Submit a new request to the support queue."
+                : "Submit a new request to the ticket queue."
             }
           />
           <CardBody>

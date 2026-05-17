@@ -1,12 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { Download, Trash2, Smile, Paperclip } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/Button";
 import { Select } from "@/components/ui/Select";
 import { apiFetch } from "@/lib/auth-fetch";
+import { fetchTaskDetailBundle, taskDetailQueryKey } from "@/lib/queries/tasks";
 import { getAccessToken } from "@/lib/access-token";
 import { resolveApiUrl } from "@/lib/api-base";
 import { renderTextWithUrls } from "@/lib/render-text-with-urls";
@@ -79,12 +81,13 @@ export function TaskDetailDrawer({
   boardMembers: BoardMemberRow[];
   canEdit: boolean;
 }) {
+  const queryClient = useQueryClient();
   const [task, setTask] = useState<BoardTaskRow | null>(null);
   const [comments, setComments] = useState<TaskCommentRow[]>([]);
   const [attachments, setAttachments] = useState<TaskAttachmentRow[]>([]);
   const [draftTitle, setDraftTitle] = useState("");
   const [draftDesc, setDraftDesc] = useState("");
-  const [draftPriority, setDraftPriority] = useState<TicketPriority>("medium");
+  const [draftPriority, setDraftPriority] = useState<TicketPriority>("p2");
   const [draftDeadline, setDraftDeadline] = useState("");
   const [draftAssignee, setDraftAssignee] = useState("");
   const [draftCardColor, setDraftCardColor] = useState("gray");
@@ -93,7 +96,6 @@ export function TaskDetailDrawer({
   const [mentionOpen, setMentionOpen] = useState(false);
   const [mentionQuery, setMentionQuery] = useState("");
   const [mentionAnchor, setMentionAnchor] = useState<{ top: number; left: number } | null>(null);
-  const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -108,42 +110,40 @@ export function TaskDetailDrawer({
     return m;
   }, [boardMembers, comments]);
 
-  const load = useCallback(async () => {
-    if (!taskId) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const [tRes, cRes, aRes] = await Promise.all([
-        apiFetch(`/api/tasks/${encodeURIComponent(taskId)}`),
-        apiFetch(`/api/tasks/comments?taskId=${encodeURIComponent(taskId)}`),
-        apiFetch(`/api/tasks/${encodeURIComponent(taskId)}/attachments`),
-      ]);
-      const tJson = await tRes.json();
-      const cJson = await cRes.json();
-      const aJson = aRes.ok ? await aRes.json() : { attachments: [] };
-      if (!tRes.ok) throw new Error(tJson.error ?? "Failed to load task");
-      if (!cRes.ok) throw new Error(cJson.error ?? "Failed to load comments");
-      const t = tJson.task as BoardTaskRow;
-      setTask(t);
-      setDraftTitle(t.title);
-      setDraftDesc(t.description ?? "");
-      setDraftPriority(t.priority as TicketPriority);
-      setDraftDeadline(t.deadline ? new Date(t.deadline).toISOString().slice(0, 16) : "");
-      setDraftAssignee(t.assignedTo?.id ?? "");
-      setDraftCardColor(normalizeCardColorId(t.cardColor));
-      setDraftProgress(clampProgress(t.progress ?? 0));
-      setComments((cJson.comments as TaskCommentRow[]) ?? []);
-      setAttachments((aJson.attachments as TaskAttachmentRow[]) ?? []);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed");
-    } finally {
-      setLoading(false);
-    }
-  }, [taskId]);
+  const taskQuery = useQuery({
+    queryKey: taskDetailQueryKey(taskId ?? ""),
+    queryFn: () => fetchTaskDetailBundle(taskId!),
+    enabled: open && Boolean(taskId),
+  });
+
+  const loading = taskQuery.isPending && open && Boolean(taskId) && !taskQuery.data;
 
   useEffect(() => {
-    if (open && taskId) void load();
-  }, [open, taskId, load]);
+    if (!taskQuery.data) return;
+    const { task: t, comments: c, attachments: a } = taskQuery.data;
+    setTask(t);
+    setDraftTitle(t.title);
+    setDraftDesc(t.description ?? "");
+    setDraftPriority(t.priority as TicketPriority);
+    setDraftDeadline(t.deadline ? new Date(t.deadline).toISOString().slice(0, 16) : "");
+    setDraftAssignee(t.assignedTo?.id ?? "");
+    setDraftCardColor(normalizeCardColorId(t.cardColor));
+    setDraftProgress(clampProgress(t.progress ?? 0));
+    setComments(c);
+    setAttachments(a);
+  }, [taskQuery.data]);
+
+  useEffect(() => {
+    if (taskQuery.error) {
+      setError(taskQuery.error instanceof Error ? taskQuery.error.message : "Failed");
+    }
+  }, [taskQuery.error]);
+
+  const refreshTask = () => {
+    if (taskId) {
+      void queryClient.invalidateQueries({ queryKey: taskDetailQueryKey(taskId) });
+    }
+  };
 
   async function saveTask() {
     if (!taskId || !canEdit) return;
@@ -166,7 +166,7 @@ export function TaskDetailDrawer({
       });
       const j = await res.json();
       if (!res.ok) throw new Error(j.error ?? "Save failed");
-      await load();
+      refreshTask();
       onChanged();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Save failed");
@@ -189,7 +189,7 @@ export function TaskDetailDrawer({
       if (!res.ok) throw new Error(j.error ?? "Failed");
       setCommentText("");
       setMentionOpen(false);
-      await load();
+      refreshTask();
       onChanged();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed");
@@ -212,7 +212,7 @@ export function TaskDetailDrawer({
       const j = await res.json();
       if (!res.ok) throw new Error(j.error ?? "Upload failed");
       if (j.attachment) setAttachments((prev) => [j.attachment as TaskAttachmentRow, ...prev]);
-      else await load();
+      else refreshTask();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Upload failed");
     } finally {
@@ -380,7 +380,19 @@ export function TaskDetailDrawer({
       }
     >
       {loading ? (
-        <p className="text-sm text-slate-500">Loading…</p>
+        <div className="animate-pulse space-y-4">
+          <div className="flex gap-3 border-b border-slate-100 pb-4">
+            <div className="h-10 flex-1 rounded-lg bg-slate-200/70" />
+            <div className="h-10 w-24 rounded-lg bg-slate-200/70" />
+          </div>
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="space-y-2">
+              <div className="h-3 w-20 rounded bg-slate-200/70" />
+              <div className="h-10 w-full rounded-lg bg-slate-200/70" />
+            </div>
+          ))}
+          <div className="h-24 w-full rounded-xl bg-slate-200/70" />
+        </div>
       ) : task ? (
         <div className="space-y-4">
           {error ? <p className="text-sm text-red-600">{error}</p> : null}

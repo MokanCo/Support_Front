@@ -1,8 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { io, type Socket } from "socket.io-client";
 import { apiFetch } from "@/lib/auth-fetch";
+import { statusNotificationsQueryOptions } from "@/lib/queries/notifications";
 import { getAccessToken } from "@/lib/access-token";
 import { getSocketBaseUrl } from "@/lib/socket-url";
 
@@ -16,7 +18,7 @@ export type StatusNotificationRow = {
   createdAt: string;
 };
 
-function parseList(data: unknown): StatusNotificationRow[] {
+export function parseStatusNotificationsList(data: unknown): StatusNotificationRow[] {
   if (!data || typeof data !== "object") return [];
   const n = (data as { notifications?: unknown }).notifications;
   if (!Array.isArray(n)) return [];
@@ -80,53 +82,44 @@ const RETRY_MAX_MS = 20_000;
  * Persisted `channel=status` notifications + live `notification:new` on the user socket.
  */
 export function useStatusNotifications(enabled: boolean) {
-  const [items, setItems] = useState<StatusNotificationRow[]>([]);
-  const [loading, setLoading] = useState(false);
+  const queryClient = useQueryClient();
   const mergeRef = useRef<(row: StatusNotificationRow) => void>(() => {});
 
-  const mergeIncoming = useCallback((row: StatusNotificationRow) => {
-    setItems((prev) => {
-      if (prev.some((x) => x.id === row.id)) return prev;
-      return [row, ...prev].sort((a, b) => {
-        const ta = new Date(a.createdAt || 0).getTime();
-        const tb = new Date(b.createdAt || 0).getTime();
-        return tb - ta;
-      });
-    });
-  }, []);
+  const { data: items = [], isPending: loading, refetch } = useQuery({
+    ...statusNotificationsQueryOptions,
+    enabled,
+    refetchInterval: enabled ? 45_000 : false,
+    refetchIntervalInBackground: false,
+  });
+
+  const mergeIncoming = useCallback(
+    (row: StatusNotificationRow) => {
+      queryClient.setQueryData<StatusNotificationRow[]>(
+        statusNotificationsQueryOptions.queryKey,
+        (prev) => {
+          const list = prev ?? [];
+          if (list.some((x) => x.id === row.id)) return list;
+          return [row, ...list].sort((a, b) => {
+            const ta = new Date(a.createdAt || 0).getTime();
+            const tb = new Date(b.createdAt || 0).getTime();
+            return tb - ta;
+          });
+        },
+      );
+    },
+    [queryClient],
+  );
 
   mergeRef.current = mergeIncoming;
 
-  const load = useCallback(async () => {
-    if (!enabled) return;
-    setLoading(true);
-    try {
-      const res = await apiFetch("/api/notifications?channel=status");
-      const data: unknown = await res.json();
-      if (res.ok) setItems(parseList(data));
-    } catch {
-      /* ignore */
-    } finally {
-      setLoading(false);
-    }
-  }, [enabled]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
   useEffect(() => {
     if (!enabled) return;
-    const id = window.setInterval(() => void load(), 45_000);
     const onVis = () => {
-      if (document.visibilityState === "visible") void load();
+      if (document.visibilityState === "visible") void refetch();
     };
     document.addEventListener("visibilitychange", onVis);
-    return () => {
-      window.clearInterval(id);
-      document.removeEventListener("visibilitychange", onVis);
-    };
-  }, [enabled, load]);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, [enabled, refetch]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -198,16 +191,22 @@ export function useStatusNotifications(enabled: boolean) {
     };
   }, [enabled]);
 
-  const dismissOne = useCallback(async (notificationId: string) => {
-    const res = await apiFetch("/api/notifications/dismiss", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ channel: "status", notificationId }),
-    });
-    if (res.ok) {
-      setItems((prev) => prev.filter((x) => x.id !== notificationId));
-    }
-  }, []);
+  const dismissOne = useCallback(
+    async (notificationId: string) => {
+      const res = await apiFetch("/api/notifications/dismiss", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ channel: "status", notificationId }),
+      });
+      if (res.ok) {
+        queryClient.setQueryData<StatusNotificationRow[]>(
+          statusNotificationsQueryOptions.queryKey,
+          (prev) => (prev ?? []).filter((x) => x.id !== notificationId),
+        );
+      }
+    },
+    [queryClient],
+  );
 
   const dismissAll = useCallback(async () => {
     const res = await apiFetch("/api/notifications/dismiss", {
@@ -215,10 +214,15 @@ export function useStatusNotifications(enabled: boolean) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ channel: "status", clearAll: true }),
     });
-    if (res.ok) setItems([]);
-  }, []);
+    if (res.ok) {
+      queryClient.setQueryData<StatusNotificationRow[]>(
+        statusNotificationsQueryOptions.queryKey,
+        [],
+      );
+    }
+  }, [queryClient]);
 
   const count = useMemo(() => items.length, [items]);
 
-  return { items, loading, count, load, dismissOne, dismissAll };
+  return { items, loading, count, load: refetch, dismissOne, dismissAll };
 }

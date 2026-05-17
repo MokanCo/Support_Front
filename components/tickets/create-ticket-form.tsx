@@ -10,6 +10,7 @@ import type { UserRole } from "@/lib/user-roles";
 import type { TicketPriority } from "@/lib/ticket-types";
 import { getQuickTicketTemplate } from "@/lib/quick-ticket-templates";
 import { apiFetch } from "@/lib/auth-fetch";
+import { requestSidebarCountsRefresh } from "@/lib/sidebar-counts-refresh";
 
 type Loc = { id: string; name: string };
 
@@ -109,6 +110,9 @@ export function CreateTicketForm({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed to create");
+      if (role === "admin" || role === "support") {
+        requestSidebarCountsRefresh();
+      }
       onSuccess?.(data.id as string);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create");

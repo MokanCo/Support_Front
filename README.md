@@ -19,6 +19,12 @@ Organization-scoped support ticketing with JWT sessions (HTTP-only cookies), rol
    npm install
    npm run dev
    npm run seed
+
+   Before production, remove demo seed accounts:
+
+   ```bash
+   npm run remove-demo
+   ```
    ```
 
    Default seed password is in the backend script output (or set `SEED_PASSWORD`).

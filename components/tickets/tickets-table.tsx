@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowDownUp,
   ChevronLeft,
@@ -29,14 +31,10 @@ import type { SerializedTicket } from "@/lib/serialize-ticket";
 import type { UserRole } from "@/lib/user-roles";
 import type { TicketStatus, TicketPriority } from "@/lib/ticket-types";
 import { apiFetch } from "@/lib/auth-fetch";
-
-type ListResponse = {
-  tickets: SerializedTicket[];
-  total: number;
-  page: number;
-  pageSize: number;
-  totalPages: number;
-};
+import { requestSidebarCountsRefresh } from "@/lib/sidebar-counts-refresh";
+import { locationOptionsQueryKey, fetchLocationOptions } from "@/lib/queries/locations";
+import { fetchTicketsList, ticketListQueryKey } from "@/lib/queries/tickets";
+import { queryKeys } from "@/lib/query-keys";
 
 type Loc = { id: string; name: string };
 
@@ -55,13 +53,11 @@ const NEW_TICKET_PRIMARY =
   "inline-flex items-center justify-center gap-2 rounded-xl bg-primary-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-primary-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-600";
 
 export function TicketsTable({ role }: { role: UserRole }) {
-  const [locs, setLocs] = useState<Loc[]>([]);
+  const router = useRouter();
+  const queryClient = useQueryClient();
   const [locationId, setLocationId] = useState("");
-  const [rows, setRows] = useState<SerializedTicket[]>([]);
-  const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [pageSize] = useState(10);
-  const [totalPages, setTotalPages] = useState(1);
   const [sort, setSort] = useState<string>("updatedAt");
   const [order, setOrder] = useState<"asc" | "desc">("desc");
   const [status, setStatus] = useState("");
@@ -69,7 +65,6 @@ export function TicketsTable({ role }: { role: UserRole }) {
   const [overdue, setOverdue] = useState(false);
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -109,8 +104,7 @@ export function TicketsTable({ role }: { role: UserRole }) {
     }
     return {
       title: "Ticket history",
-      subtitle:
-        "All tickets for your location—open, in progress, and completed.",
+      subtitle: "Tickets you opened for your location—open, in progress, and completed.",
     };
   }, [role]);
 
@@ -119,71 +113,63 @@ export function TicketsTable({ role }: { role: UserRole }) {
     return () => window.clearTimeout(t);
   }, [searchInput]);
 
-  useEffect(() => {
-    if (!showLocFilter) return;
-    let cancelled = false;
-    void (async () => {
-      try {
-        const params = new URLSearchParams({
-          page: "1",
-          pageSize: "200",
-          sort: "name",
-          order: "asc",
-        });
-        const res = await apiFetch(`/api/locations?${params}`);
-        const data = await res.json();
-        if (!cancelled && res.ok) setLocs(data.locations ?? []);
-      } catch {
-        /* ignore */
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [showLocFilter]);
+  const locsQuery = useQuery({
+    queryKey: locationOptionsQueryKey,
+    queryFn: fetchLocationOptions,
+    enabled: showLocFilter,
+  });
+  const locs = (locsQuery.data ?? []) as Loc[];
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const params = new URLSearchParams();
-      params.set("page", String(page));
-      params.set("pageSize", String(pageSize));
-      params.set("sort", sort);
-      params.set("order", order);
-      if (status) params.set("status", status);
-      if (priority) params.set("priority", priority);
-      if (overdue) params.set("overdue", "1");
-      if (showLocFilter && locationId) params.set("locationId", locationId);
-      if (search.trim()) params.set("search", search.trim());
-      const res = await apiFetch(`/api/tickets?${params.toString()}`);
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Failed");
-      const list = data as ListResponse;
-      setRows(list.tickets);
-      setTotal(list.total);
-      setTotalPages(list.totalPages);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load");
-    } finally {
-      setLoading(false);
+  const listFilters = useMemo(
+    () => ({
+      page,
+      pageSize,
+      sort,
+      order,
+      status: status || undefined,
+      priority: priority || undefined,
+      overdue: overdue || undefined,
+      locationId: showLocFilter && locationId ? locationId : undefined,
+      search: search.trim() || undefined,
+    }),
+    [
+      page,
+      pageSize,
+      sort,
+      order,
+      status,
+      priority,
+      overdue,
+      locationId,
+      showLocFilter,
+      search,
+    ],
+  );
+
+  const ticketsQuery = useQuery({
+    queryKey: ticketListQueryKey(listFilters),
+    queryFn: () => fetchTicketsList(listFilters),
+  });
+
+  const rows = ticketsQuery.data?.tickets ?? [];
+  const total = ticketsQuery.data?.total ?? 0;
+  const totalPages = ticketsQuery.data?.totalPages ?? 1;
+  const loading = ticketsQuery.isPending && !ticketsQuery.data;
+
+  useEffect(() => {
+    if (ticketsQuery.error) {
+      setError(
+        ticketsQuery.error instanceof Error
+          ? ticketsQuery.error.message
+          : "Failed to load",
+      );
+    } else {
+      setError(null);
     }
-  }, [
-    page,
-    pageSize,
-    sort,
-    order,
-    status,
-    priority,
-    search,
-    locationId,
-    showLocFilter,
-    overdue,
-  ]);
+  }, [ticketsQuery.error]);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  const refreshTickets = () =>
+    queryClient.invalidateQueries({ queryKey: queryKeys.tickets.lists() });
 
   useEffect(() => {
     setPage(1);
@@ -239,7 +225,8 @@ export function TicketsTable({ role }: { role: UserRole }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Bulk delete failed");
       setSelected(new Set());
-      void load();
+      void refreshTickets();
+      if (role === "admin" || role === "support") requestSidebarCountsRefresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed");
     }
@@ -260,7 +247,8 @@ export function TicketsTable({ role }: { role: UserRole }) {
       if (!res.ok) throw new Error(data.error ?? "Bulk update failed");
       setBulkStatus("");
       setSelected(new Set());
-      void load();
+      void refreshTickets();
+      if (role === "admin" || role === "support") requestSidebarCountsRefresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed");
     }
@@ -281,7 +269,8 @@ export function TicketsTable({ role }: { role: UserRole }) {
       if (!res.ok) throw new Error(data.error ?? "Bulk update failed");
       setBulkPriority("");
       setSelected(new Set());
-      void load();
+      void refreshTickets();
+      if (role === "admin" || role === "support") requestSidebarCountsRefresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed");
     }
@@ -299,7 +288,8 @@ export function TicketsTable({ role }: { role: UserRole }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed");
       setProgressTicket(null);
-      void load();
+      void refreshTickets();
+      if (role === "admin" || role === "support") requestSidebarCountsRefresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed");
     }
@@ -406,10 +396,10 @@ export function TicketsTable({ role }: { role: UserRole }) {
           <p className="mt-1 text-sm text-slate-500">{pageIntro.subtitle}</p>
         </div>
         {role === "partner" ? (
-          <Link href="/dashboard/tickets/new" className={NEW_TICKET_PRIMARY}>
+          <button type="button" className={NEW_TICKET_PRIMARY} onClick={() => setModalOpen(true)}>
             <Plus className="h-4 w-4" />
             New ticket
-          </Link>
+          </button>
         ) : (
           <Button
             type="button"
@@ -422,14 +412,17 @@ export function TicketsTable({ role }: { role: UserRole }) {
         )}
       </div>
 
-      {role !== "partner" ? (
-        <CreateTicketModal
-          open={modalOpen}
-          onClose={() => setModalOpen(false)}
-          role={role}
-          onCreated={() => void load()}
-        />
-      ) : null}
+      <CreateTicketModal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        role={role}
+        onCreated={(id) => {
+          void refreshTickets();
+          if (role === "partner") {
+            router.push(`/dashboard/tickets/view?id=${encodeURIComponent(id)}`);
+          }
+        }}
+      />
 
       <Modal
         open={!!progressTicket}

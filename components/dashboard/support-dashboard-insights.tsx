@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   Bar,
   BarChart,
@@ -21,8 +22,9 @@ import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { StatusBadge, PriorityBadge, NewBadge } from "@/components/ui/badge";
 import { ProgressCircle } from "@/components/ui/progress-circle";
+import { DashboardInsightsSkeleton } from "@/components/ui/skeleton";
 import type { SerializedTicket } from "@/lib/serialize-ticket";
-import { apiFetch } from "@/lib/auth-fetch";
+import { supportDashboardQueryOptions } from "@/lib/queries/dashboard";
 
 type TicketListRes = {
   tickets: SerializedTicket[];
@@ -138,25 +140,6 @@ function assigneeInitials(name: string | null | undefined): string | null {
   return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
 }
 
-async function fetchMyTickets(): Promise<{ tickets: SerializedTicket[]; total: number }> {
-  const pageSize = 200;
-  const res1 = await apiFetch(`/api/tickets?page=1&pageSize=${pageSize}&sort=createdAt&order=asc`);
-  const j1 = (await res1.json()) as TicketListRes & { error?: string };
-  if (!res1.ok) throw new Error(j1.error ?? "Failed to load tickets");
-  const total = j1.total ?? 0;
-  const totalPages = Math.max(1, j1.totalPages ?? 1);
-  const out: SerializedTicket[] = [...(j1.tickets ?? [])];
-  let page = 2;
-  while (page <= totalPages && out.length < total) {
-    const res = await apiFetch(`/api/tickets?page=${page}&pageSize=${pageSize}&sort=createdAt&order=asc`);
-    const data = (await res.json()) as TicketListRes & { error?: string };
-    if (!res.ok) break;
-    out.push(...(data.tickets ?? []));
-    page += 1;
-  }
-  return { tickets: out, total };
-}
-
 function StatSparkCard({
   title,
   value,
@@ -203,26 +186,16 @@ function StatSparkCard({
 
 export function SupportDashboardInsights() {
   const [period, setPeriod] = useState<PeriodPreset>("all");
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [tickets, setTickets] = useState<SerializedTicket[]>([]);
-  const [ticketTotal, setTicketTotal] = useState(0);
+  const dashboardQuery = useQuery(supportDashboardQueryOptions);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setLoadError(null);
-    try {
-      const pack = await fetchMyTickets();
-      setTickets(pack.tickets);
-      setTicketTotal(pack.total);
-    } catch (e) {
-      setLoadError(e instanceof Error ? e.message : "Failed to load");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => { void load(); }, [load]);
+  const loading = dashboardQuery.isPending && !dashboardQuery.data;
+  const loadError = dashboardQuery.error
+    ? dashboardQuery.error instanceof Error
+      ? dashboardQuery.error.message
+      : "Failed to load"
+    : null;
+  const tickets = dashboardQuery.data?.tickets ?? [];
+  const ticketTotal = dashboardQuery.data?.total ?? 0;
 
   const bounds        = useMemo(() => getPeriodBounds(period), [period]);
   const compareBounds = useMemo(() => getComparisonBounds(period), [period]);
@@ -319,7 +292,11 @@ export function SupportDashboardInsights() {
     boxShadow: "0 8px 24px rgba(15,23,42,0.08)",
   };
 
-  if (loading) return <p className="text-sm text-slate-500">Loading dashboard…</p>;
+  if (loading) {
+    return (
+      <DashboardInsightsSkeleton title="My queue" subtitle="Loading your queue…" />
+    );
+  }
   if (loadError) return <p className="text-sm text-red-600">{loadError}</p>;
 
   const dTotal     = deltaLabel(kpi.total, prevKpi?.total ?? null);
@@ -438,7 +415,7 @@ export function SupportDashboardInsights() {
                           <PriorityBadge priority={t.priority} />
                           <StatusBadge status={t.status} />
                           {t.isNew ? <NewBadge /> : null}
-                          <ProgressCircle value={t.progress} disabled size={32} />
+                          <ProgressCircle value={t.progress} disabled size={40} />
                           <time className="text-xs text-slate-500" dateTime={new Date(t.updatedAt).toISOString()}>
                             {formatRelativeTime(new Date(t.updatedAt))}
                           </time>

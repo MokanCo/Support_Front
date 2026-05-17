@@ -2,15 +2,24 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { clearAccessToken, getAccessToken } from "@/lib/access-token";
-import { fetchSessionMeOnce } from "@/lib/fetch-session-me";
+import { useQuery } from "@tanstack/react-query";
+import {
+  AUTH_TOKEN_CHANGED_EVENT,
+  clearAccessToken,
+  getAccessToken,
+} from "@/lib/access-token";
+import { sessionQueryOptions } from "@/lib/queries/session";
 import {
   SessionProvider,
   type SessionLocation,
   type SessionUser,
 } from "@/lib/session-context";
 import { DashboardShell } from "@/components/saas/DashboardShell";
+import { DashboardShellSkeleton } from "@/components/ui/skeleton";
 import { MessageInboxProvider } from "@/lib/message-inbox-context";
+import { ForcePasswordChangeModal } from "@/components/auth/force-password-change-modal";
+import { PartnerProductTour } from "@/components/onboarding/partner-product-tour";
+import { shouldShowPartnerTour } from "@/lib/partner-product-tour";
 
 export function DashboardAuthLayout({
   children,
@@ -18,52 +27,90 @@ export function DashboardAuthLayout({
   children: React.ReactNode;
 }) {
   const router = useRouter();
-  const [user, setUser] = useState<SessionUser | null>(null);
-  const [location, setLocation] = useState<SessionLocation>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [tokenChecked, setTokenChecked] = useState(false);
+  const [hasToken, setHasToken] = useState(false);
+  const [partnerTourOpen, setPartnerTourOpen] = useState(false);
 
-  const bootstrap = useCallback(async () => {
-    if (typeof window === "undefined") return;
-    if (!getAccessToken()) {
-      router.replace("/login");
-      setIsLoading(false);
-      return;
-    }
-
-    const data = await fetchSessionMeOnce();
-    if (!data) {
-      clearAccessToken();
-      router.replace("/login");
-      setUser(null);
-      setLocation(null);
-      setIsLoading(false);
-      return;
-    }
-
-    setUser(data.user);
-    setLocation(data.location ?? null);
-    setIsLoading(false);
-  }, [router]);
+  const syncTokenFromStorage = useCallback(() => {
+    const token = getAccessToken();
+    setHasToken(Boolean(token));
+    return token;
+  }, []);
 
   useEffect(() => {
-    void bootstrap();
-  }, [bootstrap]);
+    if (typeof window === "undefined") return;
+    if (!syncTokenFromStorage()) {
+      router.replace("/login");
+    }
+    setTokenChecked(true);
 
-  if (isLoading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-100 text-sm text-slate-500">
-        Loading…
-      </div>
-    );
+    const onAuthChange = () => {
+      if (!syncTokenFromStorage()) {
+        router.replace("/login");
+      }
+    };
+    window.addEventListener(AUTH_TOKEN_CHANGED_EVENT, onAuthChange);
+    window.addEventListener("storage", onAuthChange);
+    return () => {
+      window.removeEventListener(AUTH_TOKEN_CHANGED_EVENT, onAuthChange);
+      window.removeEventListener("storage", onAuthChange);
+    };
+  }, [router, syncTokenFromStorage]);
+
+  const sessionQuery = useQuery({
+    ...sessionQueryOptions,
+    enabled: tokenChecked && hasToken,
+  });
+
+  useEffect(() => {
+    if (!tokenChecked || !hasToken) return;
+    if (!sessionQuery.isFetched) return;
+    if (!sessionQuery.data) {
+      clearAccessToken();
+      router.replace("/login");
+    }
+  }, [tokenChecked, hasToken, sessionQuery.isFetched, sessionQuery.data, router]);
+
+  const sessionUser = sessionQuery.data?.user;
+  const sessionMustChangePassword = Boolean(sessionUser?.mustChangePassword);
+
+  useEffect(() => {
+    if (!sessionUser || sessionUser.role !== "partner" || sessionMustChangePassword) {
+      setPartnerTourOpen(false);
+      return;
+    }
+    if (!shouldShowPartnerTour(sessionUser.id)) return;
+    const timer = window.setTimeout(() => setPartnerTourOpen(true), 500);
+    return () => window.clearTimeout(timer);
+  }, [sessionUser?.id, sessionUser?.role, sessionMustChangePassword]);
+
+  if (!tokenChecked || (hasToken && sessionQuery.isPending)) {
+    return <DashboardShellSkeleton />;
   }
 
-  if (!user) {
+  const data = sessionQuery.data;
+  if (!hasToken || !data) {
     return null;
   }
+
+  const user: SessionUser = data.user;
+  const location: SessionLocation = data.location ?? null;
+
+  const mustChangePassword = Boolean(user.mustChangePassword);
+  const isPartner = user.role === "partner";
 
   return (
     <SessionProvider value={{ user, location, isLoading: false }}>
       <MessageInboxProvider>
+        <ForcePasswordChangeModal open={mustChangePassword} />
+        {isPartner ? (
+          <PartnerProductTour
+            open={partnerTourOpen && !mustChangePassword}
+            userId={user.id}
+            userName={user.name}
+            onComplete={() => setPartnerTourOpen(false)}
+          />
+        ) : null}
         <DashboardShell
           role={user.role}
           userName={user.name}

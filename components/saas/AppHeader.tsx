@@ -10,6 +10,7 @@ import {
   useMessageInbox,
   type MessageInboxItem,
 } from "@/lib/message-inbox-context";
+import { useAccessToken } from "@/lib/use-access-token";
 import { useStatusNotifications, type StatusNotificationRow } from "@/lib/use-status-notifications";
 
 const READ_STORAGE_KEY = "mokanco:bellReadKeys";
@@ -49,6 +50,30 @@ type MergedRow =
       message: MessageInboxItem;
     };
 
+type BellTab = "all" | "assigned" | "updates" | "messages";
+
+function isAssignmentNotification(s: StatusNotificationRow): boolean {
+  return s.kind === "ticket_assigned";
+}
+
+function statusToRows(items: StatusNotificationRow[]): MergedRow[] {
+  return items.map((s) => ({
+    kind: "status" as const,
+    readKey: `s:${s.id}`,
+    sortAt: new Date(s.createdAt || 0).getTime() || 0,
+    status: s,
+  }));
+}
+
+function messagesToRows(items: MessageInboxItem[]): MergedRow[] {
+  return items.map((m) => ({
+    kind: "message" as const,
+    readKey: `m:${m.ticketId}`,
+    sortAt: new Date(m.lastMessage.createdAt || 0).getTime() || 0,
+    message: m,
+  }));
+}
+
 export function AppHeader({
   name,
   email,
@@ -67,10 +92,11 @@ export function AppHeader({
   const pathname = usePathname();
   const router = useRouter();
   const title = titleForPath(pathname);
+  const accessToken = useAccessToken();
   const { items, headerUnreadCount, clearTicketNotification, clearAllMessageNotifications } =
     useMessageInbox();
   const { items: statusItems, load: loadStatus, dismissOne, dismissAll } =
-    useStatusNotifications(true);
+    useStatusNotifications(Boolean(accessToken));
 
   const [readKeys, setReadKeys] = useState<Set<string>>(() => new Set());
 
@@ -100,9 +126,21 @@ export function AppHeader({
   const userMenuRef = useRef<HTMLDivElement>(null);
 
   const [bellOpen, setBellOpen] = useState(false);
+  const [bellTab, setBellTab] = useState<BellTab>(() =>
+    role === "support" ? "assigned" : "all",
+  );
   const bellRef = useRef<HTMLDivElement>(null);
 
   const hideMessageBellSection = pathname.startsWith("/dashboard/conversations");
+
+  const assignmentStatus = useMemo(
+    () => statusItems.filter(isAssignmentNotification),
+    [statusItems],
+  );
+  const updateStatus = useMemo(
+    () => statusItems.filter((s) => !isAssignmentNotification(s)),
+    [statusItems],
+  );
 
   const messageDropdownItems = hideMessageBellSection
     ? []
@@ -111,18 +149,42 @@ export function AppHeader({
       : items.slice(0, 12);
 
   const mergedRows = useMemo((): MergedRow[] => {
-    const out: MergedRow[] = [];
-    for (const s of statusItems) {
-      const sortAt = new Date(s.createdAt || 0).getTime() || 0;
-      out.push({ kind: "status", readKey: `s:${s.id}`, sortAt, status: s });
-    }
-    for (const m of messageDropdownItems) {
-      const sortAt = new Date(m.lastMessage.createdAt || 0).getTime() || 0;
-      out.push({ kind: "message", readKey: `m:${m.ticketId}`, sortAt, message: m });
-    }
+    const out: MergedRow[] = [
+      ...statusToRows(statusItems),
+      ...messagesToRows(messageDropdownItems),
+    ];
     out.sort((a, b) => b.sortAt - a.sortAt);
     return out;
   }, [statusItems, messageDropdownItems]);
+
+  const visibleRows = useMemo((): MergedRow[] => {
+    let rows: MergedRow[];
+    if (bellTab === "assigned") rows = statusToRows(assignmentStatus);
+    else if (bellTab === "updates") rows = statusToRows(updateStatus);
+    else if (bellTab === "messages") rows = messagesToRows(messageDropdownItems);
+    else rows = mergedRows;
+    return [...rows].sort((a, b) => b.sortAt - a.sortAt);
+  }, [
+    bellTab,
+    assignmentStatus,
+    updateStatus,
+    messageDropdownItems,
+    mergedRows,
+  ]);
+
+  const unreadAssignedCount = useMemo(
+    () => assignmentStatus.filter((s) => !readKeys.has(`s:${s.id}`)).length,
+    [assignmentStatus, readKeys],
+  );
+
+  const unreadUpdatesCount = useMemo(
+    () => updateStatus.filter((s) => !readKeys.has(`s:${s.id}`)).length,
+    [updateStatus, readKeys],
+  );
+
+  const showAssignedTab = role === "support" || assignmentStatus.length > 0;
+  const showUpdatesTab = updateStatus.length > 0 || role !== "support";
+  const showMessagesTab = !hideMessageBellSection && messageDropdownItems.length > 0;
 
   const unreadStatusCount = useMemo(
     () => statusItems.filter((s) => !readKeys.has(`s:${s.id}`)).length,
@@ -147,15 +209,24 @@ export function AppHeader({
     if (bellOpen) void loadStatus();
   }, [bellOpen, loadStatus]);
 
+  const goToTicketDetail = useCallback(
+    (ticketId: string, opts?: { openChat?: boolean }) => {
+      const params = new URLSearchParams({ id: ticketId });
+      if (opts?.openChat) params.set("chat", "1");
+      router.push(`/dashboard/tickets/view?${params.toString()}`);
+    },
+    [router],
+  );
+
   const goToTicketFromBell = useCallback(
     (ticketId: string) => {
       if (role === "admin" || role === "support") {
         router.push(`/dashboard/conversations?ticket=${encodeURIComponent(ticketId)}`);
         return;
       }
-      router.push(`/dashboard/tickets/view?id=${encodeURIComponent(ticketId)}`);
+      goToTicketDetail(ticketId);
     },
-    [role, router]
+    [role, router, goToTicketDetail],
   );
 
   const onSelectInboxItem = useCallback(
@@ -180,9 +251,14 @@ export function AppHeader({
     (s: StatusNotificationRow) => {
       markRead(`s:${s.id}`);
       setBellOpen(false);
-      if (s.ticketId) goToTicketFromBell(s.ticketId);
+      if (!s.ticketId) return;
+      if (isAssignmentNotification(s) || s.kind === "ticket_completed") {
+        goToTicketDetail(s.ticketId);
+        return;
+      }
+      goToTicketFromBell(s.ticketId);
     },
-    [markRead, goToTicketFromBell]
+    [markRead, goToTicketDetail, goToTicketFromBell],
   );
 
   const onDismissStatus = useCallback(
@@ -213,7 +289,14 @@ export function AppHeader({
     if (entry.kind === "status") {
       const s = entry.status;
       const isNewTicket = s.kind === "ticket_created";
-      const label = isNewTicket ? "New ticket" : "Update";
+      const isAssigned = isAssignmentNotification(s);
+      const label = isAssigned
+        ? "Assigned to you"
+        : isNewTicket
+          ? "New ticket"
+          : s.kind === "ticket_completed"
+            ? "Completed"
+            : "Update";
       if (read) {
         return {
           muted: true,
@@ -222,9 +305,13 @@ export function AppHeader({
             "border-slate-100 bg-slate-50/95 opacity-[0.72] ring-0 shadow-sm hover:brightness-[0.98]",
         };
       }
-      const boxClass = isNewTicket
-        ? "border-sky-200/90 bg-sky-50/90 ring-2 ring-sky-200/50 ring-offset-1 ring-offset-white shadow-sm hover:brightness-[0.98]"
-        : "border-amber-200/90 bg-amber-50/90 ring-2 ring-amber-200/50 ring-offset-1 ring-offset-white shadow-sm hover:brightness-[0.98]";
+      const boxClass = isAssigned
+        ? "border-violet-200/90 bg-violet-50/90 ring-2 ring-violet-200/50 ring-offset-1 ring-offset-white shadow-sm hover:brightness-[0.98]"
+        : isNewTicket
+          ? "border-sky-200/90 bg-sky-50/90 ring-2 ring-sky-200/50 ring-offset-1 ring-offset-white shadow-sm hover:brightness-[0.98]"
+          : s.kind === "ticket_completed"
+            ? "border-emerald-200/90 bg-emerald-50/90 ring-2 ring-emerald-200/50 ring-offset-1 ring-offset-white shadow-sm hover:brightness-[0.98]"
+            : "border-amber-200/90 bg-amber-50/90 ring-2 ring-amber-200/50 ring-offset-1 ring-offset-white shadow-sm hover:brightness-[0.98]";
       return { muted: false, label, boxClass };
     }
     if (read) {
@@ -277,6 +364,7 @@ export function AppHeader({
           <button
             type="button"
             onClick={() => setBellOpen((o) => !o)}
+            data-tour={role === "partner" ? "partner-notifications" : undefined}
             className="relative inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
             aria-label={bellAria}
             aria-expanded={bellOpen}
@@ -309,15 +397,54 @@ export function AppHeader({
                 ) : null}
               </div>
 
-              {mergedRows.length === 0 ? (
+              <div
+                className="flex flex-wrap gap-1 px-3 pb-2"
+                role="tablist"
+                aria-label="Notification categories"
+              >
+                {showAssignedTab ? (
+                  <BellTabButton
+                    active={bellTab === "assigned"}
+                    label="Assigned"
+                    unread={unreadAssignedCount}
+                    onClick={() => setBellTab("assigned")}
+                  />
+                ) : null}
+                {showUpdatesTab ? (
+                  <BellTabButton
+                    active={bellTab === "updates"}
+                    label="Updates"
+                    unread={unreadUpdatesCount}
+                    onClick={() => setBellTab("updates")}
+                  />
+                ) : null}
+                {showMessagesTab ? (
+                  <BellTabButton
+                    active={bellTab === "messages"}
+                    label="Messages"
+                    unread={headerUnreadCount}
+                    onClick={() => setBellTab("messages")}
+                  />
+                ) : null}
+                <BellTabButton
+                  active={bellTab === "all"}
+                  label="All"
+                  unread={totalBellCount}
+                  onClick={() => setBellTab("all")}
+                />
+              </div>
+
+              {visibleRows.length === 0 ? (
                 <p className="px-3 py-4 text-sm text-slate-500">
-                  {hideMessageBellSection
-                    ? "Nothing new. Message alerts are hidden while you are on Messages."
-                    : "No notifications."}
+                  {bellTab === "assigned"
+                    ? "No ticket assignments yet."
+                    : bellTab === "messages" && hideMessageBellSection
+                      ? "Message alerts are hidden while you are on Messages."
+                      : "No notifications in this tab."}
                 </p>
               ) : (
                 <ul className="flex flex-col gap-2 px-3 pb-2">
-                  {mergedRows.map((entry) => {
+                  {visibleRows.map((entry) => {
                     const v = rowVisual(entry);
                     if (entry.kind === "status") {
                       const s = entry.status;
@@ -436,5 +563,42 @@ export function AppHeader({
         </div>
       </div>
     </header>
+  );
+}
+
+function BellTabButton({
+  active,
+  label,
+  unread,
+  onClick,
+}: {
+  active: boolean;
+  label: string;
+  unread: number;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      onClick={onClick}
+      className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition ${
+        active
+          ? "bg-primary-100 text-primary-800"
+          : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+      }`}
+    >
+      {label}
+      {unread > 0 ? (
+        <span
+          className={`inline-flex min-w-[1.125rem] items-center justify-center rounded-full px-1 text-[10px] font-bold tabular-nums ${
+            active ? "bg-primary-600 text-white" : "bg-red-500 text-white"
+          }`}
+        >
+          {unread > 99 ? "99+" : unread}
+        </span>
+      ) : null}
+    </button>
   );
 }
