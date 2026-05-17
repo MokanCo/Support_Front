@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Plus, ChevronDown, Settings, Eye, EyeOff, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
@@ -9,7 +10,14 @@ import { Modal } from "@/components/ui/modal";
 import { Select } from "@/components/ui/Select";
 import { apiFetch } from "@/lib/auth-fetch";
 import { useSession } from "@/lib/session-context";
-import { parseUsersListJson } from "@/lib/users-api";
+import {
+  boardsListQueryOptions,
+  fetchBoardBundle,
+  fetchBoardMembers,
+  fetchBoardStaffUsers,
+} from "@/lib/queries/boards";
+import { queryKeys } from "@/lib/query-keys";
+import { invalidateBoards } from "@/lib/queries/invalidate";
 import type {
   BoardBundle,
   BoardListItem,
@@ -17,6 +25,7 @@ import type {
   BoardTaskRow,
 } from "@/components/boards/board-types";
 import { KanbanBoard } from "@/components/boards/kanban-board";
+import { Skeleton, SkeletonKanbanBoard } from "@/components/ui/skeleton";
 import { TaskDetailDrawer } from "@/components/boards/task-detail-drawer";
 import { BOARD_TASK_CARD_COLOR_IDS, boardTaskCardAccent } from "@/lib/board-task-card-colors";
 
@@ -33,12 +42,8 @@ export function BoardsPageClient() {
   const router = useRouter();
   const pathname = usePathname();
 
-  const [boards, setBoards] = useState<BoardListItem[]>([]);
+  const queryClient = useQueryClient();
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [bundle, setBundle] = useState<BoardBundle | null>(null);
-  const [boardMembers, setBoardMembers] = useState<BoardMemberRow[]>([]);
-  const [loadingList, setLoadingList] = useState(true);
-  const [loadingBoard, setLoadingBoard] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [taskModalId, setTaskModalId] = useState<string | null>(null);
@@ -48,7 +53,6 @@ export function BoardsPageClient() {
   const [boardDesc, setBoardDesc] = useState("");
   const [boardUserIds, setBoardUserIds] = useState<string[]>([]);
   const [notifyUserIds, setNotifyUserIds] = useState<string[]>([]);
-  const [staffUsers, setStaffUsers] = useState<StaffUser[]>([]);
 
   const [newColName, setNewColName] = useState("");
   const [columnSettingsOpen, setColumnSettingsOpen] = useState(false);
@@ -59,50 +63,41 @@ export function BoardsPageClient() {
   const [taskColumnId, setTaskColumnId] = useState("");
   const [taskTicketId, setTaskTicketId] = useState("");
   const [taskAssignee, setTaskAssignee] = useState("");
-  const [taskPriority, setTaskPriority] = useState("medium");
+  const [taskPriority, setTaskPriority] = useState("p2");
   const [taskDeadline, setTaskDeadline] = useState("");
   const [taskCardColor, setTaskCardColor] = useState<string>("gray");
   const [taskProgress, setTaskProgress] = useState(0);
 
-  const loadBoards = useCallback(async () => {
-    setLoadingList(true);
-    setError(null);
-    try {
-      const res = await apiFetch("/api/boards");
-      const j = await res.json();
-      if (!res.ok) throw new Error(j.error ?? "Failed to load boards");
-      setBoards((j.boards as BoardListItem[]) ?? []);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed");
-    } finally {
-      setLoadingList(false);
-    }
-  }, []);
+  const boardsQuery = useQuery(boardsListQueryOptions);
+  const boards = boardsQuery.data ?? [];
+  const loadingList = boardsQuery.isPending && !boardsQuery.data;
 
-  const loadBundle = useCallback(async (boardId: string) => {
-    setLoadingBoard(true);
-    setError(null);
-    try {
-      const res = await apiFetch(`/api/boards/${encodeURIComponent(boardId)}`);
-      const j = await res.json();
-      if (!res.ok) throw new Error(j.error ?? "Failed to load board");
-      setBundle(j as BoardBundle);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed");
-      setBundle(null);
-    } finally {
-      setLoadingBoard(false);
-    }
-  }, []);
+  const bundleQuery = useQuery({
+    queryKey: queryKeys.boards.detail(selectedId ?? ""),
+    queryFn: () => fetchBoardBundle(selectedId!),
+    enabled: Boolean(selectedId),
+  });
+  const bundle = bundleQuery.data ?? null;
+  const loadingBoard = bundleQuery.isPending && Boolean(selectedId) && !bundleQuery.data;
 
-  useEffect(() => {
-    void loadBoards();
-  }, [loadBoards]);
+  const membersQuery = useQuery({
+    queryKey: queryKeys.boards.members(selectedId ?? ""),
+    queryFn: () => fetchBoardMembers(selectedId!),
+    enabled: Boolean(selectedId),
+  });
+  const boardMembers = membersQuery.data ?? [];
 
-  useEffect(() => {
-    if (selectedId) void loadBundle(selectedId);
-    else setBundle(null);
-  }, [selectedId, loadBundle]);
+  const staffUsersQuery = useQuery({
+    queryKey: queryKeys.boards.staffUsers(),
+    queryFn: fetchBoardStaffUsers,
+    enabled: createBoardOpen,
+  });
+  const staffUsers = (staffUsersQuery.data ?? []) as StaffUser[];
+
+  const refreshBoards = () => invalidateBoards(queryClient);
+
+  const refreshBundle = (boardId: string) =>
+    queryClient.invalidateQueries({ queryKey: queryKeys.boards.detail(boardId) });
 
   useEffect(() => {
     if (!selectedId) {
@@ -122,25 +117,6 @@ export function BoardsPageClient() {
     if (selectedId && boards.some((b) => b.id === selectedId)) return;
     setSelectedId(boards[0]?.id ?? null);
   }, [loadingList, boards, selectedId]);
-
-  useEffect(() => {
-    if (!selectedId) {
-      setBoardMembers([]);
-      return;
-    }
-    void (async () => {
-      try {
-        const res = await apiFetch(
-          `/api/board/members?boardId=${encodeURIComponent(selectedId)}`
-        );
-        const j = await res.json();
-        if (!res.ok) return;
-        setBoardMembers((j.members as BoardMemberRow[]) ?? []);
-      } catch {
-        setBoardMembers([]);
-      }
-    })();
-  }, [selectedId]);
 
   useEffect(() => {
     const t = searchParams.get("task");
@@ -179,29 +155,6 @@ export function BoardsPageClient() {
     const qs = q.toString();
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
   }, [pathname, router, searchParams]);
-
-  useEffect(() => {
-    if (!createBoardOpen || !isAdmin) return;
-    void (async () => {
-      try {
-        const res = await apiFetch("/api/users");
-        const j = await res.json();
-        if (!res.ok) return;
-        const raw = parseUsersListJson(j) as Record<string, unknown>[];
-        const mapped: StaffUser[] = raw
-          .filter((u) => u && (u.role === "admin" || u.role === "support"))
-          .map((u) => ({
-            id: String(u.id ?? u._id),
-            name: String(u.name ?? ""),
-            email: String(u.email ?? ""),
-            role: u.role as string | undefined,
-          }));
-        setStaffUsers(mapped);
-      } catch {
-        /* ignore */
-      }
-    })();
-  }, [createBoardOpen, isAdmin]);
 
   const sortedColumns = useMemo(() => {
     if (!bundle) return [];
@@ -264,7 +217,7 @@ export function BoardsPageClient() {
       setBoardDesc("");
       setBoardUserIds([]);
       setNotifyUserIds([]);
-      await loadBoards();
+      refreshBoards();
       if (j.id) setSelectedId(j.id as string);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed");
@@ -284,7 +237,7 @@ export function BoardsPageClient() {
       return;
     }
     setNewColName("");
-    await loadBundle(selectedId);
+    refreshBundle(selectedId);
   }
 
   async function deleteColumn(colId: string) {
@@ -301,7 +254,7 @@ export function BoardsPageClient() {
         persistHiddenCols(next);
         return next;
       });
-      await loadBundle(selectedId);
+      refreshBundle(selectedId);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Delete failed");
     }
@@ -335,11 +288,11 @@ export function BoardsPageClient() {
       setTaskDesc("");
       setTaskTicketId("");
       setTaskAssignee("");
-      setTaskPriority("medium");
+      setTaskPriority("p2");
       setTaskDeadline("");
       setTaskCardColor("gray");
       setTaskProgress(0);
-      await loadBundle(selectedId);
+      refreshBundle(selectedId);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed");
     }
@@ -356,7 +309,7 @@ export function BoardsPageClient() {
         <div className="flex flex-nowrap items-center justify-between gap-4">
           <div className="flex min-w-0 flex-1 items-center gap-2">
             {loadingList ? (
-              <span className="text-sm text-slate-400">Loading…</span>
+              <Skeleton className="h-8 w-40 max-w-full rounded-lg" />
             ) : boards.length === 0 ? (
               <span className="truncate text-lg font-semibold tracking-tight text-slate-900">
                 No boards
@@ -432,9 +385,7 @@ export function BoardsPageClient() {
             ) : null}
           </div>
         ) : null}
-        {selectedId && loadingBoard ? (
-          <p className="text-sm text-slate-500">Loading board…</p>
-        ) : null}
+        {selectedId && loadingBoard ? <SkeletonKanbanBoard columns={4} /> : null}
         {bundle && !loadingBoard ? (
           visibleColumns.length === 0 ? (
             <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-8 text-center text-sm text-amber-950">
@@ -445,7 +396,7 @@ export function BoardsPageClient() {
             <KanbanBoard
               columns={visibleColumns}
               tasks={bundle.tasks as BoardTaskRow[]}
-              onMoved={() => selectedId && void loadBundle(selectedId)}
+              onMoved={() => selectedId && refreshBundle(selectedId)}
               onOpenTask={openTask}
               canAddTask={isAdmin}
               onAddTask={(columnId) => {
@@ -461,7 +412,7 @@ export function BoardsPageClient() {
         taskId={taskModalId}
         open={Boolean(taskModalId)}
         onClose={closeTask}
-        onChanged={() => selectedId && void loadBundle(selectedId)}
+        onChanged={() => selectedId && refreshBundle(selectedId)}
         boardMembers={boardMembers}
         canEdit={canEditTasks}
       />
@@ -611,10 +562,11 @@ export function BoardsPageClient() {
             ))}
           </Select>
           <Select label="Priority" value={taskPriority} onChange={(e) => setTaskPriority(e.target.value)}>
-            <option value="low">Low</option>
-            <option value="medium">Medium</option>
-            <option value="high">High</option>
-            <option value="urgent">Urgent</option>
+            <option value="p0">P0</option>
+            <option value="p1">P1</option>
+            <option value="p2">P2</option>
+            <option value="p3">P3</option>
+            <option value="p4">P4</option>
           </Select>
           <div>
             <p className="text-sm font-medium text-slate-700">Card color</p>
@@ -632,17 +584,17 @@ export function BoardsPageClient() {
               ))}
             </div>
           </div>
-          <Input
-            label="Progress (%)"
-            type="number"
-            min={0}
-            max={100}
+          <Select
+            label="Progress"
             value={String(taskProgress)}
-            onChange={(e) => {
-              const n = Number(e.target.value);
-              setTaskProgress(Number.isFinite(n) ? Math.min(100, Math.max(0, Math.round(n))) : 0);
-            }}
-          />
+            onChange={(e) => setTaskProgress(Number(e.target.value))}
+          >
+            <option value="0">0%</option>
+            <option value="25">25%</option>
+            <option value="50">50%</option>
+            <option value="75">75%</option>
+            <option value="100">100%</option>
+          </Select>
           <Input
             label="Deadline"
             type="datetime-local"

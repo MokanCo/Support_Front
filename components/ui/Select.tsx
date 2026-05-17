@@ -14,7 +14,7 @@ export function Select({ label, id, error, className = "", children, ...props }:
       ) : null}
       <select
         id={selectId}
-        className={`block w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200 ${className}`}
+        className={`block w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm focus:border-primary-600 focus:outline-none focus:ring-2 focus:ring-primary-200 ${className}`}
         {...props}
       >
         {children}

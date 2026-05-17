@@ -1,14 +1,20 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { apiFetch } from "@/lib/auth-fetch";
+import {
+  fetchLocationsList,
+  locationListQueryKey,
+  type LocationRow,
+} from "@/lib/queries/locations";
+import { ORGANIZATIONS_LOCATIONS_FILTERS } from "@/lib/query-keys";
+import { invalidateLocations } from "@/lib/queries/invalidate";
 
-type Loc = {
-  id: string;
-  name: string;
+type Loc = LocationRow & {
   email: string;
   phone: string;
   address: string;
@@ -16,30 +22,18 @@ type Loc = {
 };
 
 export function OrganizationsPanel() {
-  const [locs, setLocs] = useState<Loc[]>([]);
+  const queryClient = useQueryClient();
   const [name, setName] = useState("");
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await apiFetch("/api/locations?pageSize=100&sort=createdAt&order=desc");
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Failed to load");
-      setLocs((data.locations ?? []) as Loc[]);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const locationsQuery = useQuery({
+    queryKey: locationListQueryKey(ORGANIZATIONS_LOCATIONS_FILTERS),
+    queryFn: () => fetchLocationsList(ORGANIZATIONS_LOCATIONS_FILTERS),
+  });
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  const locs = (locationsQuery.data?.locations ?? []) as Loc[];
+  const loading = locationsQuery.isPending && !locationsQuery.data;
 
   async function createLocation(e: React.FormEvent) {
     e.preventDefault();
@@ -54,7 +48,7 @@ export function OrganizationsPanel() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed to create");
       setName("");
-      setLocs((prev) => [data as Loc, ...prev]);
+      void invalidateLocations(queryClient);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to create");
     } finally {
@@ -90,7 +84,14 @@ export function OrganizationsPanel() {
         <CardHeader title="All locations" description="Newest first" />
         <CardBody className="p-0">
           {loading ? (
-            <p className="px-6 py-8 text-sm text-slate-500">Loading…</p>
+            <ul className="divide-y divide-slate-100">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <li key={i} className="flex animate-pulse items-center justify-between px-6 py-4">
+                  <span className="h-4 w-32 rounded-md bg-slate-200/70" />
+                  <span className="h-3 w-20 rounded-md bg-slate-200/70" />
+                </li>
+              ))}
+            </ul>
           ) : locs.length === 0 ? (
             <p className="px-6 py-8 text-sm text-slate-500">No locations yet.</p>
           ) : (

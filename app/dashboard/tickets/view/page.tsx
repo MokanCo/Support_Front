@@ -4,6 +4,7 @@ import { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { TicketDetailClient } from "@/components/tickets/ticket-detail-client";
+import { TicketDetailPageSkeleton } from "@/components/ui/skeleton";
 
 function TicketViewInner() {
   const sp = useSearchParams();
@@ -11,28 +12,22 @@ function TicketViewInner() {
 
   if (!id) {
     return (
-      <div className="mx-auto max-w-4xl p-6 text-sm text-slate-600">
+      <p className="text-sm text-slate-600">
         Missing ticket id.{" "}
         <Link href="/dashboard/tickets" className="text-primary-600 underline">
           Back to tickets
         </Link>
-      </div>
+      </p>
     );
   }
 
-  return (
-    <div className="mx-auto w-full max-w-7xl">
-      <TicketDetailClient ticketId={id} />
-    </div>
-  );
+  return <TicketDetailClient ticketId={id} />;
 }
 
 export default function TicketViewPage() {
   return (
     <Suspense
-      fallback={
-        <div className="mx-auto max-w-7xl p-6 text-sm text-slate-500">Loading…</div>
-      }
+      fallback={<TicketDetailPageSkeleton />}
     >
       <TicketViewInner />
     </Suspense>

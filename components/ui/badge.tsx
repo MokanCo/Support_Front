@@ -15,17 +15,19 @@ const statusLabel: Record<TicketStatus, string> = {
 };
 
 const priorityClass: Record<TicketPriority, string> = {
-  low: "bg-slate-100 text-slate-700 ring-slate-200/80",
-  medium: "bg-blue-50 text-blue-800 ring-blue-200/80",
-  high: "bg-orange-50 text-orange-800 ring-orange-200/80",
-  urgent: "bg-red-50 text-red-800 ring-red-200/80",
+  p0: "bg-red-50 text-red-800 ring-red-200/80",
+  p1: "bg-orange-50 text-orange-800 ring-orange-200/80",
+  p2: "bg-amber-50 text-amber-800 ring-amber-200/80",
+  p3: "bg-blue-50 text-blue-800 ring-blue-200/80",
+  p4: "bg-slate-100 text-slate-700 ring-slate-200/80",
 };
 
 const priorityLabel: Record<TicketPriority, string> = {
-  low: "Low",
-  medium: "Medium",
-  high: "High",
-  urgent: "Urgent",
+  p0: "P0",
+  p1: "P1",
+  p2: "P2",
+  p3: "P3",
+  p4: "P4",
 };
 
 export function StatusBadge({ status }: { status: TicketStatus }) {

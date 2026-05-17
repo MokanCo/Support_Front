@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   Bar,
   BarChart,
@@ -21,11 +22,11 @@ import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { StatusBadge, PriorityBadge, NewBadge } from "@/components/ui/badge";
 import { ProgressCircle } from "@/components/ui/progress-circle";
+import { DashboardInsightsSkeleton } from "@/components/ui/skeleton";
 import type { SerializedTicket } from "@/lib/serialize-ticket";
 import type { UserRole } from "@/lib/user-roles";
 import { USER_ROLES } from "@/lib/user-roles";
-import { apiFetch } from "@/lib/auth-fetch";
-import { parseUsersListJson } from "@/lib/users-api";
+import { adminDashboardQueryOptions } from "@/lib/queries/dashboard";
 
 type Loc = { id: string; name: string; createdAt: string };
 
@@ -248,54 +249,6 @@ function lastSevenSpark(dates: (Date | null)[]): { i: number; v: number }[] {
   return out;
 }
 
-async function fetchAllLocations(): Promise<Loc[]> {
-  const out: Loc[] = [];
-  let page = 1;
-  const pageSize = 100;
-  for (;;) {
-    const params = new URLSearchParams({
-      page: String(page),
-      pageSize: String(pageSize),
-      sort: "createdAt",
-      order: "asc",
-    });
-    const res = await apiFetch(`/api/locations?${params}`);
-    const data = (await res.json()) as {
-      locations?: Loc[];
-      totalPages?: number;
-      error?: string;
-    };
-    if (!res.ok) throw new Error(data.error ?? "Failed to load locations");
-    out.push(...(data.locations ?? []));
-    if (page >= (data.totalPages ?? 1)) break;
-    page += 1;
-  }
-  return out;
-}
-
-async function fetchTicketsCapped(): Promise<{ tickets: SerializedTicket[]; total: number; truncated: boolean }> {
-  const pageSize = 200;
-  const res1 = await apiFetch(
-    `/api/tickets?page=1&pageSize=${pageSize}&sort=createdAt&order=asc`
-  );
-  const j1 = (await res1.json()) as TicketListRes & { error?: string };
-  if (!res1.ok) throw new Error(j1.error ?? "Failed to load tickets");
-  const total = j1.total ?? 0;
-  const totalPages = Math.max(1, j1.totalPages ?? 1);
-  const out: SerializedTicket[] = [...(j1.tickets ?? [])];
-  let page = 2;
-  while (page <= totalPages && out.length < Math.min(total, MAX_TICKETS)) {
-    const res = await apiFetch(
-      `/api/tickets?page=${page}&pageSize=${pageSize}&sort=createdAt&order=asc`
-    );
-    const data = (await res.json()) as TicketListRes & { error?: string };
-    if (!res.ok) throw new Error(data.error ?? "Failed to load tickets");
-    out.push(...(data.tickets ?? []));
-    page += 1;
-  }
-  return { tickets: out, total, truncated: total > out.length };
-}
-
 function StatSparkCard({
   title,
   value,
@@ -344,47 +297,20 @@ function StatSparkCard({
 
 export function AdminDashboardInsights() {
   const [period, setPeriod] = useState<PeriodPreset>("all");
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [truncated, setTruncated] = useState(false);
+  const dashboardQuery = useQuery(adminDashboardQueryOptions);
 
-  const [users, setUsers] = useState<{ id: string; role: UserRole; createdAt: Date | null }[]>([]);
-  const [locations, setLocations] = useState<Loc[]>([]);
-  const [tickets, setTickets] = useState<SerializedTicket[]>([]);
-  const [ticketApiTotal, setTicketApiTotal] = useState(0);
+  const loading = dashboardQuery.isPending && !dashboardQuery.data;
+  const loadError = dashboardQuery.error
+    ? dashboardQuery.error instanceof Error
+      ? dashboardQuery.error.message
+      : "Failed to load"
+    : null;
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setLoadError(null);
-    try {
-      const [uRes, locs, pack] = await Promise.all([
-        apiFetch("/api/users"),
-        fetchAllLocations(),
-        fetchTicketsCapped(),
-      ]);
-      const uJson: unknown = await uRes.json();
-      if (!uRes.ok) throw new Error((uJson as { error?: string }).error ?? "Failed to load data");
-      const rawList = parseUsersListJson(uJson);
-      const parsed = rawList.map(parseUserRow).filter(Boolean) as {
-        id: string;
-        role: UserRole;
-        createdAt: Date | null;
-      }[];
-      setUsers(parsed);
-      setLocations(locs);
-      setTickets(pack.tickets);
-      setTicketApiTotal(pack.total);
-      setTruncated(pack.truncated);
-    } catch (e) {
-      setLoadError(e instanceof Error ? e.message : "Failed to load");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
+  const users = dashboardQuery.data?.users ?? [];
+  const locations = (dashboardQuery.data?.locations ?? []) as Loc[];
+  const tickets = dashboardQuery.data?.tickets ?? [];
+  const ticketApiTotal = dashboardQuery.data?.ticketApiTotal ?? 0;
+  const truncated = dashboardQuery.data?.truncated ?? false;
 
   const bounds = useMemo(() => getPeriodBounds(period), [period]);
   const compareBounds = useMemo(() => getComparisonBounds(period), [period]);
@@ -529,7 +455,12 @@ export function AdminDashboardInsights() {
   };
 
   if (loading) {
-    return <p className="text-sm text-slate-500">Loading dashboard…</p>;
+    return (
+      <DashboardInsightsSkeleton
+        title="Operations"
+        subtitle="Loading workspace…"
+      />
+    );
   }
 
   if (loadError) {
@@ -564,7 +495,7 @@ export function AdminDashboardInsights() {
               key={opt.id}
               type="button"
               variant={period === opt.id ? "primary" : "ghost"}
-              className="!rounded-lg !px-3 !py-2 !text-xs font-medium"
+              size="sm"
               onClick={() => setPeriod(opt.id)}
             >
               {opt.label}
@@ -596,24 +527,24 @@ export function AdminDashboardInsights() {
           spark={ticketSpark}
           stroke="#6366f1"
         />
-        <Card className="min-h-0 overflow-hidden border-0 bg-gradient-to-br from-primary-600 to-indigo-700 text-white shadow-lg">
+        <Card className="min-h-0 overflow-hidden border-0 bg-gradient-to-br from-primary-500 to-primary-700 text-white shadow-lg">
           <CardBody className="p-5">
             <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0 flex-1">
-                <p className="text-xs font-semibold uppercase tracking-wide text-indigo-100">Top closer</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-primary-100">Top closer</p>
                 {spotlightCloser.name ? (
                   <p className="mt-2 truncate text-lg font-semibold leading-tight sm:text-xl">
                     {spotlightCloser.name}
                   </p>
                 ) : (
-                  <p className="mt-2 text-sm text-indigo-200/90">No assignee data</p>
+                  <p className="mt-2 text-sm text-primary-200/90">No assignee data</p>
                 )}
               </div>
               <div className="shrink-0 border-t border-white/20 pt-4 text-left sm:border-l sm:border-t-0 sm:pl-6 sm:pt-0 sm:text-right">
                 <p className="text-3xl font-bold tabular-nums leading-none sm:text-4xl">
                   {spotlightCloser.tickets}
                 </p>
-                <p className="mt-1.5 text-[10px] font-medium uppercase tracking-wide text-indigo-100">
+                <p className="mt-1.5 text-[10px] font-medium uppercase tracking-wide text-primary-100">
                   Items closed
                 </p>
               </div>
@@ -660,25 +591,23 @@ export function AdminDashboardInsights() {
                         <span className="text-xs text-slate-400">·</span>
                         <span className="text-xs text-slate-500">{t.locationName ?? "—"}</span>
                       </div>
-                      <div className="flex max-w-[58%] shrink-0 flex-nowrap items-center justify-end gap-1.5 overflow-x-auto">
-                        <span className="whitespace-nowrap rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">
-                          {t.category}
-                        </span>
-                        <PriorityBadge priority={t.priority} />
-                        <StatusBadge status={t.status} />
-                        {t.isNew ? <NewBadge /> : null}
-                        <ProgressCircle value={t.progress} disabled size={32} />
-                        <Link
-                          href={`/dashboard/tickets/view?id=${encodeURIComponent(t.id)}`}
-                          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-primary-600"
-                          aria-label="View ticket"
-                        >
-                          <Eye className="h-4 w-4" />
-                        </Link>
-                      </div>
+                      <Link
+                        href={`/dashboard/tickets/view?id=${encodeURIComponent(t.id)}`}
+                        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-primary-600"
+                        aria-label="View ticket"
+                      >
+                        <Eye className="h-4 w-4" />
+                      </Link>
                     </div>
                     <p className="mt-0.5 line-clamp-2 text-sm leading-snug text-slate-600">{t.title}</p>
-                    <div className="mt-1 flex justify-end">
+                    <div className="mt-1 flex flex-wrap items-center justify-end gap-1.5">
+                      <span className="whitespace-nowrap rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">
+                        {t.category}
+                      </span>
+                      <PriorityBadge priority={t.priority} />
+                      <StatusBadge status={t.status} />
+                      {t.isNew ? <NewBadge /> : null}
+                      <ProgressCircle value={t.progress} disabled size={40} />
                       <time
                         className="text-xs text-slate-500"
                         dateTime={new Date(t.updatedAt).toISOString()}

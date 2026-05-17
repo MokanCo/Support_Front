@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { io, type Socket } from "socket.io-client";
 import { apiFetch } from "@/lib/auth-fetch";
+import { statusNotificationsQueryOptions } from "@/lib/queries/notifications";
 import { getAccessToken } from "@/lib/access-token";
 import { queryKeys } from "@/lib/query-keys";
 import { getSocketBaseUrl } from "@/lib/socket-url";
@@ -234,5 +235,5 @@ export function useStatusNotifications(enabled: boolean) {
 
   const count = useMemo(() => items.length, [items]);
 
-  return { items, loading, count, load, dismissOne, dismissAll };
+  return { items, loading, count, load: refetch, dismissOne, dismissAll };
 }

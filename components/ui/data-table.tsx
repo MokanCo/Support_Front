@@ -1,5 +1,7 @@
 "use client";
 
+import { SkeletonTableRows } from "@/components/ui/skeleton";
+
 export function DataTableToolbar({
   children,
   className = "",
@@ -67,7 +69,16 @@ type DataTableProps<T> = {
   emptyMessage?: string;
   /** When true, table fills a flex parent and scrolls inside it instead of using a fixed max-height. */
   fillHeight?: boolean;
+  /** Navigate or act when the row is clicked; clicks on links, buttons, inputs, etc. are ignored. */
+  onRowClick?: (row: T) => void;
 };
+
+function isRowClickFromInteractiveTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) return false;
+  return Boolean(
+    target.closest("a,button,input,select,textarea,label,[data-no-row-nav],[role='menu']"),
+  );
+}
 
 export function DataTable<T>({
   columns,
@@ -81,6 +92,7 @@ export function DataTable<T>({
   loading,
   emptyMessage = "No rows to display.",
   fillHeight = false,
+  onRowClick,
 }: DataTableProps<T>) {
   return (
     <div
@@ -121,14 +133,11 @@ export function DataTable<T>({
           </thead>
           <tbody className="divide-y divide-slate-100">
             {loading ? (
-              <tr>
-                <td
-                  colSpan={columns.length + (selectable ? 1 : 0)}
-                  className="px-4 py-12 text-center text-slate-500"
-                >
-                  Loading…
-                </td>
-              </tr>
+              <SkeletonTableRows
+                rows={8}
+                columns={columns.length}
+                selectable={selectable}
+              />
             ) : rows.length === 0 ? (
               <tr>
                 <td
@@ -144,7 +153,17 @@ export function DataTable<T>({
                 return (
                   <tr
                     key={id}
-                    className="transition-colors hover:bg-slate-50/90"
+                    className={`transition-colors hover:bg-slate-50/90 ${
+                      onRowClick ? "cursor-pointer" : ""
+                    }`}
+                    onClick={
+                      onRowClick
+                        ? (e) => {
+                            if (isRowClickFromInteractiveTarget(e.target)) return;
+                            onRowClick(row);
+                          }
+                        : undefined
+                    }
                   >
                     {selectable ? (
                       <td className="px-4 py-3">

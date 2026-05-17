@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createPortal } from "react-dom";
 import { MessageCircle, Send, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
@@ -11,18 +11,17 @@ import { TicketMessageBubble } from "@/components/messages/ticket-message-bubble
 import {
   type ClientMessageRow,
   parseCreatedMessageResponse,
-  parseMessagesListResponse,
 } from "@/lib/messages-client";
 import type { SupportChatHeaderModel } from "@/lib/support-chat-display";
 import { useMessageInbox } from "@/lib/message-inbox-context";
 import { useTicketSocket } from "@/lib/use-ticket-socket";
 import { queryKeys } from "@/lib/query-keys";
-
-type Summary = {
-  unreadCount: number;
-  preview: string;
-  hasUnread: boolean;
-};
+import {
+  fetchMessageSummary,
+  fetchTicketMessages,
+} from "@/lib/queries/conversations";
+import { requestSidebarCountsRefresh } from "@/lib/sidebar-counts-refresh";
+import { SkeletonMessageBubbles } from "@/components/ui/skeleton";
 
 export function TicketChatFab({
   ticketId,
@@ -35,26 +34,20 @@ export function TicketChatFab({
 }: {
   ticketId: string;
   viewerUserId: string;
-  /** Live ticket fields for support identity + presence in the slide-over header. */
   ticketHeader?: SupportChatHeaderModel | null;
-  /** Open chat panel when arriving from notification (?chat=1). */
   initialAutoOpen?: boolean;
-  /** Remove `chat` / `openChat` query params after opening (optional). */
   onStripOpenChatQuery?: () => void;
-  /** When true, the message composer is non-interactive (e.g. partner + completed ticket). */
   composerDisabled?: boolean;
-  /** Shown above the composer when `composerDisabled` is true. */
   composerDisabledMessage?: string;
 }) {
+  const queryClient = useQueryClient();
   const inbox = useMessageInbox();
   const inboxRef = useRef(inbox);
   inboxRef.current = inbox;
   const [open, setOpen] = useState(initialAutoOpen);
   const [portalReady, setPortalReady] = useState(false);
-  const [messages, setMessages] = useState<ClientMessageRow[]>([]);
   const [messageText, setMessageText] = useState("");
   const [sending, setSending] = useState(false);
-  const [loadingThread, setLoadingThread] = useState(false);
   const threadScrollRef = useRef<HTMLDivElement>(null);
   const messageTextRef = useRef(messageText);
   messageTextRef.current = messageText;
@@ -66,47 +59,42 @@ export function TicketChatFab({
     el.scrollTop = el.scrollHeight;
   }, []);
 
-  const { data: summary = null, refetch: refetchSummary } = useQuery({
+  const summaryQuery = useQuery({
     queryKey: queryKeys.messages.summary(ticketId),
-    queryFn: async () => {
-      const res = await apiFetch(
-        `/api/messages/summary?ticketId=${encodeURIComponent(ticketId)}`,
-      );
-      const data = await res.json();
-      if (!res.ok) return null;
-      return data as Summary;
-    },
+    queryFn: () => fetchMessageSummary(ticketId),
     enabled: Boolean(ticketId),
     staleTime: 60_000,
     refetchOnWindowFocus: false,
   });
 
-  const loadSummary = useCallback(async () => {
-    await refetchSummary();
-  }, [refetchSummary]);
+  const messagesQuery = useQuery({
+    queryKey: queryKeys.conversations.messages(ticketId),
+    queryFn: () => fetchTicketMessages(ticketId),
+    enabled: open && Boolean(ticketId),
+  });
 
-  const loadMessages = useCallback(async () => {
-    setLoadingThread(true);
-    try {
-      const res = await apiFetch(
-        `/api/messages?ticketId=${encodeURIComponent(ticketId)}`
+  const summary = summaryQuery.data ?? null;
+  const messages = messagesQuery.data ?? [];
+  const loadingThread = open && messagesQuery.isFetching && !messagesQuery.data;
+
+  const refreshChat = useCallback(() => {
+    void messagesQuery.refetch();
+    void summaryQuery.refetch();
+  }, [messagesQuery, summaryQuery]);
+
+  const onSocketMessage = useCallback(
+    (row: ClientMessageRow) => {
+      queryClient.setQueryData<ClientMessageRow[]>(
+        queryKeys.conversations.messages(ticketId),
+        (prev) => {
+          const list = prev ?? [];
+          return list.some((m) => m.id === row.id) ? list : [...list, row];
+        },
       );
-      const data: unknown = await res.json();
-      if (res.ok) setMessages(parseMessagesListResponse(data));
-    } catch {
-      /* ignore */
-    } finally {
-      setLoadingThread(false);
-    }
-  }, [ticketId]);
-
-  const loadSummaryRef = useRef(loadSummary);
-  loadSummaryRef.current = loadSummary;
-
-  const onSocketMessage = useCallback((row: ClientMessageRow) => {
-    setMessages((prev) => (prev.some((m) => m.id === row.id) ? prev : [...prev, row]));
-    void loadSummaryRef.current();
-  }, []);
+      void summaryQuery.refetch();
+    },
+    [queryClient, ticketId, summaryQuery],
+  );
 
   useTicketSocket(ticketId, open, onSocketMessage, { viewerUserId });
 
@@ -117,8 +105,8 @@ export function TicketChatFab({
   const liveBump = inbox.getLiveBump(ticketId);
   useEffect(() => {
     if (open) return;
-    void loadSummary();
-  }, [liveBump, open, loadSummary, ticketId]);
+    void summaryQuery.refetch();
+  }, [liveBump, open, summaryQuery, ticketId]);
 
   useEffect(() => {
     inboxRef.current.setFabOpenTicketId(open ? ticketId : null);
@@ -131,13 +119,15 @@ export function TicketChatFab({
     if (!open) return;
     inboxRef.current.clearTicketNotification(ticketId);
     onStripOpenChatQuery?.();
-    void loadMessages();
     void apiFetch("/api/messages/mark-read", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ticketId }),
-    }).then(() => void loadSummary());
-  }, [open, ticketId, loadMessages, loadSummary, onStripOpenChatQuery]);
+    }).then(() => {
+      void summaryQuery.refetch();
+      requestSidebarCountsRefresh();
+    });
+  }, [open, ticketId, onStripOpenChatQuery, summaryQuery]);
 
   useEffect(() => {
     if (!open) return;
@@ -175,17 +165,24 @@ export function TicketChatFab({
       if (!res.ok) throw new Error((data as { error?: string }).error ?? "Failed");
       const row = parseCreatedMessageResponse(data);
       if (row) {
-        setMessages((prev) => (prev.some((m) => m.id === row.id) ? prev : [...prev, row]));
+        queryClient.setQueryData<ClientMessageRow[]>(
+          queryKeys.conversations.messages(ticketId),
+          (prev) => {
+            const list = prev ?? [];
+            return list.some((m) => m.id === row.id) ? list : [...list, row];
+          },
+        );
       }
       setMessageText("");
-      void loadSummary();
+      void summaryQuery.refetch();
+      refreshChat();
     } catch {
       /* ignore */
     } finally {
       postInFlightRef.current = false;
       setSending(false);
     }
-  }, [ticketId, loadSummary, composerDisabled]);
+  }, [ticketId, queryClient, summaryQuery, refreshChat, composerDisabled]);
 
   async function sendMessage(e: React.FormEvent) {
     e.preventDefault();
@@ -199,7 +196,7 @@ export function TicketChatFab({
       e.preventDefault();
       void postMessage();
     },
-    [postMessage, composerDisabled]
+    [postMessage, composerDisabled],
   );
 
   const showPreview = Boolean(!open && summary?.hasUnread && summary.preview);
@@ -241,7 +238,7 @@ export function TicketChatFab({
             className="min-h-0 flex-1 space-y-3 overflow-y-auto overflow-x-hidden p-4"
           >
             {loadingThread ? (
-              <p className="text-center text-sm text-slate-500">Loading…</p>
+              <SkeletonMessageBubbles count={4} />
             ) : messages.length === 0 ? (
               <p className="text-center text-sm text-slate-500">No messages yet.</p>
             ) : (

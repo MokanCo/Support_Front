@@ -51,6 +51,7 @@ export function normalizeSessionMeResponse(raw: unknown): SessionMeResponse | nu
       email: String(usr.email ?? ""),
       role: roleRaw,
       organizationId,
+      mustChangePassword: Boolean(usr.mustChangePassword),
     },
     location: parseLocation(o.location),
   };

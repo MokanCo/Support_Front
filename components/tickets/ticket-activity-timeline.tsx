@@ -35,50 +35,62 @@ function formatWhen(iso: string): string {
   });
 }
 
-export function TicketActivityTimeline({ items }: { items: TicketActivityItem[] }) {
+export function TicketActivityTimeline({
+  items,
+  embedded,
+}: {
+  items: TicketActivityItem[];
+  /** When true, renders only the scrollable list (parent supplies Card + header). */
+  embedded?: boolean;
+}) {
+  const body =
+    items.length === 0 ? (
+      <p className="px-5 py-8 text-center text-sm text-slate-500">
+        No activity recorded yet. Changes you make will appear here.
+      </p>
+    ) : (
+      <div className="h-full overflow-y-auto overscroll-contain px-5 py-6">
+        <ul className="relative space-y-0">
+          {items.map((ev, i) => (
+            <li key={ev.id} className="relative flex gap-0 pb-8 last:pb-0">
+              {i < items.length - 1 ? (
+                <span
+                  className="absolute left-[0.6rem] top-3 bottom-0 w-px bg-slate-200"
+                  aria-hidden
+                />
+              ) : null}
+              <div className="relative z-[1] flex w-5 shrink-0 justify-center pt-1">
+                <span
+                  className={`h-2.5 w-2.5 shrink-0 rounded-full ring-4 ring-white ${kindAccent(ev.kind)}`}
+                  title={ev.kind}
+                />
+              </div>
+              <div className="min-w-0 flex-1 pl-3">
+                <time
+                  className="text-[11px] font-medium uppercase tracking-wide text-slate-400"
+                  dateTime={ev.at}
+                >
+                  {formatWhen(ev.at)}
+                </time>
+                <p className="mt-1 text-sm leading-snug text-slate-800">{ev.summary}</p>
+                <p className="mt-1 text-xs text-slate-500">
+                  <span className="font-medium text-slate-600">{ev.actorName}</span>
+                </p>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
+
+  if (embedded) {
+    return <div className="flex min-h-0 flex-1 flex-col">{body}</div>;
+  }
+
   return (
-    <Card className="overflow-hidden border-slate-200/80 shadow-sm">
+    <Card className="flex min-h-0 flex-1 flex-col overflow-hidden border-slate-200/80 shadow-sm">
       <CardHeader title="Activity" description="Who changed what on this ticket" />
-      <CardBody className="p-0">
-        {items.length === 0 ? (
-          <p className="px-5 py-8 text-center text-sm text-slate-500">
-            No activity recorded yet. Changes you make will appear here.
-          </p>
-        ) : (
-          <div className="max-h-[min(32rem,calc(100vh-10rem))] overflow-y-auto overscroll-contain px-5 py-6">
-            <ul className="relative space-y-0">
-              {items.map((ev, i) => (
-                <li key={ev.id} className="relative flex gap-0 pb-8 last:pb-0">
-                  {i < items.length - 1 ? (
-                    <span
-                      className="absolute left-[0.6rem] top-3 bottom-0 w-px bg-slate-200"
-                      aria-hidden
-                    />
-                  ) : null}
-                  <div className="relative z-[1] flex w-5 shrink-0 justify-center pt-1">
-                    <span
-                      className={`h-2.5 w-2.5 shrink-0 rounded-full ring-4 ring-white ${kindAccent(ev.kind)}`}
-                      title={ev.kind}
-                    />
-                  </div>
-                  <div className="min-w-0 flex-1 pl-3">
-                    <time
-                      className="text-[11px] font-medium uppercase tracking-wide text-slate-400"
-                      dateTime={ev.at}
-                    >
-                      {formatWhen(ev.at)}
-                    </time>
-                    <p className="mt-1 text-sm leading-snug text-slate-800">{ev.summary}</p>
-                    <p className="mt-1 text-xs text-slate-500">
-                      <span className="font-medium text-slate-600">{ev.actorName}</span>
-                    </p>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </CardBody>
+      <CardBody className="min-h-0 flex-1 p-0">{body}</CardBody>
     </Card>
   );
 }
