@@ -171,8 +171,8 @@ export function LocationDetailClient({
       void invalidateLocations(queryClient);
       void Swal.fire({
         icon: "success",
-        title: "User invited",
-        text: `An invite email with login credentials was sent to ${email}.`,
+        title: "User created",
+        text: `Account created for ${email}. Invite email is being sent in the background.`,
         timer: 4000,
         showConfirmButton: true,
       });
