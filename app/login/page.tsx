@@ -2,7 +2,9 @@
 
 import { Suspense, useEffect, useLayoutEffect, useState } from "react";
 import { LoginForm } from "./login-form";
+import { LoginWelcomeHeading } from "./login-welcome-heading";
 import { ContactForm } from "./contact-form";
+import { OnboardingWelcomeModal, OnboardingWizardSplit } from "./onboarding-wizard";
 import { BrandLogo } from "@/components/BrandLogo";
 import { Facebook, Instagram, Linkedin } from "lucide-react";
 
@@ -21,6 +23,25 @@ export default function LoginPage() {
   const [mode, setMode] = useState<"login" | "contact">("login");
   const [stage, setStage] = useState<Stage>("blank");
   const [reduceMotion, setReduceMotion] = useState(false);
+  const [onboardingPhase, setOnboardingPhase] = useState<null | "welcome" | "wizard">(null);
+  const [onboardingWizardKey, setOnboardingWizardKey] = useState(0);
+
+  function exitOnboarding() {
+    setOnboardingPhase(null);
+    setOnboardingWizardKey((k) => k + 1);
+  }
+
+  function beginOnboarding() {
+    setOnboardingPhase("welcome");
+  }
+
+  const onboardingWelcomeLayer =
+    onboardingPhase === "welcome" ? (
+      <OnboardingWelcomeModal
+        onStart={() => setOnboardingPhase("wizard")}
+        onClose={exitOnboarding}
+      />
+    ) : null;
 
   /** Skip blank/intro and animations below lg; align with Tailwind `lg` (1024px). */
   useLayoutEffect(() => {
@@ -78,12 +99,18 @@ export default function LoginPage() {
   return (
     <div className="relative flex min-h-dvh items-center justify-center overflow-y-auto overflow-x-hidden px-4 py-4 md:py-6">
       <div className="my-auto w-full max-w-5xl">
-        {stage === "blank" ? (
-          <div
-            className="mx-auto min-h-[min(560px,calc(100dvh-3rem))] w-full max-w-xl lg:w-[420px]"
-            aria-hidden
-          />
+        {onboardingPhase === "wizard" ? (
+          <OnboardingWizardSplit key={onboardingWizardKey} onClose={exitOnboarding} />
+        ) : stage === "blank" ? (
+          <>
+            <div
+              className="mx-auto min-h-[min(560px,calc(100dvh-3rem))] w-full max-w-xl lg:w-[420px]"
+              aria-hidden
+            />
+            {onboardingWelcomeLayer}
+          </>
         ) : (
+          <>
           <div
             className={`login-stage-wrap mx-auto flex w-full max-w-5xl flex-col gap-8 motion-reduce:opacity-100 ${
               stage === "intro"
@@ -193,12 +220,7 @@ export default function LoginPage() {
                             />
                           </div>
                           <div className="hidden lg:block">
-                            <h2 className="text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">
-                              Hello!
-                            </h2>
-                            <p className="mt-2 text-sm text-slate-500">
-                              Please sign in to access the portal.
-                            </p>
+                            <LoginWelcomeHeading />
                           </div>
                         </>
                       ) : (
@@ -219,7 +241,7 @@ export default function LoginPage() {
                           <div className="h-full overflow-y-auto">
                             {mode === "login" ? (
                               <div>
-                                <LoginForm />
+                                <LoginForm onOnboardNewLocation={beginOnboarding} />
                                 <p className="mt-6 text-sm text-slate-600">
                                   Facing issues with login?{" "}
                                   <button
@@ -244,6 +266,8 @@ export default function LoginPage() {
               </div>
             ) : null}
           </div>
+          {onboardingWelcomeLayer}
+          </>
         )}
       </div>
       <style jsx>{`

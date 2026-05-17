@@ -2,44 +2,39 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Search, Send } from "lucide-react";
 import { Card, CardBody } from "@/components/ui/Card";
+import { SkeletonInboxList, SkeletonMessageBubbles } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/Button";
 import { apiFetch } from "@/lib/auth-fetch";
 import { TicketMessageBubble } from "@/components/messages/ticket-message-bubble";
 import {
   type ClientMessageRow,
   parseCreatedMessageResponse,
-  parseMessagesListResponse,
 } from "@/lib/messages-client";
 import { useSession } from "@/lib/session-context";
 import { useTicketSocket } from "@/lib/use-ticket-socket";
-
-type InboxRow = {
-  ticketId: string;
-  title: string;
-  ticketCode: string | null;
-  locationName: string | null;
-  lastMessageAt: string;
-  lastMessagePreview: string;
-  lastSenderId: string;
-  unreadCount: number;
-};
+import { requestSidebarCountsRefresh } from "@/lib/sidebar-counts-refresh";
+import {
+  fetchTicketMessages,
+  inboxQueryOptions,
+  type InboxRow,
+} from "@/lib/queries/conversations";
+import { queryKeys } from "@/lib/query-keys";
+import { invalidateConversations } from "@/lib/queries/invalidate";
 
 export function AdminInboxClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user } = useSession();
-  const [rows, setRows] = useState<InboxRow[]>([]);
-  const [loadingList, setLoadingList] = useState(true);
+  const queryClient = useQueryClient();
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [messages, setMessages] = useState<ClientMessageRow[]>([]);
-  const [loadingThread, setLoadingThread] = useState(false);
   const [messageText, setMessageText] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [inboxQuery, setInboxQuery] = useState("");
+  const [inboxSearch, setInboxSearch] = useState("");
   const threadScrollRef = useRef<HTMLDivElement>(null);
 
   const scrollThreadToBottom = useCallback(() => {
@@ -48,10 +43,14 @@ export function AdminInboxClient() {
     el.scrollTop = el.scrollHeight;
   }, []);
 
+  const inboxListQuery = useQuery(inboxQueryOptions);
+  const rows = inboxListQuery.data ?? [];
+  const loadingList = inboxListQuery.isPending && !inboxListQuery.data;
+
   const filteredRows = useMemo(() => {
-    const q = inboxQuery.trim().toLowerCase();
+    const q = inboxSearch.trim().toLowerCase();
     if (!q) return rows;
-    return rows.filter((r) => {
+    return rows.filter((r: InboxRow) => {
       const hay = [
         r.title,
         r.ticketCode ?? "",
@@ -63,26 +62,20 @@ export function AdminInboxClient() {
         .toLowerCase();
       return hay.includes(q);
     });
-  }, [rows, inboxQuery]);
+  }, [rows, inboxSearch]);
 
-  const loadInbox = useCallback(async () => {
-    setLoadingList(true);
-    setError(null);
-    try {
-      const iRes = await apiFetch("/api/conversations/inbox");
-      const iJson = await iRes.json();
-      if (!iRes.ok) throw new Error(iJson.error ?? "Failed to load inbox");
-      setRows((iJson as { conversations: InboxRow[] }).conversations ?? []);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed");
-    } finally {
-      setLoadingList(false);
-    }
-  }, []);
+  const messagesQuery = useQuery({
+    queryKey: queryKeys.conversations.messages(selectedId ?? ""),
+    queryFn: () => fetchTicketMessages(selectedId!),
+    enabled: Boolean(selectedId),
+  });
 
-  useEffect(() => {
-    void loadInbox();
-  }, [loadInbox]);
+  const messages = messagesQuery.data ?? [];
+  const loadingThread = messagesQuery.isPending && Boolean(selectedId) && !messagesQuery.data;
+
+  const refreshInbox = useCallback(() => {
+    void invalidateConversations(queryClient);
+  }, [queryClient]);
 
   useEffect(() => {
     const tid = searchParams.get("ticket")?.trim();
@@ -91,56 +84,43 @@ export function AdminInboxClient() {
     router.replace("/dashboard/conversations", { scroll: false });
   }, [searchParams, router]);
 
-  const loadThread = useCallback(async (ticketId: string) => {
-    setLoadingThread(true);
-    setError(null);
-    try {
-      const res = await apiFetch(
-        `/api/messages?ticketId=${encodeURIComponent(ticketId)}`
+  const onSocketMessage = useCallback(
+    (row: ClientMessageRow) => {
+      if (!selectedId) return;
+      queryClient.setQueryData<ClientMessageRow[]>(
+        queryKeys.conversations.messages(selectedId),
+        (prev) => {
+          const list = prev ?? [];
+          return list.some((m) => m.id === row.id) ? list : [...list, row];
+        },
       );
-      const data: unknown = await res.json();
-      if (!res.ok) throw new Error((data as { error?: string }).error ?? "Failed");
-      setMessages(parseMessagesListResponse(data));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed");
-    } finally {
-      setLoadingThread(false);
-    }
-  }, []);
-
-  const loadInboxRef = useRef(loadInbox);
-  loadInboxRef.current = loadInbox;
-
-  const onSocketMessage = useCallback((row: ClientMessageRow) => {
-    setMessages((prev) => (prev.some((m) => m.id === row.id) ? prev : [...prev, row]));
-    void loadInboxRef.current();
-  }, []);
+      void refreshInbox();
+      requestSidebarCountsRefresh();
+    },
+    [selectedId, queryClient, refreshInbox],
+  );
 
   useTicketSocket(selectedId, Boolean(selectedId), onSocketMessage, {
     viewerUserId: user.id,
   });
 
   useEffect(() => {
-    if (!selectedId) {
-      setMessages([]);
-      return;
-    }
+    if (!selectedId) return;
     let cancelled = false;
     void (async () => {
-      await loadThread(selectedId);
-      if (cancelled) return;
       await apiFetch("/api/messages/mark-read", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ticketId: selectedId }),
       });
       if (cancelled) return;
-      void loadInbox();
+      refreshInbox();
+      requestSidebarCountsRefresh();
     })();
     return () => {
       cancelled = true;
     };
-  }, [selectedId, loadThread, loadInbox]);
+  }, [selectedId, refreshInbox]);
 
   const messageTextRef = useRef(messageText);
   messageTextRef.current = messageText;
@@ -160,16 +140,23 @@ export function AdminInboxClient() {
       if (!res.ok) throw new Error((data as { error?: string }).error ?? "Failed");
       const row = parseCreatedMessageResponse(data);
       if (row) {
-        setMessages((prev) => (prev.some((m) => m.id === row.id) ? prev : [...prev, row]));
+        queryClient.setQueryData<ClientMessageRow[]>(
+          queryKeys.conversations.messages(selectedId),
+          (prev) => {
+            const list = prev ?? [];
+            return list.some((m) => m.id === row.id) ? list : [...list, row];
+          },
+        );
       }
       setMessageText("");
-      void loadInbox();
+      refreshInbox();
+      requestSidebarCountsRefresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed");
     } finally {
       setSending(false);
     }
-  }, [selectedId, loadInbox]);
+  }, [selectedId, queryClient, refreshInbox]);
 
   async function onSubmitReply(e: React.FormEvent) {
     e.preventDefault();
@@ -234,8 +221,8 @@ export function AdminInboxClient() {
               />
               <input
                 type="search"
-                value={inboxQuery}
-                onChange={(e) => setInboxQuery(e.target.value)}
+                value={inboxSearch}
+                onChange={(e) => setInboxSearch(e.target.value)}
                 placeholder="Search…"
                 className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
               />
@@ -243,7 +230,7 @@ export function AdminInboxClient() {
           </div>
           <CardBody className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-0">
             {loadingList ? (
-              <p className="px-4 py-8 text-sm text-slate-500">Loading…</p>
+              <SkeletonInboxList rows={6} />
             ) : rows.length === 0 ? (
               <p className="px-4 py-8 text-sm text-slate-500">No conversations yet.</p>
             ) : filteredRows.length === 0 ? (
@@ -321,7 +308,7 @@ export function AdminInboxClient() {
                 >
                   <div className="space-y-3 rounded-2xl border border-slate-100 bg-slate-50/80 p-3">
                     {loadingThread ? (
-                      <p className="text-center text-sm text-slate-500">Loading…</p>
+                      <SkeletonMessageBubbles count={4} />
                     ) : messages.length === 0 ? (
                       <p className="text-center text-sm text-slate-500">No messages yet.</p>
                     ) : (

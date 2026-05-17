@@ -1,13 +1,26 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Check, Eye, EyeOff, Loader2, Trash2, X } from "lucide-react";
+import Swal from "sweetalert2";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Button } from "@/components/ui/Button";
+import { DataTable, DataTableBulkBar } from "@/components/ui/data-table";
+import type { DataColumn } from "@/components/ui/data-table";
+import { RowActionsMenu } from "@/components/ui/row-actions-menu";
 import type { UserRole } from "@/lib/user-roles";
 import { apiFetch } from "@/lib/auth-fetch";
 import { parseUsersListJson, unwrapUserResponse } from "@/lib/users-api";
+import { usersListQueryOptions } from "@/lib/queries/users";
+import {
+  fetchLocationsList,
+  locationListQueryKey,
+} from "@/lib/queries/locations";
+import { USERS_PANEL_LOCATIONS_FILTERS } from "@/lib/query-keys";
+import { invalidateUsers } from "@/lib/queries/invalidate";
 
 type Loc = { id: string; name: string };
 type UserRow = {
@@ -17,65 +30,113 @@ type UserRow = {
   role: UserRole;
   locationId: string;
   locationName: string | null;
+  isDisabled: boolean;
   createdAt: string;
 };
 
+function mapUser(u: Record<string, unknown>, locs: Loc[]): UserRow {
+  const locId = u.locationId != null ? String(u.locationId) : "";
+  return {
+    id: String(u.id ?? ""),
+    name: String(u.name ?? ""),
+    email: String(u.email ?? ""),
+    role: (u.role as UserRole) ?? "partner",
+    locationId: locId,
+    locationName: locs.find((l) => l.id === locId)?.name ?? null,
+    isDisabled: Boolean(u.isDisabled),
+    createdAt: String(u.createdAt ?? ""),
+  };
+}
+
 export function UsersPanel() {
-  const [locs, setLocs] = useState<Loc[]>([]);
-  const [users, setUsers] = useState<UserRow[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showCreatePwd, setShowCreatePwd] = useState(false);
   const [role, setRole] = useState<UserRole>("partner");
   const [locationId, setLocationId] = useState("");
   const [creating, setCreating] = useState(false);
 
-  const [editUser, setEditUser] = useState<UserRow | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editEmail, setEditEmail] = useState("");
   const [editRole, setEditRole] = useState<UserRole>("partner");
   const [editLoc, setEditLoc] = useState("");
+  const [editPassword, setEditPassword] = useState("");
+  const [editPwdVisible, setEditPwdVisible] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const [lRes, uRes] = await Promise.all([
-        apiFetch("/api/locations?pageSize=100&sort=name&order=asc"),
-        apiFetch("/api/users"),
-      ]);
-      const lData = await lRes.json();
-      const uData: unknown = await uRes.json();
-      if (!lRes.ok) throw new Error(lData.error ?? "Failed locations");
-      if (!uRes.ok) throw new Error((uData as { error?: string }).error ?? "Failed users");
-      const list = (lData.locations ?? []) as {
-        id: string;
-        name: string;
-      }[];
-      setLocs(list.map((l) => ({ id: l.id, name: l.name })));
-      const userRows = parseUsersListJson(uData) as UserRow[];
-      setUsers(
-        userRows.map((u) => ({
-          ...u,
-          locationName: u.locationName ?? null,
-        }))
-      );
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const [selected, setSelected] = useState<Set<string>>(() => new Set());
+
+  const locsQuery = useQuery({
+    queryKey: locationListQueryKey(USERS_PANEL_LOCATIONS_FILTERS),
+    queryFn: () => fetchLocationsList(USERS_PANEL_LOCATIONS_FILTERS),
+  });
+
+  const usersQuery = useQuery(usersListQueryOptions);
+
+  const locs = useMemo(
+    () =>
+      (locsQuery.data?.locations ?? []).map((l) => ({ id: l.id, name: l.name })),
+    [locsQuery.data],
+  );
+
+  const users = useMemo(() => {
+    const raw = (usersQuery.data ?? []) as Record<string, unknown>[];
+    return raw.map((u) => mapUser(u, locs));
+  }, [usersQuery.data, locs]);
+
+  const loading =
+    (locsQuery.isPending && !locsQuery.data) ||
+    (usersQuery.isPending && !usersQuery.data);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    const err = locsQuery.error ?? usersQuery.error;
+    if (err) {
+      setError(err instanceof Error ? err.message : "Failed to load");
+    } else {
+      setError(null);
+    }
+  }, [locsQuery.error, usersQuery.error]);
+
+  const refreshUsers = () => invalidateUsers(queryClient);
 
   useEffect(() => {
     if (!locationId && locs[0]?.id) setLocationId(locs[0].id);
   }, [locs, locationId]);
+
+  const allSelected = useMemo(() => {
+    if (users.length === 0) return false;
+    return users.every((r) => selected.has(r.id));
+  }, [users, selected]);
+
+  function toggleAll() {
+    if (allSelected) {
+      setSelected((prev) => {
+        const n = new Set(prev);
+        for (const r of users) n.delete(r.id);
+        return n;
+      });
+    } else {
+      setSelected((prev) => {
+        const n = new Set(prev);
+        for (const r of users) n.add(r.id);
+        return n;
+      });
+    }
+  }
+
+  function toggleOne(id: string) {
+    setSelected((prev) => {
+      const n = new Set(prev);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
+  }
 
   async function createUser(e: React.FormEvent) {
     e.preventDefault();
@@ -94,22 +155,15 @@ export function UsersPanel() {
         }),
       });
       const data: unknown = await res.json();
-      if (!res.ok) throw new Error((data as { error?: string }).error ?? "Failed to create user");
+      if (!res.ok) {
+        const msg = (data as { error?: string }).error ?? "Failed to create user";
+        throw new Error(
+          res.status === 409 ? "This email already exists with another user." : msg,
+        );
+      }
       const created = unwrapUserResponse(data);
       if (!created?.id) throw new Error("Invalid create response");
-      const locId = created.locationId != null ? String(created.locationId) : "";
-      setUsers((prev) => [
-        {
-          id: String(created.id),
-          name: String(created.name ?? ""),
-          email: String(created.email ?? ""),
-          role: created.role as UserRole,
-          locationId: locId,
-          locationName: locs.find((l) => l.id === locId)?.name ?? null,
-          createdAt: String(created.createdAt ?? new Date().toISOString()),
-        },
-        ...prev,
-      ]);
+      void refreshUsers();
       setName("");
       setEmail("");
       setPassword("");
@@ -120,47 +174,340 @@ export function UsersPanel() {
     }
   }
 
-  function openEdit(u: UserRow) {
-    setEditUser(u);
+  const startEdit = useCallback((u: UserRow) => {
+    setEditingId(u.id);
+    setEditName(u.name);
+    setEditEmail(u.email);
     setEditRole(u.role);
     setEditLoc(u.locationId);
-  }
+    setEditPassword("");
+    setEditPwdVisible(false);
+    setSelected(new Set());
+  }, []);
 
-  async function saveEdit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!editUser) return;
-    setSavingEdit(true);
+  const cancelEdit = useCallback(() => {
+    setEditingId(null);
+    setEditPassword("");
+    setEditPwdVisible(false);
+  }, []);
+
+  const saveInline = useCallback(
+    async (u: UserRow) => {
+      const pwd = editPassword.trim();
+      if (pwd.length > 0 && pwd.length < 8) {
+        setError("New password must be at least 8 characters, or leave the password field empty.");
+        return;
+      }
+      setSavingEdit(true);
+      setError(null);
+      try {
+        const body: Record<string, unknown> = {
+          name: editName.trim(),
+          email: editEmail.trim(),
+          role: editRole,
+          locationId: editLoc,
+        };
+        if (pwd.length > 0) body.password = pwd;
+        const res = await apiFetch(`/api/users/${u.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const data: unknown = await res.json();
+        if (!res.ok) throw new Error((data as { error?: string }).error ?? "Failed to update");
+        const updated = unwrapUserResponse(data);
+        if (!updated) throw new Error("Invalid update response");
+        void refreshUsers();
+        setEditingId(null);
+        setEditPassword("");
+        setEditPwdVisible(false);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Failed to update");
+      } finally {
+        setSavingEdit(false);
+      }
+    },
+    [editName, editEmail, editRole, editLoc, editPassword, locs],
+  );
+
+  const toggleDisabled = useCallback(async (u: UserRow) => {
     setError(null);
     try {
-      const res = await apiFetch(`/api/users/${editUser.id}`, {
+      const res = await apiFetch(`/api/users/${u.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ role: editRole, locationId: editLoc }),
+        body: JSON.stringify({ isDisabled: !u.isDisabled }),
       });
       const data: unknown = await res.json();
       if (!res.ok) throw new Error((data as { error?: string }).error ?? "Failed to update");
       const updated = unwrapUserResponse(data);
       if (!updated) throw new Error("Invalid update response");
-      const newLocId = updated.locationId != null ? String(updated.locationId) : "";
-      setUsers((prev) =>
-        prev.map((u) =>
-          u.id === editUser.id
-            ? {
-                ...u,
-                role: (updated.role as UserRole) ?? u.role,
-                locationId: newLocId,
-                locationName: locs.find((l) => l.id === newLocId)?.name ?? null,
-              }
-            : u
-        )
-      );
-      setEditUser(null);
+      void refreshUsers();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to update");
-    } finally {
-      setSavingEdit(false);
     }
-  }
+  }, [locs, refreshUsers]);
+
+  const confirmDelete = useCallback(
+    async (u: UserRow) => {
+      const r = await Swal.fire({
+        title: "Delete user?",
+        html: `Permanently remove <strong>${u.email}</strong>? This cannot be undone if the account is not linked to tickets.`,
+        icon: "warning",
+        showCancelButton: true,
+        confirmButtonText: "Delete",
+        confirmButtonColor: "#dc2626",
+      });
+      if (!r.isConfirmed) return;
+      setError(null);
+      try {
+        const res = await apiFetch(`/api/users/${u.id}`, { method: "DELETE" });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? "Delete failed");
+        void refreshUsers();
+        setSelected((prev) => {
+          const n = new Set(prev);
+          n.delete(u.id);
+          return n;
+        });
+      } catch (e) {
+        void Swal.fire({
+          icon: "error",
+          title: "Could not delete",
+          text: e instanceof Error ? e.message : "Delete failed",
+        });
+      }
+    },
+    [refreshUsers],
+  );
+
+  const bulkDeleteUsers = useCallback(async () => {
+    if (selected.size === 0) return;
+    const r = await Swal.fire({
+      title: "Delete users?",
+      text: `${selected.size} user account(s) will be removed when the server allows it.`,
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Delete",
+      confirmButtonColor: "#dc2626",
+    });
+    if (!r.isConfirmed) return;
+    setError(null);
+    const ids = [...selected];
+    try {
+      await Promise.all(
+        ids.map(async (id) => {
+          const res = await apiFetch(`/api/users/${id}`, { method: "DELETE" });
+          const data = await res.json();
+          if (!res.ok) throw new Error((data as { error?: string }).error ?? `Failed for ${id}`);
+        }),
+      );
+      setSelected(new Set());
+      if (editingId && ids.includes(editingId)) cancelEdit();
+      void refreshUsers();
+    } catch (e) {
+      void Swal.fire({
+        icon: "error",
+        title: "Bulk delete incomplete",
+        text: e instanceof Error ? e.message : "Delete failed",
+      });
+      void refreshUsers();
+    }
+  }, [selected, refreshUsers, editingId, cancelEdit]);
+
+  const columns: DataColumn<UserRow>[] = useMemo(
+    () => [
+      {
+        id: "name",
+        header: "Name",
+        cell: (u) =>
+          editingId === u.id ? (
+            <input
+              aria-label="Name"
+              className="w-full min-w-[7rem] rounded-lg border border-slate-200 px-2 py-1.5 text-sm"
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+            />
+          ) : (
+            <span className="font-medium text-slate-900">{u.name}</span>
+          ),
+      },
+      {
+        id: "email",
+        header: "Email",
+        cell: (u) =>
+          editingId === u.id ? (
+            <input
+              aria-label="Email"
+              type="email"
+              className="w-full min-w-[9rem] rounded-lg border border-slate-200 px-2 py-1.5 text-sm"
+              value={editEmail}
+              onChange={(e) => setEditEmail(e.target.value)}
+            />
+          ) : (
+            <span className="text-slate-700">{u.email}</span>
+          ),
+      },
+      {
+        id: "role",
+        header: "Role",
+        cell: (u) =>
+          editingId === u.id ? (
+            <select
+              aria-label="Role"
+              className="w-full min-w-[6rem] rounded-lg border border-slate-200 px-2 py-1.5 text-sm capitalize"
+              value={editRole}
+              onChange={(e) => setEditRole(e.target.value as UserRole)}
+            >
+              <option value="admin">admin</option>
+              <option value="support">support</option>
+              <option value="partner">partner</option>
+            </select>
+          ) : (
+            <span className="capitalize text-slate-700">{u.role}</span>
+          ),
+      },
+      {
+        id: "location",
+        header: "Location",
+        cell: (u) =>
+          editingId === u.id ? (
+            <select
+              aria-label="Location"
+              className="w-full min-w-[8rem] rounded-lg border border-slate-200 px-2 py-1.5 text-sm"
+              value={editLoc}
+              onChange={(e) => setEditLoc(e.target.value)}
+            >
+              {locs.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.name}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <span className="text-slate-700">{u.locationName ?? "—"}</span>
+          ),
+      },
+      {
+        id: "password",
+        header: "Password",
+        cell: (u) =>
+          editingId === u.id ? (
+            <div className="min-w-[11rem]">
+              <div className="relative">
+                <input
+                  aria-label="New password (optional)"
+                  type={editPwdVisible ? "text" : "password"}
+                  autoComplete="new-password"
+                  value={editPassword}
+                  onChange={(e) => setEditPassword(e.target.value)}
+                  placeholder="Optional · min 8 chars"
+                  className="w-full rounded-lg border border-slate-200 py-1.5 pl-2 pr-9 text-sm placeholder:text-slate-400"
+                />
+                <button
+                  type="button"
+                  className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-1 text-slate-500 hover:bg-slate-100"
+                  aria-label={editPwdVisible ? "Hide password" : "Show password"}
+                  onClick={() => setEditPwdVisible((v) => !v)}
+                >
+                  {editPwdVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+              <p className="mt-0.5 text-[10px] text-slate-400">Empty keeps current password</p>
+            </div>
+          ) : (
+            <span
+              className="text-xs text-slate-600"
+              title="Saved passwords are stored as a one-way hash only. The API never returns the real password—use Edit to set a new one."
+            >
+              Not retrievable
+            </span>
+          ),
+      },
+      {
+        id: "status",
+        header: "Status",
+        cell: (u) => (
+          <span
+            className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+              u.isDisabled
+                ? "bg-red-50 text-red-700 ring-1 ring-red-100"
+                : "bg-emerald-50 text-emerald-800 ring-1 ring-emerald-100"
+            }`}
+          >
+            {u.isDisabled ? "Disabled" : "Active"}
+          </span>
+        ),
+      },
+      {
+        id: "actions",
+        header: <span className="sr-only">Actions</span>,
+        cell: (u) =>
+          editingId === u.id ? (
+            <div className="flex items-center justify-end gap-1.5">
+              <Button
+                type="button"
+                size="sm"
+                disabled={savingEdit}
+                onClick={() => void saveInline(u)}
+                className="px-2.5"
+                aria-label={savingEdit ? "Saving changes" : "Save changes"}
+              >
+                {savingEdit ? (
+                  <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
+                ) : (
+                  <Check className="h-4 w-4 shrink-0" aria-hidden />
+                )}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="px-2.5"
+                onClick={cancelEdit}
+                aria-label="Cancel editing"
+              >
+                <X className="h-4 w-4 shrink-0" aria-hidden />
+              </Button>
+            </div>
+          ) : (
+            <RowActionsMenu
+              aria-label="User actions"
+              items={[
+                { id: "edit", label: "Edit", onClick: () => startEdit(u) },
+                {
+                  id: "toggle",
+                  label: u.isDisabled ? "Enable" : "Disable",
+                  onClick: () => void toggleDisabled(u),
+                },
+                {
+                  id: "delete",
+                  label: "Delete",
+                  danger: true,
+                  onClick: () => void confirmDelete(u),
+                },
+              ]}
+            />
+          ),
+      },
+    ],
+    [
+      editingId,
+      editName,
+      editEmail,
+      editRole,
+      editLoc,
+      editPassword,
+      editPwdVisible,
+      locs,
+      savingEdit,
+      startEdit,
+      cancelEdit,
+      saveInline,
+      toggleDisabled,
+      confirmDelete,
+    ],
+  );
 
   return (
     <div className="space-y-6">
@@ -176,14 +523,24 @@ export function UsersPanel() {
               onChange={(e) => setEmail(e.target.value)}
               required
             />
-            <Input
-              label="Password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              minLength={8}
-            />
+            <div className="relative sm:col-span-2 sm:max-w-md">
+              <Input
+                label="Password"
+                type={showCreatePwd ? "text" : "password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                minLength={8}
+              />
+              <button
+                type="button"
+                className="absolute right-0 top-7 z-10 rounded p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+                aria-label={showCreatePwd ? "Hide password" : "Show password"}
+                onClick={() => setShowCreatePwd((v) => !v)}
+              >
+                {showCreatePwd ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
             <Select
               label="Role"
               value={role}
@@ -219,88 +576,34 @@ export function UsersPanel() {
 
       <Card>
         <CardHeader title="All users" />
-        <CardBody className="p-0">
-          {loading ? (
-            <p className="px-6 py-8 text-sm text-slate-500">Loading…</p>
-          ) : users.length === 0 ? (
-            <p className="px-6 py-8 text-sm text-slate-500">No users yet.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-left text-sm">
-                <thead className="border-b border-slate-100 bg-slate-50/80 text-xs font-medium uppercase tracking-wide text-slate-500">
-                  <tr>
-                    <th className="px-6 py-3">Name</th>
-                    <th className="px-6 py-3">Email</th>
-                    <th className="px-6 py-3">Role</th>
-                    <th className="px-6 py-3">Location</th>
-                    <th className="px-6 py-3" />
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {users.map((u) => (
-                    <tr key={u.id} className="text-slate-700">
-                      <td className="px-6 py-4 font-medium text-slate-900">{u.name}</td>
-                      <td className="px-6 py-4">{u.email}</td>
-                      <td className="px-6 py-4 capitalize">{u.role}</td>
-                      <td className="px-6 py-4">{u.locationName ?? "—"}</td>
-                      <td className="px-6 py-4 text-right">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          className="!py-1.5 !text-xs"
-                          onClick={() => openEdit(u)}
-                        >
-                          Edit
-                        </Button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+        <CardBody className="space-y-3 p-4">
+          <DataTableBulkBar count={selected.size} onClear={() => setSelected(new Set())}>
+            <Button
+              type="button"
+              variant="danger"
+              size="sm"
+              className="gap-2"
+              onClick={() => void bulkDeleteUsers()}
+            >
+              <Trash2 className="h-4 w-4" />
+              Delete selected
+            </Button>
+          </DataTableBulkBar>
+
+          <DataTable
+            columns={columns}
+            rows={users}
+            rowId={(r) => r.id}
+            selectable
+            selectedIds={selected}
+            onToggleRow={toggleOne}
+            onToggleAllPage={toggleAll}
+            allSelectedOnPage={allSelected}
+            loading={loading}
+            emptyMessage="No users yet."
+          />
         </CardBody>
       </Card>
-
-      {editUser ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
-          <Card className="w-full max-w-md shadow-xl">
-            <CardHeader title="Edit user" description={editUser.email} />
-            <CardBody>
-              <form onSubmit={saveEdit} className="space-y-4">
-                <Select
-                  label="Role"
-                  value={editRole}
-                  onChange={(e) => setEditRole(e.target.value as UserRole)}
-                >
-                  <option value="admin">admin</option>
-                  <option value="support">support</option>
-                  <option value="partner">partner</option>
-                </Select>
-                <Select
-                  label="Location"
-                  value={editLoc}
-                  onChange={(e) => setEditLoc(e.target.value)}
-                >
-                  {locs.map((l) => (
-                    <option key={l.id} value={l.id}>
-                      {l.name}
-                    </option>
-                  ))}
-                </Select>
-                <div className="flex justify-end gap-2 pt-2">
-                  <Button type="button" variant="ghost" onClick={() => setEditUser(null)}>
-                    Cancel
-                  </Button>
-                  <Button type="submit" disabled={savingEdit}>
-                    {savingEdit ? "Saving…" : "Save"}
-                  </Button>
-                </div>
-              </form>
-            </CardBody>
-          </Card>
-        </div>
-      ) : null}
     </div>
   );
 }

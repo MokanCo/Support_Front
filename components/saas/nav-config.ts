@@ -14,17 +14,19 @@ export type NavItem = {
   label: string;
   icon: LucideIcon;
   roles?: readonly UserRole[];
+  /** When set, staff sidebar shows a numeric badge (admin + support only). */
+  badgeSource?: "tickets" | "conversations";
 };
 
 export const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/dashboard/tickets", label: "Tickets", icon: Ticket },
-  {
-    href: "/dashboard/boards",
-    label: "Boards",
-    icon: Kanban,
-    roles: ["admin", "support"],
-  },
+  { href: "/dashboard/tickets", label: "Tickets", icon: Ticket, badgeSource: "tickets" },
+  // {
+  //   href: "/dashboard/boards",
+  //   label: "Boards",
+  //   icon: Kanban,
+  //   roles: ["admin", "support"],
+  // },
   {
     href: "/dashboard/locations",
     label: "Locations",
@@ -36,18 +38,19 @@ export const NAV_ITEMS: NavItem[] = [
     label: "Conversations",
     icon: MessageSquare,
     roles: ["admin", "support"],
+    badgeSource: "conversations",
   },
-  {
-    href: "/dashboard/reports",
-    label: "Reports",
-    icon: LineChart,
-    roles: ["admin"],
-  },
+  // {
+  //   href: "/dashboard/reports",
+  //   label: "Reports",
+  //   icon: LineChart,
+  //   roles: ["admin"],
+  // },
 ];
 
 export function navItemsForRole(role: UserRole): NavItem[] {
   return NAV_ITEMS.filter(
-    (item) => !item.roles || (item.roles as readonly string[]).includes(role)
+    (item) => !item.roles || (item.roles as readonly string[]).includes(role),
   );
 }
 

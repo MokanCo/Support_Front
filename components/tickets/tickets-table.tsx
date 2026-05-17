@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowDownUp,
   ChevronLeft,
@@ -14,6 +16,7 @@ import { Card, CardBody } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Select } from "@/components/ui/Select";
 import { Modal } from "@/components/ui/modal";
+import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { Input } from "@/components/ui/Input";
 import {
   DataTable,
@@ -28,14 +31,10 @@ import type { SerializedTicket } from "@/lib/serialize-ticket";
 import type { UserRole } from "@/lib/user-roles";
 import type { TicketStatus, TicketPriority } from "@/lib/ticket-types";
 import { apiFetch } from "@/lib/auth-fetch";
-
-type ListResponse = {
-  tickets: SerializedTicket[];
-  total: number;
-  page: number;
-  pageSize: number;
-  totalPages: number;
-};
+import { requestSidebarCountsRefresh } from "@/lib/sidebar-counts-refresh";
+import { locationOptionsQueryKey, fetchLocationOptions } from "@/lib/queries/locations";
+import { fetchTicketsList, ticketListQueryKey } from "@/lib/queries/tickets";
+import { queryKeys } from "@/lib/query-keys";
 
 type Loc = { id: string; name: string };
 
@@ -54,13 +53,11 @@ const NEW_TICKET_PRIMARY =
   "inline-flex items-center justify-center gap-2 rounded-xl bg-primary-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-primary-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-600";
 
 export function TicketsTable({ role }: { role: UserRole }) {
-  const [locs, setLocs] = useState<Loc[]>([]);
+  const router = useRouter();
+  const queryClient = useQueryClient();
   const [locationId, setLocationId] = useState("");
-  const [rows, setRows] = useState<SerializedTicket[]>([]);
-  const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [pageSize] = useState(10);
-  const [totalPages, setTotalPages] = useState(1);
   const [sort, setSort] = useState<string>("updatedAt");
   const [order, setOrder] = useState<"asc" | "desc">("desc");
   const [status, setStatus] = useState("");
@@ -68,14 +65,16 @@ export function TicketsTable({ role }: { role: UserRole }) {
   const [overdue, setOverdue] = useState(false);
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [bulkStatus, setBulkStatus] = useState<TicketStatus | "">("");
   const [bulkPriority, setBulkPriority] = useState<TicketPriority | "">("");
-  const [progressTicket, setProgressTicket] = useState<SerializedTicket | null>(null);
-  const [progressInput, setProgressInput] = useState("0");
+  const [progressTicket, setProgressTicket] = useState<SerializedTicket | null>(
+    null,
+  );
+  const [progressInput, setProgressInput] = useState<number>(0);
 
   const showLocFilter = role === "admin";
   const canBulk = role === "admin" || role === "support";
@@ -83,7 +82,7 @@ export function TicketsTable({ role }: { role: UserRole }) {
   const sortOptions = useMemo(() => {
     if (role === "partner") {
       return SORT_OPTIONS.filter(
-        (o) => o.value !== "deadline" && o.value !== "priority"
+        (o) => o.value !== "deadline" && o.value !== "priority",
       );
     }
     return [...SORT_OPTIONS];
@@ -99,12 +98,13 @@ export function TicketsTable({ role }: { role: UserRole }) {
     if (role === "support") {
       return {
         title: "Your assigned tickets",
-        subtitle: "Only tickets assigned to you appear here. Use filters to narrow your queue.",
+        subtitle:
+          "Only tickets assigned to you appear here. Use filters to narrow your queue.",
       };
     }
     return {
       title: "Ticket history",
-      subtitle: "All tickets for your location—open, in progress, and completed.",
+      subtitle: "Tickets you opened for your location—open, in progress, and completed.",
     };
   }, [role]);
 
@@ -113,55 +113,63 @@ export function TicketsTable({ role }: { role: UserRole }) {
     return () => window.clearTimeout(t);
   }, [searchInput]);
 
-  useEffect(() => {
-    if (!showLocFilter) return;
-    let cancelled = false;
-    void (async () => {
-      try {
-        const params = new URLSearchParams({ page: "1", pageSize: "200", sort: "name", order: "asc" });
-        const res = await apiFetch(`/api/locations?${params}`);
-        const data = await res.json();
-        if (!cancelled && res.ok) setLocs(data.locations ?? []);
-      } catch {
-        /* ignore */
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [showLocFilter]);
+  const locsQuery = useQuery({
+    queryKey: locationOptionsQueryKey,
+    queryFn: fetchLocationOptions,
+    enabled: showLocFilter,
+  });
+  const locs = (locsQuery.data ?? []) as Loc[];
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const params = new URLSearchParams();
-      params.set("page", String(page));
-      params.set("pageSize", String(pageSize));
-      params.set("sort", sort);
-      params.set("order", order);
-      if (status) params.set("status", status);
-      if (priority) params.set("priority", priority);
-      if (overdue) params.set("overdue", "1");
-      if (showLocFilter && locationId) params.set("locationId", locationId);
-      if (search.trim()) params.set("search", search.trim());
-      const res = await apiFetch(`/api/tickets?${params.toString()}`);
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Failed");
-      const list = data as ListResponse;
-      setRows(list.tickets);
-      setTotal(list.total);
-      setTotalPages(list.totalPages);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load");
-    } finally {
-      setLoading(false);
+  const listFilters = useMemo(
+    () => ({
+      page,
+      pageSize,
+      sort,
+      order,
+      status: status || undefined,
+      priority: priority || undefined,
+      overdue: overdue || undefined,
+      locationId: showLocFilter && locationId ? locationId : undefined,
+      search: search.trim() || undefined,
+    }),
+    [
+      page,
+      pageSize,
+      sort,
+      order,
+      status,
+      priority,
+      overdue,
+      locationId,
+      showLocFilter,
+      search,
+    ],
+  );
+
+  const ticketsQuery = useQuery({
+    queryKey: ticketListQueryKey(listFilters),
+    queryFn: () => fetchTicketsList(listFilters),
+  });
+
+  const rows = ticketsQuery.data?.tickets ?? [];
+  const total = ticketsQuery.data?.total ?? 0;
+  const totalPages = ticketsQuery.data?.totalPages ?? 1;
+  const loading = ticketsQuery.isPending && !ticketsQuery.data;
+
+  useEffect(() => {
+    if (ticketsQuery.error) {
+      setError(
+        ticketsQuery.error instanceof Error
+          ? ticketsQuery.error.message
+          : "Failed to load",
+      );
+    } else {
+      setError(null);
     }
-  }, [page, pageSize, sort, order, status, priority, search, locationId, showLocFilter, overdue]);
+  }, [ticketsQuery.error]);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  const refreshTickets = () =>
+    queryClient.invalidateQueries({ queryKey: queryKeys.tickets.lists() });
 
   useEffect(() => {
     setPage(1);
@@ -205,25 +213,20 @@ export function TicketsTable({ role }: { role: UserRole }) {
     }
   }
 
-  async function bulkPost(
-    body: Record<string, unknown>
-  ) {
-    const res = await apiFetch("/api/tickets/bulk", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error ?? "Bulk action failed");
-    setSelected(new Set());
-    void load();
-  }
-
   async function bulkDelete() {
     if (!canBulk || selected.size === 0) return;
-    if (!window.confirm(`Delete ${selected.size} ticket(s)?`)) return;
+    setConfirmOpen(false);
     try {
-      await bulkPost({ action: "delete", ids: [...selected] });
+      const res = await apiFetch("/api/tickets/bulk-delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: [...selected] }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Bulk delete failed");
+      setSelected(new Set());
+      void refreshTickets();
+      if (role === "admin" || role === "support") requestSidebarCountsRefresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed");
     }
@@ -232,12 +235,20 @@ export function TicketsTable({ role }: { role: UserRole }) {
   async function bulkApplyStatus() {
     if (!bulkStatus || selected.size === 0) return;
     try {
-      await bulkPost({
-        action: "status",
-        ids: [...selected],
-        status: bulkStatus,
+      const res = await apiFetch("/api/tickets/bulk-update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ids: [...selected],
+          updates: { status: bulkStatus },
+        }),
       });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Bulk update failed");
       setBulkStatus("");
+      setSelected(new Set());
+      void refreshTickets();
+      if (role === "admin" || role === "support") requestSidebarCountsRefresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed");
     }
@@ -246,12 +257,20 @@ export function TicketsTable({ role }: { role: UserRole }) {
   async function bulkApplyPriority() {
     if (!bulkPriority || selected.size === 0) return;
     try {
-      await bulkPost({
-        action: "priority",
-        ids: [...selected],
-        priority: bulkPriority,
+      const res = await apiFetch("/api/tickets/bulk-update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ids: [...selected],
+          updates: { priority: bulkPriority },
+        }),
       });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Bulk update failed");
       setBulkPriority("");
+      setSelected(new Set());
+      void refreshTickets();
+      if (role === "admin" || role === "support") requestSidebarCountsRefresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed");
     }
@@ -259,7 +278,7 @@ export function TicketsTable({ role }: { role: UserRole }) {
 
   async function saveProgress() {
     if (!progressTicket) return;
-    const v = Math.min(100, Math.max(0, Number(progressInput)));
+    const v = progressInput;
     try {
       const res = await apiFetch(`/api/tickets/${progressTicket.id}`, {
         method: "PATCH",
@@ -269,7 +288,8 @@ export function TicketsTable({ role }: { role: UserRole }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed");
       setProgressTicket(null);
-      void load();
+      void refreshTickets();
+      if (role === "admin" || role === "support") requestSidebarCountsRefresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed");
     }
@@ -281,7 +301,9 @@ export function TicketsTable({ role }: { role: UserRole }) {
         id: "code",
         header: "Ticket ID",
         cell: (t) => (
-          <span className="font-mono text-xs text-slate-600">{t.ticketCode ?? "—"}</span>
+          <span className="font-mono text-xs text-slate-600">
+            {t.ticketCode ?? "—"}
+          </span>
         ),
       },
       {
@@ -303,30 +325,6 @@ export function TicketsTable({ role }: { role: UserRole }) {
         id: "loc",
         header: "Location",
         cell: (t) => t.locationName ?? "—",
-      },
-      {
-        id: "st",
-        header: "Status",
-        cell: (t) => <StatusBadge status={t.status} />,
-      },
-      {
-        id: "pr",
-        header: "Priority",
-        cell: (t) => <PriorityBadge priority={t.priority} />,
-      },
-      {
-        id: "prog",
-        header: "Progress",
-        cell: (t) => (
-          <ProgressCircle
-            value={t.progress}
-            disabled={t.progress >= 100}
-            onClick={() => {
-              setProgressTicket(t);
-              setProgressInput(String(t.progress));
-            }}
-          />
-        ),
       },
       {
         id: "dl",
@@ -356,27 +354,52 @@ export function TicketsTable({ role }: { role: UserRole }) {
         header: "Assigned",
         cell: (t) => t.assignedToName ?? "—",
       },
+      {
+        id: "st",
+        header: "",
+        cell: (t) => <StatusBadge status={t.status} />,
+      },
+      {
+        id: "pr",
+        header: "",
+        cell: (t) => <PriorityBadge priority={t.priority} />,
+      },
+      {
+        id: "prog",
+        header: "",
+        cell: (t) => (
+          <ProgressCircle
+            value={t.progress}
+            disabled={role === "partner" || t.progress >= 100}
+            onClick={() => {
+              if (role === "partner") return;
+              setProgressTicket(t);
+              setProgressInput(t.progress);
+            }}
+          />
+        ),
+      },
     ];
     if (role === "partner") {
-      return all.filter(
-        (c) => !["loc", "pr", "dl"].includes(c.id)
-      );
+      return all.filter((c) => !["loc", "pr"].includes(c.id));
     }
     return all;
   }, [role]);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3">
+    <div className="flex h-[calc(100dvh-8rem)] flex-col gap-3">
       <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">{pageIntro.title}</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
+            {pageIntro.title}
+          </h1>
           <p className="mt-1 text-sm text-slate-500">{pageIntro.subtitle}</p>
         </div>
         {role === "partner" ? (
-          <Link href="/dashboard/tickets/new" className={NEW_TICKET_PRIMARY}>
+          <button type="button" className={NEW_TICKET_PRIMARY} onClick={() => setModalOpen(true)}>
             <Plus className="h-4 w-4" />
             New ticket
-          </Link>
+          </button>
         ) : (
           <Button
             type="button"
@@ -389,14 +412,17 @@ export function TicketsTable({ role }: { role: UserRole }) {
         )}
       </div>
 
-      {role !== "partner" ? (
-        <CreateTicketModal
-          open={modalOpen}
-          onClose={() => setModalOpen(false)}
-          role={role}
-          onCreated={() => void load()}
-        />
-      ) : null}
+      <CreateTicketModal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        role={role}
+        onCreated={(id) => {
+          void refreshTickets();
+          if (role === "partner") {
+            router.push(`/dashboard/tickets/view?id=${encodeURIComponent(id)}`);
+          }
+        }}
+      />
 
       <Modal
         open={!!progressTicket}
@@ -405,16 +431,23 @@ export function TicketsTable({ role }: { role: UserRole }) {
         description={progressTicket?.title}
       >
         <div className="space-y-4">
-          <Input
-            label="Progress (%)"
-            type="number"
-            min={0}
-            max={100}
-            value={progressInput}
-            onChange={(e) => setProgressInput(e.target.value)}
-          />
+          <Select
+            label="Progress"
+            value={String(progressInput)}
+            onChange={(e) => setProgressInput(Number(e.target.value))}
+          >
+            <option value="0">0%</option>
+            <option value="25">25%</option>
+            <option value="50">50%</option>
+            <option value="75">75%</option>
+            <option value="100">100%</option>
+          </Select>
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="ghost" onClick={() => setProgressTicket(null)}>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setProgressTicket(null)}
+            >
               Cancel
             </Button>
             <Button type="button" onClick={() => void saveProgress()}>
@@ -451,7 +484,11 @@ export function TicketsTable({ role }: { role: UserRole }) {
                   ))}
                 </Select>
               ) : null}
-              <Select value={status} onChange={(e) => setStatus(e.target.value)} className="!min-w-[140px]">
+              <Select
+                value={status}
+                onChange={(e) => setStatus(e.target.value)}
+                className="!min-w-[140px]"
+              >
                 <option value="">All statuses</option>
                 <option value="in_queue">In queue</option>
                 <option value="in_progress">In progress</option>
@@ -465,10 +502,11 @@ export function TicketsTable({ role }: { role: UserRole }) {
                   className="!min-w-[140px]"
                 >
                   <option value="">All priorities</option>
-                  <option value="low">Low</option>
-                  <option value="medium">Medium</option>
-                  <option value="high">High</option>
-                  <option value="urgent">Urgent</option>
+                  <option value="p0">P0</option>
+                  <option value="p1">P1</option>
+                  <option value="p2">P2</option>
+                  <option value="p3">P3</option>
+                  <option value="p4">P4</option>
                 </Select>
               ) : null}
               {role !== "partner" ? (
@@ -481,7 +519,11 @@ export function TicketsTable({ role }: { role: UserRole }) {
                   Overdue
                 </label>
               ) : null}
-              <Select value={sort} onChange={(e) => setSort(e.target.value)} className="!min-w-[140px]">
+              <Select
+                value={sort}
+                onChange={(e) => setSort(e.target.value)}
+                className="!min-w-[140px]"
+              >
                 {sortOptions.map((o) => (
                   <option key={o.value} value={o.value}>
                     Sort: {o.label}
@@ -491,7 +533,7 @@ export function TicketsTable({ role }: { role: UserRole }) {
               <Button
                 type="button"
                 variant="secondary"
-                className="inline-flex items-center gap-2 !py-2.5"
+                className="gap-2"
                 onClick={() => toggleSort(sort)}
               >
                 <ArrowDownUp className="h-4 w-4" />
@@ -501,19 +543,33 @@ export function TicketsTable({ role }: { role: UserRole }) {
           </DataTableToolbar>
 
           {selected.size > 0 && canBulk ? (
-            <DataTableBulkBar count={selected.size} onClear={() => setSelected(new Set())}>
+            <DataTableBulkBar
+              count={selected.size}
+              onClear={() => setSelected(new Set())}
+            >
               <Button
                 type="button"
                 variant="danger"
-                className="inline-flex items-center gap-1 !py-2 !text-xs"
-                onClick={() => void bulkDelete()}
+                size="sm"
+                className="gap-1"
+                onClick={() => setConfirmOpen(true)}
               >
                 <Trash2 className="h-4 w-4" />
                 Delete
               </Button>
+              <ConfirmModal
+                open={confirmOpen}
+                title="Delete tickets"
+                message={`Are you sure you want to delete ${selected.size} ticket(s)? This cannot be undone.`}
+                confirmLabel="Delete"
+                onConfirm={() => void bulkDelete()}
+                onClose={() => setConfirmOpen(false)}
+              />
               <Select
                 value={bulkStatus}
-                onChange={(e) => setBulkStatus(e.target.value as TicketStatus | "")}
+                onChange={(e) =>
+                  setBulkStatus(e.target.value as TicketStatus | "")
+                }
                 className="!min-w-[140px]"
               >
                 <option value="">Set status…</option>
@@ -525,7 +581,7 @@ export function TicketsTable({ role }: { role: UserRole }) {
               <Button
                 type="button"
                 variant="secondary"
-                className="!py-2 !text-xs"
+                size="sm"
                 disabled={!bulkStatus}
                 onClick={() => void bulkApplyStatus()}
               >
@@ -533,19 +589,22 @@ export function TicketsTable({ role }: { role: UserRole }) {
               </Button>
               <Select
                 value={bulkPriority}
-                onChange={(e) => setBulkPriority(e.target.value as TicketPriority | "")}
+                onChange={(e) =>
+                  setBulkPriority(e.target.value as TicketPriority | "")
+                }
                 className="!min-w-[140px]"
               >
                 <option value="">Set priority…</option>
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
-                <option value="urgent">Urgent</option>
+                <option value="p0">P0</option>
+                <option value="p1">P1</option>
+                <option value="p2">P2</option>
+                <option value="p3">P3</option>
+                <option value="p4">P4</option>
               </Select>
               <Button
                 type="button"
                 variant="secondary"
-                className="!py-2 !text-xs"
+                size="sm"
                 disabled={!bulkPriority}
                 onClick={() => void bulkApplyPriority()}
               >
@@ -574,7 +633,8 @@ export function TicketsTable({ role }: { role: UserRole }) {
             <p className="text-xs text-slate-500">
               Showing{" "}
               <span className="font-medium text-slate-700">
-                {total === 0 ? 0 : (page - 1) * pageSize + 1}–{Math.min(page * pageSize, total)}
+                {total === 0 ? 0 : (page - 1) * pageSize + 1}–
+                {Math.min(page * pageSize, total)}
               </span>{" "}
               of <span className="font-medium text-slate-700">{total}</span>
             </p>
@@ -582,8 +642,9 @@ export function TicketsTable({ role }: { role: UserRole }) {
               <Button
                 type="button"
                 variant="secondary"
+                size="sm"
                 disabled={page <= 1}
-                className="inline-flex items-center gap-1 !py-2 !text-xs"
+                className="gap-1"
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
               >
                 <ChevronLeft className="h-4 w-4" />
@@ -595,8 +656,9 @@ export function TicketsTable({ role }: { role: UserRole }) {
               <Button
                 type="button"
                 variant="secondary"
+                size="sm"
                 disabled={page >= totalPages}
-                className="inline-flex items-center gap-1 !py-2 !text-xs"
+                className="gap-1"
                 onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               >
                 Next

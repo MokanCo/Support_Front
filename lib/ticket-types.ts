@@ -8,5 +8,5 @@ export const TICKET_STATUSES = [
 ] as const;
 export type TicketStatus = (typeof TICKET_STATUSES)[number];
 
-export const TICKET_PRIORITIES = ["low", "medium", "high", "urgent"] as const;
+export const TICKET_PRIORITIES = ["p0", "p1", "p2", "p3", "p4"] as const;
 export type TicketPriority = (typeof TICKET_PRIORITIES)[number];

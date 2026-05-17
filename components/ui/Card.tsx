@@ -19,21 +19,30 @@ export function CardHeader({
   description,
   action,
 }: {
-  title: string;
+  title?: string;
   description?: string;
   action?: React.ReactNode;
 }) {
+  const hasText = Boolean(title || description);
   return (
-    <div className="flex flex-col gap-1 border-b border-slate-100 px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
-      <div>
-        <h2 className="text-lg font-semibold tracking-tight text-slate-900">
-          {title}
-        </h2>
-        {description ? (
-          <p className="mt-1 text-sm text-slate-500">{description}</p>
-        ) : null}
-      </div>
-      {action ? <div className="mt-4 shrink-0 sm:mt-0">{action}</div> : null}
+    <div
+      className={`flex flex-col gap-1 border-b border-slate-100 px-6 ${
+        hasText
+          ? "py-5 sm:flex-row sm:items-center sm:justify-between"
+          : "items-center justify-center py-3 sm:flex-row"
+      }`}
+    >
+      {hasText ? (
+        <div>
+          {title ? (
+            <h2 className="text-lg font-semibold tracking-tight text-slate-900">{title}</h2>
+          ) : null}
+          {description ? <p className="mt-1 text-sm text-slate-500">{description}</p> : null}
+        </div>
+      ) : null}
+      {action ? (
+        <div className={hasText ? "mt-4 shrink-0 sm:mt-0" : "shrink-0"}>{action}</div>
+      ) : null}
     </div>
   );
 }

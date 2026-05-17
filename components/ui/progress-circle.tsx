@@ -18,7 +18,8 @@ export function ProgressCircle({
   disabled?: boolean;
   size?: number;
 }) {
-  const r = (size - 8) / 2;
+  const strokeWidth = 3;
+  const r = (size - strokeWidth * 2) / 2;
   const c = 2 * Math.PI * r;
   const clamped = Math.min(100, Math.max(0, value));
   const offset = c * (1 - clamped / 100);
@@ -52,7 +53,7 @@ export function ProgressCircle({
           r={r}
           fill="none"
           stroke="#e2e8f0"
-          strokeWidth={4}
+          strokeWidth={strokeWidth}
         />
         <circle
           cx={size / 2}
@@ -60,14 +61,18 @@ export function ProgressCircle({
           r={r}
           fill="none"
           stroke={color}
-          strokeWidth={4}
+          strokeWidth={strokeWidth}
           strokeLinecap="round"
           strokeDasharray={c}
           strokeDashoffset={offset}
           className="transition-[stroke-dashoffset,stroke] duration-500 ease-out"
         />
       </svg>
-      <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-[10px] font-semibold tabular-nums text-slate-800">
+      <span
+        className={`pointer-events-none absolute inset-0 flex items-center justify-center font-semibold tabular-nums text-slate-800 ${
+          size >= 44 ? "text-[11px]" : "text-[9px]"
+        }`}
+      >
         {Math.round(clamped)}%
       </span>
     </button>

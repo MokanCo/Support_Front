@@ -2,12 +2,16 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { AppHeader } from "@/components/saas/AppHeader";
 import { AppSidebar, SIDEBAR_STORAGE_KEY } from "@/components/saas/AppSidebar";
 import type { UserRole } from "@/lib/user-roles";
 import { apiFetch } from "@/lib/auth-fetch";
 import { clearAccessToken } from "@/lib/access-token";
 import { invalidateSessionMeCache } from "@/lib/fetch-session-me";
+import { queryKeys } from "@/lib/query-keys";
+import { AppDataPrefetcher } from "@/components/saas/AppDataPrefetcher";
+import { PARTNER_TOUR_EXPAND_SIDEBAR_EVENT } from "@/lib/partner-product-tour";
 
 export function DashboardShell({
   role,
@@ -23,11 +27,30 @@ export function DashboardShell({
   children: React.ReactNode;
 }) {
   const router = useRouter();
-  const [collapsed, setCollapsed] = useState(false);
+  const queryClient = useQueryClient();
+  const [collapsed, setCollapsed] = useState(true);
   const [mobileOpen, setMobileOpen] = useState(false);
 
   useEffect(() => {
-    setCollapsed(typeof window !== "undefined" && localStorage.getItem(SIDEBAR_STORAGE_KEY) === "1");
+    if (typeof window === "undefined") return;
+    const stored = localStorage.getItem(SIDEBAR_STORAGE_KEY);
+    if (stored === "0") setCollapsed(false);
+    else if (stored === "1") setCollapsed(true);
+    else {
+      setCollapsed(true);
+      localStorage.setItem(SIDEBAR_STORAGE_KEY, "1");
+    }
+  }, []);
+
+  useEffect(() => {
+    const expandForTour = () => {
+      setCollapsed(false);
+      if (typeof window !== "undefined") {
+        localStorage.setItem(SIDEBAR_STORAGE_KEY, "0");
+      }
+    };
+    window.addEventListener(PARTNER_TOUR_EXPAND_SIDEBAR_EVENT, expandForTour);
+    return () => window.removeEventListener(PARTNER_TOUR_EXPAND_SIDEBAR_EVENT, expandForTour);
   }, []);
 
   const toggleCollapse = useCallback(() => {
@@ -43,6 +66,7 @@ export function DashboardShell({
   async function logout() {
     await apiFetch("/api/auth/logout", { method: "POST" });
     invalidateSessionMeCache();
+    queryClient.clear();
     clearAccessToken();
     router.push("/login");
     router.refresh();
@@ -51,6 +75,8 @@ export function DashboardShell({
   const sidebarWidth = collapsed ? "lg:pl-14" : "lg:pl-48";
 
   return (
+    <>
+      <AppDataPrefetcher role={role} />
     <div className="flex min-h-dvh flex-col bg-slate-100">
       {mobileOpen ? (
         <button
@@ -80,10 +106,11 @@ export function DashboardShell({
           onMenuClick={() => setMobileOpen(true)}
           onLogout={logout}
         />
-        <main className="mx-auto flex min-h-0 w-full max-w-[1600px] flex-1 flex-col overflow-y-auto px-4 py-6 sm:px-6 lg:px-10 lg:py-8">
+        <main className="flex min-h-0 w-full flex-1 flex-col overflow-y-auto px-4 py-8 lg:px-8">
           {children}
         </main>
       </div>
     </div>
+    </>
   );
 }

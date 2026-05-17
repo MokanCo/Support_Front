@@ -9,6 +9,7 @@ export type SessionUser = {
   email: string;
   role: UserRole;
   organizationId: string;
+  mustChangePassword?: boolean;
 };
 
 export type SessionLocation = {
