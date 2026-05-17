@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Plus, Search, Trash2 } from "lucide-react";
 import { Card, CardBody } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -82,13 +82,18 @@ export function LocationsPageClient({ role }: { role: UserRole }) {
     }
   }, [page, pageSize, sort, order, search]);
 
+  const listFiltersRef = useRef({ search, sort, order });
   useEffect(() => {
+    const prev = listFiltersRef.current;
+    const filtersChanged =
+      prev.search !== search || prev.sort !== sort || prev.order !== order;
+    listFiltersRef.current = { search, sort, order };
+    if (filtersChanged && page !== 1) {
+      setPage(1);
+      return;
+    }
     void load();
-  }, [load]);
-
-  useEffect(() => {
-    setPage(1);
-  }, [search, sort, order]);
+  }, [load, page, search, sort, order]);
 
   const allSelected = useMemo(() => {
     if (rows.length === 0) return false;

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowDownUp,
   ChevronLeft,
@@ -159,13 +159,40 @@ export function TicketsTable({ role }: { role: UserRole }) {
     }
   }, [page, pageSize, sort, order, status, priority, search, locationId, showLocFilter, overdue]);
 
+  const listFiltersRef = useRef({
+    status,
+    priority,
+    search,
+    sort,
+    order,
+    locationId,
+    overdue,
+  });
   useEffect(() => {
+    const prev = listFiltersRef.current;
+    const filtersChanged =
+      prev.status !== status ||
+      prev.priority !== priority ||
+      prev.search !== search ||
+      prev.sort !== sort ||
+      prev.order !== order ||
+      prev.locationId !== locationId ||
+      prev.overdue !== overdue;
+    listFiltersRef.current = {
+      status,
+      priority,
+      search,
+      sort,
+      order,
+      locationId,
+      overdue,
+    };
+    if (filtersChanged && page !== 1) {
+      setPage(1);
+      return;
+    }
     void load();
-  }, [load]);
-
-  useEffect(() => {
-    setPage(1);
-  }, [status, priority, search, sort, order, locationId, overdue]);
+  }, [load, page, status, priority, search, sort, order, locationId, overdue]);
 
   const allSelectedOnPage = useMemo(() => {
     if (rows.length === 0) return false;

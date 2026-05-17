@@ -60,7 +60,7 @@ let inflight: Promise<SessionMeResponse | null> | null = null;
 let cached: { data: SessionMeResponse; until: number } | null = null;
 
 /** How long to reuse a successful /api/auth/currentUser response (dev StrictMode + layout). */
-const TTL_MS = 5000;
+const TTL_MS = 2 * 60 * 1000;
 
 /** Clear cached session (call after login or logout so the next currentUser fetch is fresh). */
 export function invalidateSessionMeCache(): void {

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { AppHeader } from "@/components/saas/AppHeader";
 import { AppSidebar, SIDEBAR_STORAGE_KEY } from "@/components/saas/AppSidebar";
 import type { UserRole } from "@/lib/user-roles";
@@ -23,6 +24,7 @@ export function DashboardShell({
   children: React.ReactNode;
 }) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -43,6 +45,7 @@ export function DashboardShell({
   async function logout() {
     await apiFetch("/api/auth/logout", { method: "POST" });
     invalidateSessionMeCache();
+    queryClient.clear();
     clearAccessToken();
     router.push("/login");
     router.refresh();

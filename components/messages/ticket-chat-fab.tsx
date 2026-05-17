@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { createPortal } from "react-dom";
 import { MessageCircle, Send, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
@@ -15,6 +16,7 @@ import {
 import type { SupportChatHeaderModel } from "@/lib/support-chat-display";
 import { useMessageInbox } from "@/lib/message-inbox-context";
 import { useTicketSocket } from "@/lib/use-ticket-socket";
+import { queryKeys } from "@/lib/query-keys";
 
 type Summary = {
   unreadCount: number;
@@ -49,7 +51,6 @@ export function TicketChatFab({
   inboxRef.current = inbox;
   const [open, setOpen] = useState(initialAutoOpen);
   const [portalReady, setPortalReady] = useState(false);
-  const [summary, setSummary] = useState<Summary | null>(null);
   const [messages, setMessages] = useState<ClientMessageRow[]>([]);
   const [messageText, setMessageText] = useState("");
   const [sending, setSending] = useState(false);
@@ -65,17 +66,24 @@ export function TicketChatFab({
     el.scrollTop = el.scrollHeight;
   }, []);
 
-  const loadSummary = useCallback(async () => {
-    try {
+  const { data: summary = null, refetch: refetchSummary } = useQuery({
+    queryKey: queryKeys.messages.summary(ticketId),
+    queryFn: async () => {
       const res = await apiFetch(
-        `/api/messages/summary?ticketId=${encodeURIComponent(ticketId)}`
+        `/api/messages/summary?ticketId=${encodeURIComponent(ticketId)}`,
       );
       const data = await res.json();
-      if (res.ok) setSummary(data as Summary);
-    } catch {
-      /* ignore */
-    }
-  }, [ticketId]);
+      if (!res.ok) return null;
+      return data as Summary;
+    },
+    enabled: Boolean(ticketId),
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+  });
+
+  const loadSummary = useCallback(async () => {
+    await refetchSummary();
+  }, [refetchSummary]);
 
   const loadMessages = useCallback(async () => {
     setLoadingThread(true);
@@ -101,12 +109,6 @@ export function TicketChatFab({
   }, []);
 
   useTicketSocket(ticketId, open, onSocketMessage, { viewerUserId });
-
-  useEffect(() => {
-    void loadSummary();
-    const id = window.setInterval(() => void loadSummary(), 15_000);
-    return () => window.clearInterval(id);
-  }, [loadSummary]);
 
   useEffect(() => {
     setPortalReady(true);
