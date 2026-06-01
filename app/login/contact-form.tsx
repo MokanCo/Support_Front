@@ -88,7 +88,7 @@ export function ContactForm({ onBack }: { onBack: () => void }) {
 
         <Button
           type="submit"
-          className="w-full"
+          className="w-full !bg-[#2a2a2a] !from-[#2a2a2a] !via-[#2a2a2a] !to-[#2a2a2a] shadow-none hover:!from-[#383838] hover:!via-[#383838] hover:!to-[#383838] focus-visible:outline-neutral-600"
           disabled={loading}
         >
           {loading ? (

@@ -198,11 +198,23 @@ export function LoginForm({ onOnboardNewLocation }: LoginFormProps) {
           onClick={() => void quickSignInWithSaved()}
           disabled={loading}
           aria-busy={loading}
-          className="w-full break-all rounded-xl border-2 border-primary-500/40 bg-gradient-to-br from-primary-50 to-white px-4 py-3.5 text-center text-base font-semibold text-slate-900 shadow-sm transition hover:border-primary-600/60 hover:from-primary-100/90 hover:to-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-600 disabled:cursor-not-allowed disabled:opacity-60"
+          className="w-full rounded-xl border-2 border-[#2a2a2a] bg-white px-4 py-3.5 text-center shadow-sm transition hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2a2a2a] disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {savedSession.email}
+          <span className="block text-sm font-medium text-slate-600">Log in as</span>
+          <span className="mt-1 block break-all text-base font-semibold text-slate-900">
+            {savedSession.email}
+          </span>
         </button>
-        {/* <OrOnboardBlock onOnboardNewLocation={onOnboardNewLocation} /> */}
+        <div className="relative py-1" role="separator" aria-label="Other options">
+          <div className="absolute inset-0 flex items-center" aria-hidden>
+            <span className="h-px w-full bg-slate-200" />
+          </div>
+          <div className="relative flex justify-center">
+            <span className="bg-white/90 px-3 text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">
+              OR
+            </span>
+          </div>
+        </div>
         <button
           type="button"
           onClick={useDifferentAccount}
@@ -249,16 +261,20 @@ export function LoginForm({ onOnboardNewLocation }: LoginFormProps) {
             />
             <span
               aria-hidden
-              className="pointer-events-none flex h-4 w-4 items-center justify-center rounded border-2 border-primary-600 bg-white/95 transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-primary-500/50 peer-focus-visible:ring-offset-1 peer-focus-visible:ring-offset-white/90 peer-checked:border-primary-900 peer-checked:bg-primary-700 [&_svg]:opacity-0 peer-checked:[&_svg]:opacity-100"
+              className="pointer-events-none flex h-4 w-4 items-center justify-center rounded border-2 border-neutral-400 bg-white/95 transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-neutral-400/50 peer-focus-visible:ring-offset-1 peer-focus-visible:ring-offset-white/90 peer-checked:border-[#2a2a2a] peer-checked:bg-[#2a2a2a] [&_svg]:opacity-0 peer-checked:[&_svg]:opacity-100"
             >
-              <Check className="h-3 w-3 text-amber-50" strokeWidth={2.75} />
+              <Check className="h-3 w-3 text-white" strokeWidth={2.75} />
             </span>
           </span>
           <span className="text-sm text-slate-600">Remember me</span>
         </span>
       </label>
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
-      <Button type="submit" className="w-full" disabled={loading}>
+      <Button
+        type="submit"
+        className="w-full !bg-[#2a2a2a] !from-[#2a2a2a] !via-[#2a2a2a] !to-[#2a2a2a] shadow-none hover:!from-[#383838] hover:!via-[#383838] hover:!to-[#383838] focus-visible:outline-neutral-600"
+        disabled={loading}
+      >
         {loading ? "Signing in…" : "Continue"}
       </Button>
       {/* <OrOnboardBlock onOnboardNewLocation={onOnboardNewLocation} /> */}

@@ -6,7 +6,6 @@ import { LoginWelcomeHeading } from "./login-welcome-heading";
 import { ContactForm } from "./contact-form";
 import { OnboardingWelcomeModal, OnboardingWizardSplit } from "./onboarding-wizard";
 import { BrandLogo } from "@/components/BrandLogo";
-import { Facebook, Instagram, Linkedin } from "lucide-react";
 
 /** Empty beat before the brand card fades in */
 const BLANK_MS = 140;
@@ -144,13 +143,11 @@ export default function LoginPage() {
               <div
                 className={`h-full rounded-[3px] ${
                   stage === "duo"
-                    ? "lg:shadow-[14px_0_40px_-12px_rgba(15,23,42,0.24),6px_0_24px_-6px_rgba(25,16,10,0.42)]"
+                    ? "lg:shadow-[14px_0_32px_-12px_rgba(0,0,0,0.18)]"
                     : ""
                 }`}
               >
-                <div className="relative isolate h-full overflow-hidden rounded-[3px] bg-gradient-to-br from-[#4b2e1f] via-[#6d452e] to-[#a2754f] px-8 py-10 text-white shadow-[0_22px_70px_rgba(74,44,28,0.35)] md:px-10 md:py-12">
-                <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-amber-100/15 blur-2xl" />
-                <div className="pointer-events-none absolute -bottom-28 -left-24 h-80 w-80 rounded-full bg-[#3d2619]/25 blur-3xl" />
+                <div className="relative isolate h-full overflow-hidden rounded-[3px] bg-[#2a2a2a] px-8 py-10 text-white shadow-[0_18px_48px_rgba(0,0,0,0.22)] md:px-10 md:py-12">
 
                 <div className="flex h-full min-h-[260px] flex-col items-center justify-center text-center">
                   <span className="left-logo-reveal inline-flex">
@@ -160,42 +157,12 @@ export default function LoginPage() {
                     />
                   </span>
                   <h1 className="left-title-reveal mt-6 text-3xl font-semibold tracking-tight text-white">
-                    Support Portal
+                    Partner Support Portal
                   </h1>
-                  <p className="left-subtitle-reveal mt-3 max-w-sm text-sm/6 text-white/85">
+                  <p className="left-subtitle-reveal mt-3 max-w-sm text-sm/6 text-[rgb(var(--background))]/90">
                     Please login with the credentials provided by the administrator.
                   </p>
-                  <div className="left-divider-reveal mt-7 h-1 w-14 rounded-full bg-white/40" />
-                </div>
-
-                <div className="left-social-reveal absolute bottom-5 right-6 flex items-center gap-2">
-                  <a
-                    href="https://mokanco.com"
-                    target="_blank"
-                    rel="noreferrer"
-                    aria-label="Mokanco on Instagram"
-                    className="rounded-md border border-white/25 bg-white/10 p-2 text-amber-50 transition hover:bg-white/20 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/70"
-                  >
-                    <Instagram className="h-4 w-4" />
-                  </a>
-                  <a
-                    href="https://mokanco.com"
-                    target="_blank"
-                    rel="noreferrer"
-                    aria-label="Mokanco on Facebook"
-                    className="rounded-md border border-white/25 bg-white/10 p-2 text-amber-50 transition hover:bg-white/20 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/70"
-                  >
-                    <Facebook className="h-4 w-4" />
-                  </a>
-                  <a
-                    href="https://mokanco.com"
-                    target="_blank"
-                    rel="noreferrer"
-                    aria-label="Mokanco on LinkedIn"
-                    className="rounded-md border border-white/25 bg-white/10 p-2 text-amber-50 transition hover:bg-white/20 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/70"
-                  >
-                    <Linkedin className="h-4 w-4" />
-                  </a>
+                  <div className="left-divider-reveal mt-7 h-1 w-14 rounded-full bg-[#b8864f]" />
                 </div>
                 </div>
               </div>
@@ -300,10 +267,6 @@ export default function LoginPage() {
             opacity: 0;
             animation: dividerReveal 1100ms cubic-bezier(0.22, 1, 0.36, 1) 1580ms 1 forwards;
           }
-          .left-social-reveal {
-            opacity: 0;
-            animation: contentReveal 1100ms cubic-bezier(0.22, 1, 0.36, 1) 1780ms 1 forwards;
-          }
         }
 
         @keyframes logoEnter {
@@ -368,8 +331,7 @@ export default function LoginPage() {
           .left-logo-reveal,
           .left-title-reveal,
           .left-subtitle-reveal,
-          .left-divider-reveal,
-          .left-social-reveal {
+          .left-divider-reveal {
             animation: none !important;
             opacity: 1 !important;
             transform: none !important;
