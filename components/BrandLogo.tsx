@@ -1,7 +1,6 @@
 import Image from "next/image";
 
-const BRAND_LOGO_SRC =
-  "https://mokanco.com/wp-content/uploads/2026/03/Group-121.png";
+const BRAND_LOGO_SRC = "/brand-logo.png";
 
 const COFFEE_FILTER =
   "brightness(0) saturate(100%) invert(22%) sepia(42%) saturate(834%) hue-rotate(346deg) brightness(96%) contrast(92%)";

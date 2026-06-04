@@ -49,6 +49,15 @@ body > * {
   z-index: 1;
 }
 
+/* Login: replace global gradient + bean texture with page background images */
+body:has(.login-shell) {
+  background: none;
+}
+
+body:has(.login-shell)::before {
+  display: none;
+}
+
 @layer utilities {
   .text-balance {
     text-wrap: balance;

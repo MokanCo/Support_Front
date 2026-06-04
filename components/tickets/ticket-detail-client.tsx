@@ -226,14 +226,17 @@ export function TicketDetailClient({ ticketId }: { ticketId: string }) {
     if (!ticket) return;
     setStatus(ticket.status as TicketStatus);
     setPriority((ticket.priority as TicketPriority) ?? "p2");
-    setAssignee(ticket.assignedTo ?? "");
+    const assignedId = ticket.assignedTo ?? "";
+    const assigneeInList =
+      !assignedId || users.some((u) => u.id === assignedId);
+    setAssignee(assigneeInList ? assignedId : "");
     setProgressEdit(ticket.progress ?? 0);
     setDeadlineLocal(
       ticket.deadline
         ? new Date(ticket.deadline).toISOString().slice(0, 16)
         : "",
     );
-  }, [ticket]);
+  }, [ticket, users]);
 
   useEffect(() => {
     if (ticketQuery.error) {

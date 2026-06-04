@@ -2,11 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { io, type Socket } from "socket.io-client";
 import { apiFetch } from "@/lib/auth-fetch";
 import { statusNotificationsQueryOptions } from "@/lib/queries/notifications";
 import { getAccessToken } from "@/lib/access-token";
-import { getSocketBaseUrl } from "@/lib/socket-url";
+import { queryKeys } from "@/lib/query-keys";
+import { subscribeNotificationNew } from "@/lib/socket-client";
 
 export type StatusNotificationRow = {
   id: string;
@@ -52,6 +52,25 @@ function normalizeIso(v: unknown): string {
   return "";
 }
 
+function mergeNotificationRow(
+  prev: StatusNotificationRow[],
+  row: StatusNotificationRow,
+): StatusNotificationRow[] {
+  if (prev.some((x) => x.id === row.id)) return prev;
+  return [row, ...prev].sort((a, b) => {
+    const ta = new Date(a.createdAt || 0).getTime();
+    const tb = new Date(b.createdAt || 0).getTime();
+    return tb - ta;
+  });
+}
+
+async function fetchStatusNotifications(): Promise<StatusNotificationRow[]> {
+  const res = await apiFetch("/api/notifications?channel=status");
+  const data: unknown = await res.json();
+  if (!res.ok) return [];
+  return parseStatusNotificationsList(data);
+}
+
 /** Socket envelope: `{ notification: { ... } }` or a bare notification object. */
 export function parseNotificationSocketPayload(raw: unknown): StatusNotificationRow | null {
   if (!raw || typeof raw !== "object") return null;
@@ -75,36 +94,32 @@ export function parseNotificationSocketPayload(raw: unknown): StatusNotification
   };
 }
 
-const RETRY_MS = 400;
-const RETRY_MAX_MS = 20_000;
+const STATUS_STALE_MS = 5 * 60 * 1000;
 
 /**
  * Persisted `channel=status` notifications + live `notification:new` on the user socket.
+ * HTTP list is cached (no background polling); socket updates merge into the cache.
  */
 export function useStatusNotifications(enabled: boolean) {
   const queryClient = useQueryClient();
-  const mergeRef = useRef<(row: StatusNotificationRow) => void>(() => {});
+  const hasToken = typeof window !== "undefined" && Boolean(getAccessToken());
+  const queryEnabled = enabled && hasToken;
 
-  const { data: items = [], isPending: loading, refetch } = useQuery({
-    ...statusNotificationsQueryOptions,
-    enabled,
-    refetchInterval: enabled ? 45_000 : false,
-    refetchIntervalInBackground: false,
+  const { data: items = [], isLoading: loading, refetch } = useQuery({
+    queryKey: queryKeys.notifications.status(),
+    queryFn: fetchStatusNotifications,
+    enabled: queryEnabled,
+    staleTime: STATUS_STALE_MS,
+    refetchOnWindowFocus: false,
   });
+
+  const mergeRef = useRef<(row: StatusNotificationRow) => void>(() => {});
 
   const mergeIncoming = useCallback(
     (row: StatusNotificationRow) => {
       queryClient.setQueryData<StatusNotificationRow[]>(
-        statusNotificationsQueryOptions.queryKey,
-        (prev) => {
-          const list = prev ?? [];
-          if (list.some((x) => x.id === row.id)) return list;
-          return [row, ...list].sort((a, b) => {
-            const ta = new Date(a.createdAt || 0).getTime();
-            const tb = new Date(b.createdAt || 0).getTime();
-            return tb - ta;
-          });
-        },
+        queryKeys.notifications.status(),
+        (prev) => mergeNotificationRow(prev ?? [], row),
       );
     },
     [queryClient],
@@ -113,83 +128,16 @@ export function useStatusNotifications(enabled: boolean) {
   mergeRef.current = mergeIncoming;
 
   useEffect(() => {
-    if (!enabled) return;
-    const onVis = () => {
-      if (document.visibilityState === "visible") void refetch();
-    };
-    document.addEventListener("visibilitychange", onVis);
-    return () => document.removeEventListener("visibilitychange", onVis);
-  }, [enabled, refetch]);
-
-  useEffect(() => {
-    if (!enabled) return;
-    let cancelled = false;
-    let socket: Socket | null = null;
-    let retryTimer: ReturnType<typeof setInterval> | null = null;
-    let stopRetry: ReturnType<typeof setTimeout> | null = null;
-
-    const cleanupSocket = () => {
-      if (socket) {
-        socket.off("notification:new", onNotif);
-        socket.disconnect();
-        socket = null;
-      }
-    };
-
-    const onNotif = (payload: unknown) => {
+    if (!queryEnabled) return;
+    return subscribeNotificationNew((payload) => {
       const row = parseNotificationSocketPayload(payload);
       if (row) mergeRef.current(row);
-    };
+    });
+  }, [queryEnabled]);
 
-    function tryConnect(): boolean {
-      if (cancelled) return false;
-      if (socket) return true;
-      const base = getSocketBaseUrl();
-      const token = getAccessToken();
-      if (!base || !token) return false;
-
-      const s: Socket = io(base, {
-        path: "/socket.io",
-        auth: { token },
-        transports: ["websocket", "polling"],
-        reconnection: true,
-        reconnectionAttempts: 8,
-        reconnectionDelay: 1000,
-      });
-      socket = s;
-      s.on("notification:new", onNotif);
-
-      if (retryTimer) {
-        clearInterval(retryTimer);
-        retryTimer = null;
-      }
-      if (stopRetry) {
-        clearTimeout(stopRetry);
-        stopRetry = null;
-      }
-      return true;
-    }
-
-    if (!tryConnect()) {
-      retryTimer = setInterval(() => {
-        if (cancelled) return;
-        tryConnect();
-      }, RETRY_MS);
-      stopRetry = setTimeout(() => {
-        if (retryTimer) {
-          clearInterval(retryTimer);
-          retryTimer = null;
-        }
-      }, RETRY_MAX_MS);
-    }
-
-    return () => {
-      cancelled = true;
-      if (retryTimer) clearInterval(retryTimer);
-      if (stopRetry) clearTimeout(stopRetry);
-      cleanupSocket();
-    };
-  }, [enabled]);
+  const load = useCallback(async () => {
+    await refetch();
+  }, [refetch]);
 
   const dismissOne = useCallback(
     async (notificationId: string) => {
@@ -200,7 +148,7 @@ export function useStatusNotifications(enabled: boolean) {
       });
       if (res.ok) {
         queryClient.setQueryData<StatusNotificationRow[]>(
-          statusNotificationsQueryOptions.queryKey,
+          queryKeys.notifications.status(),
           (prev) => (prev ?? []).filter((x) => x.id !== notificationId),
         );
       }
@@ -215,10 +163,7 @@ export function useStatusNotifications(enabled: boolean) {
       body: JSON.stringify({ channel: "status", clearAll: true }),
     });
     if (res.ok) {
-      queryClient.setQueryData<StatusNotificationRow[]>(
-        statusNotificationsQueryOptions.queryKey,
-        [],
-      );
+      queryClient.setQueryData(queryKeys.notifications.status(), []);
     }
   }, [queryClient]);
 

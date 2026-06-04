@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowDownUp,
@@ -34,7 +34,7 @@ import { apiFetch } from "@/lib/auth-fetch";
 import { requestSidebarCountsRefresh } from "@/lib/sidebar-counts-refresh";
 import { locationOptionsQueryKey, fetchLocationOptions } from "@/lib/queries/locations";
 import { fetchTicketsList, ticketListQueryKey } from "@/lib/queries/tickets";
-import { queryKeys } from "@/lib/query-keys";
+import { invalidateTickets } from "@/lib/queries/invalidate";
 
 type Loc = { id: string; name: string };
 
@@ -156,6 +156,11 @@ export function TicketsTable({ role }: { role: UserRole }) {
   const totalPages = ticketsQuery.data?.totalPages ?? 1;
   const loading = ticketsQuery.isPending && !ticketsQuery.data;
 
+  const refreshTickets = useCallback(() => {
+    void invalidateTickets(queryClient);
+    requestSidebarCountsRefresh();
+  }, [queryClient]);
+
   useEffect(() => {
     if (ticketsQuery.error) {
       setError(
@@ -168,12 +173,38 @@ export function TicketsTable({ role }: { role: UserRole }) {
     }
   }, [ticketsQuery.error]);
 
-  const refreshTickets = () =>
-    queryClient.invalidateQueries({ queryKey: queryKeys.tickets.lists() });
-
+  const listFiltersRef = useRef({
+    status,
+    priority,
+    search,
+    sort,
+    order,
+    locationId,
+    overdue,
+  });
   useEffect(() => {
-    setPage(1);
-  }, [status, priority, search, sort, order, locationId, overdue]);
+    const prev = listFiltersRef.current;
+    const filtersChanged =
+      prev.status !== status ||
+      prev.priority !== priority ||
+      prev.search !== search ||
+      prev.sort !== sort ||
+      prev.order !== order ||
+      prev.locationId !== locationId ||
+      prev.overdue !== overdue;
+    listFiltersRef.current = {
+      status,
+      priority,
+      search,
+      sort,
+      order,
+      locationId,
+      overdue,
+    };
+    if (filtersChanged && page !== 1) {
+      setPage(1);
+    }
+  }, [page, status, priority, search, sort, order, locationId, overdue]);
 
   const allSelectedOnPage = useMemo(() => {
     if (rows.length === 0) return false;

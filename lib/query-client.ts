@@ -11,6 +11,7 @@ export function makeQueryClient() {
         staleTime: DEFAULT_STALE_MS,
         gcTime: DEFAULT_GC_MS,
         refetchOnWindowFocus: false,
+        refetchOnReconnect: true,
         retry: 1,
       },
     },

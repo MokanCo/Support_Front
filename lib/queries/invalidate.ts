@@ -17,6 +17,11 @@ export function invalidateConversations(queryClient: QueryClient) {
   return queryClient.invalidateQueries({ queryKey: ["conversations"] });
 }
 
+/** Prefer cache patches on hot paths; use when inbox list must be refreshed from server. */
+export function invalidateConversationsInbox(queryClient: QueryClient) {
+  return queryClient.invalidateQueries({ queryKey: queryKeys.conversations.inbox() });
+}
+
 export function invalidateBoards(queryClient: QueryClient) {
   return queryClient.invalidateQueries({ queryKey: queryKeys.boards.all });
 }

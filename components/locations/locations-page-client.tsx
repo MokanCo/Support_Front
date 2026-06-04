@@ -2,19 +2,10 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  Check,
-  ChevronLeft,
-  ChevronRight,
-  Loader2,
-  Plus,
-  Search,
-  Trash2,
-  X,
-} from "lucide-react";
 import Swal from "sweetalert2";
+import { Check, ChevronLeft, ChevronRight, Loader2, Plus, Search, Trash2, X } from "lucide-react";
 import { Card, CardBody } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -31,9 +22,11 @@ import {
   fetchLocationDeleteImpact,
   fetchLocationsList,
   locationListQueryKey,
+  makeLocationPrimary,
   type LocationRow,
 } from "@/lib/queries/locations";
 import { invalidateLocations } from "@/lib/queries/invalidate";
+import { queryKeys } from "@/lib/query-keys";
 import { formatUSPhone } from "@/lib/format";
 import { AddressAutocomplete } from "@/components/ui/address-autocomplete";
 import type { AddressSuggestion } from "@/components/ui/address-autocomplete";
@@ -48,6 +41,17 @@ type Loc = LocationRow & {
   zip: string;
   createdAt: string;
 };
+
+function PrimaryBadge() {
+  return (
+    <span
+      className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary-600 text-[10px] font-bold leading-none text-white"
+      title="Primary location"
+    >
+      P
+    </span>
+  );
+}
 
 export function LocationsPageClient({ role }: { role: UserRole }) {
   const router = useRouter();
@@ -101,46 +105,50 @@ export function LocationsPageClient({ role }: { role: UserRole }) {
   const totalPages = locationsQuery.data?.totalPages ?? 1;
   const loading = locationsQuery.isPending && !locationsQuery.data;
 
+  const refreshLocations = useCallback(() => {
+    void invalidateLocations(queryClient);
+  }, [queryClient]);
+
+  const listFiltersRef = useRef({ search, sort, order });
   useEffect(() => {
-    if (locationsQuery.error) {
-      setError(
-        locationsQuery.error instanceof Error
-          ? locationsQuery.error.message
-          : "Failed to load",
-      );
-    } else {
-      setError(null);
+    const prev = listFiltersRef.current;
+    const filtersChanged =
+      prev.search !== search || prev.sort !== sort || prev.order !== order;
+    listFiltersRef.current = { search, sort, order };
+    if (filtersChanged && page !== 1) {
+      setPage(1);
     }
-  }, [locationsQuery.error]);
+  }, [page, search, sort, order]);
 
-  const refreshLocations = () => invalidateLocations(queryClient);
-
-  useEffect(() => {
-    setPage(1);
-  }, [search, sort, order]);
+  const selectableRows = useMemo(
+    () => rows.filter((r) => !r.isPrimary),
+    [rows],
+  );
 
   const allSelected = useMemo(() => {
-    if (rows.length === 0) return false;
-    return rows.every((r) => selected.has(r.id));
-  }, [rows, selected]);
+    if (selectableRows.length === 0) return false;
+    return selectableRows.every((r) => selected.has(r.id));
+  }, [selectableRows, selected]);
 
   function toggleAll() {
     if (allSelected) {
       setSelected((prev) => {
         const n = new Set(prev);
-        for (const r of rows) n.delete(r.id);
+        for (const r of selectableRows) n.delete(r.id);
         return n;
       });
     } else {
       setSelected((prev) => {
         const n = new Set(prev);
-        for (const r of rows) n.add(r.id);
+        for (const r of selectableRows) n.add(r.id);
         return n;
       });
     }
   }
 
   function toggleOne(id: string) {
+    const row = rows.find((r) => r.id === id);
+    if (row?.isPrimary) return;
     setSelected((prev) => {
       const n = new Set(prev);
       if (n.has(id)) n.delete(id);
@@ -269,7 +277,30 @@ export function LocationsPageClient({ role }: { role: UserRole }) {
     }
   }
 
+  async function setPrimaryLocation(r: Loc) {
+    if (r.isPrimary) return;
+    try {
+      await makeLocationPrimary(r.id);
+      void refreshLocations();
+      void queryClient.invalidateQueries({ queryKey: queryKeys.tickets.all });
+    } catch (e) {
+      void Swal.fire({
+        icon: "error",
+        title: "Could not set primary",
+        text: e instanceof Error ? e.message : "Failed",
+      });
+    }
+  }
+
   async function deleteLocationRow(r: Loc) {
+    if (r.isPrimary) {
+      void Swal.fire({
+        icon: "info",
+        title: "Primary location",
+        text: "The primary location cannot be deleted. Mark another location as primary first.",
+      });
+      return;
+    }
     setError(null);
     let impact: { userCount: number; ticketCount: number };
     try {
@@ -540,17 +571,30 @@ export function LocationsPageClient({ role }: { role: UserRole }) {
                       ),
                   },
                   { id: "edit", label: "Edit", onClick: () => startEditLoc(r) },
+                  ...(!r.isPrimary
+                    ? [
+                        {
+                          id: "primary",
+                          label: "Make primary",
+                          onClick: () => void setPrimaryLocation(r),
+                        },
+                      ]
+                    : []),
                   {
                     id: "toggle",
                     label: r.isDisabled ? "Enable" : "Disable",
                     onClick: () => void toggleLocDisabled(r),
                   },
-                  {
-                    id: "delete",
-                    label: "Delete",
-                    danger: true,
-                    onClick: () => void deleteLocationRow(r),
-                  },
+                  ...(!r.isPrimary
+                    ? [
+                        {
+                          id: "delete",
+                          label: "Delete",
+                          danger: true,
+                          onClick: () => void deleteLocationRow(r),
+                        },
+                      ]
+                    : []),
                 ]}
               />
             )
@@ -718,6 +762,8 @@ export function LocationsPageClient({ role }: { role: UserRole }) {
             onToggleRow={toggleOne}
             onToggleAllPage={toggleAll}
             allSelectedOnPage={allSelected}
+            isRowSelectable={(r) => !r.isPrimary}
+            renderRowSelect={(r) => (r.isPrimary ? <PrimaryBadge /> : null)}
             loading={loading}
             emptyMessage="No locations found."
             onRowClick={(r) => {

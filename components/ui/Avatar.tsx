@@ -17,6 +17,65 @@ type Props = {
 
 const DOT = 10;
 
+type StackMember = {
+  id: string;
+  initials: string;
+  colorSeed: string;
+  presence?: Presence;
+  name?: string;
+};
+
+export function AvatarStack({
+  members,
+  size = 40,
+  maxVisible = 5,
+  className = "",
+}: {
+  members: StackMember[];
+  size?: number;
+  maxVisible?: number;
+  className?: string;
+}) {
+  const visible = members.slice(0, maxVisible);
+  const overflow = members.length - visible.length;
+  const overlap = Math.round(size * 0.28);
+
+  return (
+    <span className={`inline-flex items-center ${className}`}>
+      {visible.map((m, i) => (
+        <span
+          key={m.id}
+          className="relative inline-flex"
+          style={{ marginLeft: i === 0 ? 0 : -overlap, zIndex: visible.length - i }}
+        >
+          <Avatar
+            initials={m.initials}
+            size={size}
+            presence={m.presence}
+            colorSeed={m.colorSeed}
+            accessibilityLabel={m.name ?? m.initials}
+          />
+        </span>
+      ))}
+      {overflow > 0 ? (
+        <span
+          className="relative inline-flex items-center justify-center rounded-full bg-slate-200 font-semibold text-slate-600 ring-2 ring-white"
+          style={{
+            width: size,
+            height: size,
+            marginLeft: visible.length > 0 ? -overlap : 0,
+            fontSize: Math.max(10, Math.round(size * 0.28)),
+            zIndex: 0,
+          }}
+          title={`${overflow} more`}
+        >
+          +{overflow}
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
 export function Avatar({
   initials,
   size = 40,

@@ -124,9 +124,12 @@ export function LocationDetailClient({
   });
 
   const location = (detailQuery.data?.location as Loc | undefined) ?? null;
-  const users = Array.isArray(detailQuery.data?.users)
-    ? (detailQuery.data.users as unknown[]).map(mapUserRow)
-    : [];
+  const users = useMemo(() => {
+    const list = Array.isArray(detailQuery.data?.users)
+      ? (detailQuery.data.users as unknown[]).map(mapUserRow)
+      : [];
+    return [...list].sort((a, b) => a.name.localeCompare(b.name));
+  }, [detailQuery.data?.users]);
   const loading = detailQuery.isPending && !detailQuery.data;
 
   useEffect(() => {
@@ -171,8 +174,8 @@ export function LocationDetailClient({
       void invalidateLocations(queryClient);
       void Swal.fire({
         icon: "success",
-        title: "User invited",
-        text: `An invite email with login credentials was sent to ${email}.`,
+        title: "User created",
+        text: `Account created for ${email}. An invite email with login credentials will arrive shortly.`,
         timer: 4000,
         showConfirmButton: true,
       });
@@ -327,10 +330,11 @@ export function LocationDetailClient({
         header: "Password",
         cell: () => (
           <span
-            className="text-xs text-slate-600"
-            title="Saved passwords are stored as a one-way hash only. The API never returns the real password—use Edit or Change password to set a new one."
+            className="font-mono text-sm tracking-widest text-slate-600"
+            title="Password is hashed. Use Edit or Change password to set a new one."
+            aria-label="Password hidden"
           >
-            Not retrievable
+            ****
           </span>
         ),
       },
@@ -363,26 +367,26 @@ export function LocationDetailClient({
       cols.push({
         id: "actions",
         header: <span className="sr-only">Actions</span>,
-        cell: (r) => (
-          <RowActionsMenu
-            aria-label={`Actions for ${r.email}`}
-            items={[
-              { id: "edit", label: "Edit", onClick: () => openEditUser(r) },
-              { id: "password", label: "Change password", onClick: () => openPwdUser(r) },
-              {
-                id: "toggle",
-                label: r.isDisabled ? "Enable" : "Disable",
-                onClick: () => void toggleUserDisabled(r),
-              },
-              {
-                id: "delete",
-                label: "Delete",
-                danger: true,
-                onClick: () => void confirmDeleteUser(r),
-              },
-            ]}
-          />
-        ),
+        cell: (r) => {
+          const items = [
+            { id: "edit", label: "Edit", onClick: () => openEditUser(r) },
+            { id: "password", label: "Change password", onClick: () => openPwdUser(r) },
+            {
+              id: "toggle",
+              label: r.isDisabled ? "Enable" : "Disable",
+              onClick: () => void toggleUserDisabled(r),
+            },
+            {
+              id: "delete",
+              label: "Delete",
+              danger: true,
+              onClick: () => void confirmDeleteUser(r),
+            },
+          ];
+          return (
+            <RowActionsMenu aria-label={`Actions for ${r.email}`} items={items} />
+          );
+        },
       });
     }
     return cols;
