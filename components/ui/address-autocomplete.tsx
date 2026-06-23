@@ -136,28 +136,31 @@ export function AddressAutocomplete({
   const inputId = `addr-auto-${label?.replace(/\s+/g, "-").toLowerCase() ?? "field"}`;
 
   return (
-    <div ref={containerRef} className="relative">
-      {label ? (
-        <label htmlFor={inputId} className="mb-1.5 block text-sm font-medium text-slate-700">
-          {label}
-          {required ? <span className="ml-0.5 text-red-500">*</span> : null}
-        </label>
-      ) : null}
-      <div className="relative">
+    <div ref={containerRef} className="relative w-full">
+      <div className="relative pb-1">
         <input
           id={inputId}
           type="text"
           autoComplete="off"
           required={required}
           value={value}
-          placeholder={placeholder}
+          placeholder=" "
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={handleKeyDown}
           onFocus={() => suggestions.length > 0 && setOpen(true)}
-          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition focus:border-primary-600 focus:ring-2 focus:ring-primary-200 disabled:opacity-50"
+          className="peer block w-full rounded-none border-x-0 border-t-0 border-b border-slate-300 bg-transparent pb-2 pt-6 text-sm text-slate-900 caret-primary-700 placeholder-transparent outline-none transition-colors duration-150 focus:border-primary-600 focus:ring-0"
         />
+        {label ? (
+          <label
+            htmlFor={inputId}
+            className="pointer-events-none absolute left-0 top-[1.375rem] origin-[0] text-sm font-medium text-slate-600 transition-[top,font-size,color] duration-200 ease-out motion-reduce:transition-none peer-focus:top-1 peer-focus:text-xs peer-focus:text-primary-700 peer-[&:not(:placeholder-shown)]:top-1 peer-[&:not(:placeholder-shown)]:text-xs peer-[&:not(:placeholder-shown)]:text-slate-800"
+          >
+            {label}
+            {required ? <span aria-hidden className="text-red-500"> *</span> : null}
+          </label>
+        ) : null}
         {fetching ? (
-          <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400">
+          <span className="pointer-events-none absolute right-1 top-1/2 -translate-y-1/2 text-xs text-slate-400">
             …
           </span>
         ) : null}
