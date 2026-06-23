@@ -277,7 +277,7 @@ export function LoginForm({ onOnboardNewLocation }: LoginFormProps) {
       >
         {loading ? "Signing in…" : "Continue"}
       </Button>
-      {/* <OrOnboardBlock onOnboardNewLocation={onOnboardNewLocation} /> */}
+      <OrOnboardBlock onOnboardNewLocation={onOnboardNewLocation} />
     </form>
   );
 }
