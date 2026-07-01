@@ -116,4 +116,13 @@ export const queryKeys = {
     all: ["tasks"] as const,
     detail: (taskId: string) => [...queryKeys.tasks.all, "detail", taskId] as const,
   },
+  onboardings: {
+    all: ["onboardings"] as const,
+    lists: () => [...queryKeys.onboardings.all, "list"] as const,
+    list: (filters: Record<string, unknown>) =>
+      [...queryKeys.onboardings.lists(), filters] as const,
+    detail: (id: string) => [...queryKeys.onboardings.all, "detail", id] as const,
+    public: (token: string) =>
+      [...queryKeys.onboardings.all, "public", token] as const,
+  },
 } as const;

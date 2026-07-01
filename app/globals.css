@@ -58,6 +58,18 @@ body:has(.login-shell)::before {
   display: none;
 }
 
+/* Public onboarding track: clean warm shell without dashboard chrome */
+body:has(.track-shell) {
+  background:
+    radial-gradient(900px circle at 12% 8%, rgba(155, 107, 70, 0.14), transparent 55%),
+    radial-gradient(800px circle at 88% 12%, rgba(16, 185, 129, 0.1), transparent 50%),
+    linear-gradient(165deg, rgb(250 245 239) 0%, rgb(241 231 221) 45%, rgb(248 243 238) 100%);
+}
+
+body:has(.track-shell)::before {
+  opacity: 0.06;
+}
+
 @layer utilities {
   .text-balance {
     text-wrap: balance;

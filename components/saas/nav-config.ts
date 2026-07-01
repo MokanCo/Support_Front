@@ -6,6 +6,7 @@ import {
   MapPin,
   MessageSquare,
   Ticket,
+  ClipboardList,
 } from "lucide-react";
 import type { UserRole } from "@/lib/user-roles";
 
@@ -31,6 +32,12 @@ export const NAV_ITEMS: NavItem[] = [
     href: "/dashboard/locations",
     label: "Locations",
     icon: MapPin,
+    roles: ["admin"],
+  },
+  {
+    href: "/dashboard/onboardings",
+    label: "Onboardings",
+    icon: ClipboardList,
     roles: ["admin"],
   },
   {
@@ -70,11 +77,18 @@ export function titleForPath(pathname: string): string {
   if (pathname === "/dashboard/locations/view") {
     return "Location";
   }
+  if (pathname === "/dashboard/onboardings/view") {
+    return "Onboarding";
+  }
+  if (pathname === "/dashboard/onboardings") {
+    return "Onboardings";
+  }
   const map: Record<string, string> = {
     "/dashboard": "Dashboard",
     "/dashboard/tickets": "Tickets",
     "/dashboard/tickets/new": "New ticket",
     "/dashboard/locations": "Locations",
+    "/dashboard/onboardings": "Onboardings",
     "/dashboard/conversations": "Conversations",
     "/dashboard/reports": "Reports",
     "/dashboard/boards": "Boards",

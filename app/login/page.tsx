@@ -6,6 +6,10 @@ import { LoginWelcomeHeading } from "./login-welcome-heading";
 import { ContactForm } from "./contact-form";
 import { OnboardingWelcomeModal, OnboardingWizardSplit } from "./onboarding-wizard";
 import { BrandLogo } from "@/components/BrandLogo";
+import {
+  fetchOnboardingConfig,
+  type OnboardingConfig,
+} from "@/lib/queries/onboarding";
 
 /** Empty beat before the brand card fades in */
 const BLANK_MS = 140;
@@ -24,6 +28,24 @@ export default function LoginPage() {
   const [reduceMotion, setReduceMotion] = useState(false);
   const [onboardingPhase, setOnboardingPhase] = useState<null | "welcome" | "wizard">(null);
   const [onboardingWizardKey, setOnboardingWizardKey] = useState(0);
+  const [onboardingConfig, setOnboardingConfig] = useState<OnboardingConfig | null>(null);
+  const [onboardingConfigLoading, setOnboardingConfigLoading] = useState(false);
+
+  useEffect(() => {
+    if (onboardingPhase === null) return;
+    let cancelled = false;
+    setOnboardingConfigLoading(true);
+    fetchOnboardingConfig()
+      .then((c) => {
+        if (!cancelled) setOnboardingConfig(c);
+      })
+      .finally(() => {
+        if (!cancelled) setOnboardingConfigLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [onboardingPhase]);
 
   function exitOnboarding() {
     setOnboardingPhase(null);
@@ -37,6 +59,8 @@ export default function LoginPage() {
   const onboardingWelcomeLayer =
     onboardingPhase === "welcome" ? (
       <OnboardingWelcomeModal
+        config={onboardingConfig}
+        configLoading={onboardingConfigLoading}
         onStart={() => setOnboardingPhase("wizard")}
         onClose={exitOnboarding}
       />

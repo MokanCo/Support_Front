@@ -14,6 +14,7 @@ import {
   Smartphone,
   Star,
   User,
+  type LucideIcon,
 } from "lucide-react";
 import { BrandLogo } from "@/components/BrandLogo";
 import { Input } from "@/components/ui/Input";
@@ -21,91 +22,31 @@ import { Button } from "@/components/ui/Button";
 import { AddressAutocomplete } from "@/components/ui/address-autocomplete";
 import type { AddressSuggestion } from "@/components/ui/address-autocomplete";
 import { formatUSPhone } from "@/lib/format";
+import {
+  createOnboardingDraft,
+  fetchOnboardingConfig,
+  fetchOnboardingServices,
+  finalizeOnboardingRequest,
+  saveOnboardingServices,
+  type OnboardingConfig,
+  type OnboardingService,
+  type OnboardingServiceSection,
+  type LocationInfo,
+  type PersonalInfo,
+} from "@/lib/queries/onboarding";
 
-type ServiceOption = {
-  id: string;
-  title: string;
-  icon: React.ElementType;
-  iconClass: string;
+const SERVICE_ICONS: Record<string, LucideIcon> = {
+  globe: Globe,
+  smartphone: Smartphone,
+  star: Star,
+  facebook: Facebook,
+  instagram: Instagram,
+  monitor: MonitorSmartphone,
 };
 
-const SERVICE_OPTIONS: ServiceOption[] = [
-  {
-    id: "google",
-    title: "Google",
-    icon: Globe,
-    iconClass: "bg-blue-100 text-blue-600",
-  },
-  {
-    id: "apple",
-    title: "Apple",
-    icon: Smartphone,
-    iconClass: "bg-slate-100 text-slate-700",
-  },
-  {
-    id: "yelp",
-    title: "Yelp",
-    icon: Star,
-    iconClass: "bg-red-100 text-red-700",
-  },
-  {
-    id: "website",
-    title: "Website",
-    icon: Globe,
-    iconClass: "bg-sky-100 text-sky-700",
-  },
-  {
-    id: "facebook",
-    title: "Facebook",
-    icon: Facebook,
-    iconClass: "bg-blue-100 text-blue-700",
-  },
-  {
-    id: "instagram",
-    title: "Instagram",
-    icon: Instagram,
-    iconClass: "bg-pink-100 text-pink-700",
-  },
-  {
-    id: "appfront",
-    title: "Appfront",
-    icon: MonitorSmartphone,
-    iconClass: "bg-violet-100 text-violet-700",
-  },
-];
-
-type ServiceSection = {
-  title: string;
-  ids: string[];
-};
-
-const SERVICE_SECTIONS: ServiceSection[] = [
-  { title: "Business Listing", ids: ["google", "apple", "yelp", "website"] },
-  { title: "Geo Tagging Listing", ids: ["facebook", "instagram"] },
-  { title: "Third Party", ids: ["appfront"] },
-];
-
-type PersonalInfo = {
-  firstName: string;
-  lastName: string;
-  email: string;
-  phone: string;
-  address: string;
-  city: string;
-  state: string;
-  zip: string;
-};
-
-type LocationInfo = {
-  locationName: string;
-  locationEmail: string;
-  locationPhone: string;
-  openingDate: string;
-  address: string;
-  city: string;
-  state: string;
-  zip: string;
-};
+function serviceIcon(iconKey: string): LucideIcon {
+  return SERVICE_ICONS[iconKey] ?? Globe;
+}
 
 const emptyPersonal: PersonalInfo = {
   firstName: "",
@@ -131,13 +72,6 @@ const emptyLocation: LocationInfo = {
 
 type WizardStep = "personal" | "location" | "services" | "confirm" | "success";
 
-const PROGRESS_LABELS = [
-  "Personal Info",
-  "Location Info",
-  "Services",
-  "Confirm",
-] as const;
-
 function wizardStepIndex(s: WizardStep): number {
   if (s === "personal") return 0;
   if (s === "location") return 1;
@@ -149,11 +83,15 @@ function wizardStepIndex(s: WizardStep): number {
 // ─── Welcome Modal ────────────────────────────────────────────────────────────
 
 type OnboardingWelcomeModalProps = {
+  config: OnboardingConfig | null;
+  configLoading: boolean;
   onStart: () => void;
   onClose: () => void;
 };
 
 export function OnboardingWelcomeModal({
+  config,
+  configLoading,
   onStart,
   onClose,
 }: OnboardingWelcomeModalProps) {
@@ -197,29 +135,26 @@ export function OnboardingWelcomeModal({
             <Coffee className="h-8 w-8 text-white" />
           </div>
           <p className="mt-4 text-center text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-primary-700">
-            Moka &amp; Co
+            {config?.brandName || "Onboarding"}
           </p>
           <h2
             id="onb-welcome-title"
             className="mt-1.5 text-center text-xl font-semibold tracking-tight text-slate-900 sm:text-2xl"
           >
-            Welcome onboarding
+            {configLoading
+              ? "Loading…"
+              : config?.welcomeTitle || "Onboarding unavailable"}
           </h2>
           <p className="mt-3 text-center text-sm leading-relaxed text-slate-600 sm:text-base">
-            Join the Mokanco family in a few quick steps. Tell us about yourself
-            and the platforms you need — your account details will be sent
-            directly to your email.
+            {configLoading
+              ? "Please wait while we load onboarding details."
+              : config?.welcomeDescription ||
+                "Onboarding has not been configured yet. Please contact your administrator."}
           </p>
 
+          {config && config.welcomeSteps.length > 0 ? (
           <div className="mt-6 grid grid-cols-4 gap-2">
-            {(
-              [
-                { num: 1, label: "Personal\nInfo" },
-                { num: 2, label: "Location\nInfo" },
-                { num: 3, label: "Choose\nServices" },
-                { num: 4, label: "Confirm\n& Submit" },
-              ] as const
-            ).map((s) => (
+            {config.welcomeSteps.map((s) => (
               <div
                 key={s.num}
                 className="flex flex-col items-center gap-1.5 rounded-xl bg-slate-50 px-1 py-3"
@@ -233,6 +168,7 @@ export function OnboardingWelcomeModal({
               </div>
             ))}
           </div>
+          ) : null}
 
           <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-center">
             <Button
@@ -247,6 +183,7 @@ export function OnboardingWelcomeModal({
               type="button"
               className="!bg-[#2a2a2a] !from-[#2a2a2a] !via-[#2a2a2a] !to-[#2a2a2a] shadow-none hover:!from-[#383838] hover:!via-[#383838] hover:!to-[#383838] focus-visible:outline-neutral-600 sm:min-w-[11rem]"
               onClick={onStart}
+              disabled={configLoading || !config}
             >
               Get started
             </Button>
@@ -293,22 +230,59 @@ export function OnboardingWelcomeModal({
 
 // ─── Wizard Panel ─────────────────────────────────────────────────────────────
 
-function OnboardingWizardPanel({ onClose }: { onClose: () => void }) {
+function OnboardingWizardPanel({
+  config,
+  serviceSections,
+  servicesLoading,
+  onClose,
+}: {
+  config: OnboardingConfig | null;
+  serviceSections: OnboardingServiceSection[];
+  servicesLoading: boolean;
+  onClose: () => void;
+}) {
   const [step, setStep] = useState<WizardStep>("personal");
   const [personal, setPersonal] = useState<PersonalInfo>(emptyPersonal);
   const [location, setLocation] = useState<LocationInfo>(emptyLocation);
   const [selectedServices, setSelectedServices] = useState<Set<string>>(
     () => new Set(),
   );
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [trackingUrl, setTrackingUrl] = useState<string | null>(null);
+  const [draftToken, setDraftToken] = useState<string | null>(null);
+  const [draftLoading, setDraftLoading] = useState(false);
+  const [servicesSaveError, setServicesSaveError] = useState<string | null>(null);
 
-  const toggleService = useCallback((id: string) => {
-    setSelectedServices((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }, []);
+  const progressLabels = config?.stepLabels ?? [];
+  const allServices = useMemo(
+    () => serviceSections.flatMap((s) => s.services),
+    [serviceSections],
+  );
+  const serviceById = useMemo(() => {
+    const map = new Map<string, OnboardingService>();
+    for (const s of allServices) map.set(s.id, s);
+    return map;
+  }, [allServices]);
+
+  const toggleService = useCallback(
+    (id: string) => {
+      setSelectedServices((prev) => {
+        const next = new Set(prev);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        if (draftToken) {
+          const slugs = Array.from(next);
+          saveOnboardingServices(draftToken, slugs).catch(() => {
+            setServicesSaveError("Could not save selection. Please try again.");
+          });
+        }
+        return next;
+      });
+      setServicesSaveError(null);
+    },
+    [draftToken],
+  );
 
   const personalValid = !!(
     personal.firstName.trim() &&
@@ -336,8 +310,8 @@ function OnboardingWizardPanel({ onClose }: { onClose: () => void }) {
 
   const progressPercent = useMemo(() => {
     if (wIdx < 0) return 100;
-    return ((wIdx + 1) / PROGRESS_LABELS.length) * 100;
-  }, [wIdx]);
+    return ((wIdx + 1) / progressLabels.length) * 100;
+  }, [wIdx, progressLabels.length]);
 
   function goBack() {
     if (step === "personal") onClose();
@@ -346,24 +320,68 @@ function OnboardingWizardPanel({ onClose }: { onClose: () => void }) {
     else if (step === "confirm") setStep("services");
   }
 
-  function goNext() {
+  async function ensureDraft() {
+    if (draftToken) return draftToken;
+    setDraftLoading(true);
+    setServicesSaveError(null);
+    try {
+      const result = await createOnboardingDraft({
+        personal,
+        location,
+        trackingToken: draftToken ?? undefined,
+      });
+      setDraftToken(result.trackingToken);
+      if (result.request.selectedServices?.length) {
+        setSelectedServices(new Set(result.request.selectedServices));
+      }
+      return result.trackingToken;
+    } catch (e) {
+      setServicesSaveError(
+        e instanceof Error ? e.message : "Could not start services step",
+      );
+      return null;
+    } finally {
+      setDraftLoading(false);
+    }
+  }
+
+  async function goNext() {
     if (step === "personal" && personalValid) setStep("location");
-    else if (step === "location" && locationValid) setStep("services");
-    else if (step === "services" && selectedServices.size > 0)
+    else if (step === "location" && locationValid) {
+      const token = await ensureDraft();
+      if (token) setStep("services");
+    } else if (step === "services" && selectedServices.size > 0)
       setStep("confirm");
-    else if (step === "confirm") setStep("success");
+    else if (step === "confirm") {
+      if (!draftToken) {
+        setSubmitError("Session expired. Go back and try again.");
+        return;
+      }
+      setSubmitError(null);
+      setSubmitting(true);
+      try {
+        const result = await finalizeOnboardingRequest(draftToken);
+        setStep("success");
+        void result;
+      } catch (e) {
+        setSubmitError(
+          e instanceof Error ? e.message : "Failed to submit request",
+        );
+      } finally {
+        setSubmitting(false);
+      }
+    }
   }
 
   const titleId = "onb-dialog-title";
 
   function stepSubtitle() {
-    if (step === "success")
-      return "Account details will be sent to your email.";
-    if (step === "personal") return "Tell us about yourself.";
-    if (step === "location") return "Tell us about your location.";
-    if (step === "services")
-      return "Select the platforms you need support with.";
-    return "Review your details before submitting.";
+    const subtitles = config?.stepSubtitles ?? {};
+    if (step === "success") return subtitles.success ?? "";
+    if (step === "personal") return subtitles.personal ?? "";
+    if (step === "location") return subtitles.location ?? "";
+    if (step === "services") return subtitles.services ?? "";
+    return subtitles.confirm ?? "";
   }
 
   return (
@@ -383,7 +401,7 @@ function OnboardingWizardPanel({ onClose }: { onClose: () => void }) {
             id={titleId}
             className="text-sm font-semibold tracking-tight text-slate-900 sm:text-base"
           >
-            New Location onboarding
+            {config?.wizardTitle || "Onboarding"}
           </h1>
           <p className="mt-0.5 text-[0.68rem] leading-snug text-slate-500 sm:text-xs">
             {stepSubtitle()}
@@ -415,7 +433,7 @@ function OnboardingWizardPanel({ onClose }: { onClose: () => void }) {
             />
           </div>
           <div className="flex items-center justify-between gap-1">
-            {PROGRESS_LABELS.map((label, i) => {
+            {progressLabels.map((label, i) => {
               const active = i === wIdx;
               const done = i < wIdx;
               return (
@@ -713,18 +731,22 @@ function OnboardingWizardPanel({ onClose }: { onClose: () => void }) {
                 </p>
               </div>
 
-              {SERVICE_SECTIONS.map((section) => {
-                const sectionServices = SERVICE_OPTIONS.filter((o) =>
-                  section.ids.includes(o.id),
-                );
-                return (
+              {servicesLoading || draftLoading ? (
+                <p className="text-sm text-slate-500">Loading services…</p>
+              ) : serviceSections.length === 0 ? (
+                <p className="text-sm text-slate-500">
+                  No services have been added yet. An administrator must configure
+                  service options before you can continue.
+                </p>
+              ) : (
+                serviceSections.map((section) => (
                   <div key={section.title} className="space-y-2">
                     <h3 className="text-[0.65rem] font-semibold uppercase tracking-wider text-slate-400">
                       {section.title}
                     </h3>
                     <div className="grid grid-cols-2 gap-2">
-                      {sectionServices.map((opt) => {
-                        const Icon = opt.icon;
+                      {section.services.map((opt) => {
+                        const Icon = serviceIcon(opt.iconKey);
                         const selected = selectedServices.has(opt.id);
                         return (
                           <button
@@ -769,8 +791,14 @@ function OnboardingWizardPanel({ onClose }: { onClose: () => void }) {
                       })}
                     </div>
                   </div>
-                );
-              })}
+                ))
+              )}
+
+              {servicesSaveError && (
+                <p className="text-xs font-medium text-red-600" role="alert">
+                  {servicesSaveError}
+                </p>
+              )}
 
               {selectedServices.size > 0 && (
                 <p className="text-xs font-medium text-primary-700">
@@ -927,24 +955,25 @@ function OnboardingWizardPanel({ onClose }: { onClose: () => void }) {
                     Services
                   </h3>
                   <ul className="space-y-1.5">
-                    {SERVICE_OPTIONS.filter((s) =>
-                      selectedServices.has(s.id),
-                    ).map((s) => {
-                      const Icon = s.icon;
-                      return (
-                        <li
-                          key={s.id}
-                          className="flex items-center gap-1.5 text-xs text-slate-700"
-                        >
-                          <span
-                            className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md ${s.iconClass}`}
+                    {Array.from(selectedServices)
+                      .map((id) => serviceById.get(id))
+                      .filter(Boolean)
+                      .map((s) => {
+                        const Icon = serviceIcon(s!.iconKey);
+                        return (
+                          <li
+                            key={s!.id}
+                            className="flex items-center gap-1.5 text-xs text-slate-700"
                           >
-                            <Icon className="h-3 w-3" aria-hidden />
-                          </span>
-                          <span className="font-medium">{s.title}</span>
-                        </li>
-                      );
-                    })}
+                            <span
+                              className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md ${s!.iconClass}`}
+                            >
+                              <Icon className="h-3 w-3" aria-hidden />
+                            </span>
+                            <span className="font-medium">{s!.title}</span>
+                          </li>
+                        );
+                      })}
                   </ul>
                 </div>
               </div>
@@ -969,11 +998,10 @@ function OnboardingWizardPanel({ onClose }: { onClose: () => void }) {
 
               <div>
                 <h2 className="text-xl font-semibold tracking-tight text-slate-900 sm:text-2xl">
-                  Request submitted!
+                  {config?.successTitle || "Request submitted!"}
                 </h2>
                 <p className="mt-2 text-sm leading-relaxed text-slate-600 sm:text-base">
-                  Your information has been shared with the admin and is
-                  currently under review.
+                  {config?.successDescription || ""}
                 </p>
               </div>
 
@@ -987,10 +1015,8 @@ function OnboardingWizardPanel({ onClose }: { onClose: () => void }) {
                       Check your inbox, once Approved
                     </p>
                     <p className="mt-1 text-xs leading-relaxed text-slate-600">
-                      A <strong>tracking link</strong> will be sent to{" "}
+                      Once approved, a tracking link will be emailed to{" "}
                       <strong className="break-all">{personal.email}</strong>.
-                      Use it to monitor the progress of your account setup in
-                      real time.
                     </p>
                   </div>
                 </div>
@@ -1017,11 +1043,17 @@ function OnboardingWizardPanel({ onClose }: { onClose: () => void }) {
           </Button>
         ) : (
           <>
+            {submitError && (
+              <p className="w-full text-sm text-red-600" role="alert">
+                {submitError}
+              </p>
+            )}
             <Button
               type="button"
               variant="ghost"
               onClick={goBack}
               className="gap-1.5"
+              disabled={submitting}
             >
               <ChevronLeft className="h-4 w-4" aria-hidden />
               {step === "personal" ? "Cancel" : "Back"}
@@ -1031,12 +1063,22 @@ function OnboardingWizardPanel({ onClose }: { onClose: () => void }) {
               className="!bg-[#2a2a2a] !from-[#2a2a2a] !via-[#2a2a2a] !to-[#2a2a2a] shadow-none hover:!from-[#383838] hover:!via-[#383838] hover:!to-[#383838] focus-visible:outline-neutral-600 disabled:!from-[#2a2a2a] disabled:!via-[#2a2a2a] disabled:!to-[#2a2a2a]"
               onClick={goNext}
               disabled={
+                submitting ||
+                draftLoading ||
                 (step === "personal" && !personalValid) ||
                 (step === "location" && !locationValid) ||
-                (step === "services" && selectedServices.size === 0)
+                (step === "services" &&
+                  (servicesLoading ||
+                    draftLoading ||
+                    selectedServices.size === 0 ||
+                    serviceSections.length === 0))
               }
             >
-              {step === "confirm" ? "Submit request" : "Next"}
+              {submitting
+                ? "Submitting…"
+                : step === "confirm"
+                  ? "Submit request"
+                  : "Next"}
             </Button>
           </>
         )}
@@ -1084,6 +1126,53 @@ type OnboardingWizardSplitProps = {
 
 export function OnboardingWizardSplit({ onClose }: OnboardingWizardSplitProps) {
   const [closing, setClosing] = useState(false);
+  const [config, setConfig] = useState<OnboardingConfig | null>(null);
+  const [configLoading, setConfigLoading] = useState(true);
+  const [serviceSections, setServiceSections] = useState<
+    OnboardingServiceSection[]
+  >([]);
+  const [servicesLoading, setServicesLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setConfigLoading(true);
+    fetchOnboardingConfig()
+      .then((c) => {
+        if (!cancelled) setConfig(c);
+      })
+      .finally(() => {
+        if (!cancelled) setConfigLoading(false);
+      });
+    setServicesLoading(true);
+    fetchOnboardingServices()
+      .then((sections) => {
+        if (!cancelled) setServiceSections(sections);
+      })
+      .catch(() => {
+        if (!cancelled) setServiceSections([]);
+      })
+      .finally(() => {
+        if (!cancelled) setServicesLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (!configLoading && !config) {
+    return (
+      <div className="fixed inset-0 z-[190] flex items-center justify-center p-4">
+        <div className="max-w-md rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-lg">
+          <p className="text-sm text-slate-600">
+            Onboarding is not configured yet. Please contact your administrator.
+          </p>
+          <Button type="button" className="mt-4" onClick={onClose}>
+            Back to login
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   useEffect(() => {
     const prev = document.body.style.overflow;
@@ -1125,14 +1214,11 @@ export function OnboardingWizardSplit({ onClose }: OnboardingWizardSplitProps) {
         <aside className="relative hidden w-64 shrink-0 overflow-hidden lg:block xl:w-72">
           <div className="relative flex h-full flex-col items-center justify-center bg-[#2a2a2a] px-8 py-10 text-center text-white">
             <BrandLogo variant="white" className="h-28 w-28 xl:h-32 xl:w-32" />
-            <h2 className="mt-6 text-xl font-semibold tracking-tight text-white xl:text-2xl">
-              New Location
-              <br />
-              Onboarding
+            <h2 className="mt-6 text-xl font-semibold tracking-tight text-white xl:text-2xl whitespace-pre-line">
+              {config?.wizardSidebarTitle || ""}
             </h2>
             <p className="mt-3 text-sm/6 text-[rgb(var(--background))]/80">
-              A few quick steps to get your location set up and all platforms
-              ready.
+              {config?.wizardSidebarDescription || ""}
             </p>
             <div className="mt-6 h-1 w-12 rounded-full bg-[#b8864f]" />
           </div>
@@ -1140,7 +1226,18 @@ export function OnboardingWizardSplit({ onClose }: OnboardingWizardSplitProps) {
 
         {/* Right: wizard form */}
         <div className="flex min-h-0 flex-1 flex-col">
-          <OnboardingWizardPanel onClose={handleClose} />
+          {config ? (
+          <OnboardingWizardPanel
+            config={config}
+            serviceSections={serviceSections}
+            servicesLoading={servicesLoading}
+            onClose={handleClose}
+          />
+          ) : (
+            <div className="flex flex-1 items-center justify-center p-8 text-sm text-slate-500">
+              Loading onboarding…
+            </div>
+          )}
         </div>
       </div>
       <style jsx>{`
