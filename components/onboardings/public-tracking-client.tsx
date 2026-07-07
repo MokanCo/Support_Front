@@ -1,11 +1,14 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
 import {
+  CalendarDays,
   Circle,
   Loader2,
   MapPin,
   Sparkles,
+  X,
 } from "lucide-react";
 import {
   fetchPublicTracking,
@@ -19,7 +22,8 @@ import { OnboardingPublicServiceSections } from "@/components/onboardings/onboar
 function StatusBadge({ status }: { status: string }) {
   const key = status as OnboardingStatus;
   const style =
-    ONBOARDING_STATUS_STYLES[key] ?? "bg-slate-100 text-slate-700 ring-slate-200";
+    ONBOARDING_STATUS_STYLES[key] ??
+    "bg-slate-100 text-slate-700 ring-slate-200";
   const label = ONBOARDING_STATUS_LABELS[key] ?? status;
   return (
     <span
@@ -67,23 +71,49 @@ function ProgressRing({ percent }: { percent: number }) {
           </linearGradient>
         </defs>
       </svg>
-      <span className="absolute text-xl font-bold text-slate-900">{percent}%</span>
+      <span className="absolute text-xl font-bold text-slate-900">
+        {percent}%
+      </span>
     </div>
   );
 }
 
 export function PublicTrackingClient({ token }: { token: string }) {
+  const [toastVisible, setToastVisible] = useState(true);
+
   const query = useQuery({
     queryKey: publicTrackingQueryKey(token),
     queryFn: () => fetchPublicTracking(token),
     refetchInterval: 12000,
   });
 
+  const openingDate = query.data?.request.openingDate ?? null;
+
+  useEffect(() => {
+    setToastVisible(true);
+  }, [token, openingDate]);
+
+  const formattedOpeningDate = openingDate
+    ? (() => {
+        try {
+          return new Date(openingDate).toLocaleDateString(undefined, {
+            year: "numeric",
+            month: "long",
+            day: "numeric",
+          });
+        } catch {
+          return openingDate;
+        }
+      })()
+    : null;
+
   if (query.isPending) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center text-slate-500">
         <Loader2 className="mr-2 h-6 w-6 animate-spin text-primary-600" />
-        <span className="text-sm font-medium">Loading your onboarding progress…</span>
+        <span className="text-sm font-medium">
+          Loading your onboarding progress…
+        </span>
       </div>
     );
   }
@@ -95,22 +125,46 @@ export function PublicTrackingClient({ token }: { token: string }) {
           <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-red-50 text-red-500">
             <Circle className="h-7 w-7" />
           </div>
-          <h1 className="text-lg font-semibold text-slate-900">Link not found</h1>
+          <h1 className="text-lg font-semibold text-slate-900">
+            Link not found
+          </h1>
           <p className="mt-2 text-sm text-slate-600">
-            This tracking link is invalid or has expired. Please check the URL from your
-            approval email.
+            This tracking link is invalid or has expired. Please check the URL
+            from your approval email.
           </p>
         </div>
       </div>
     );
   }
 
-  const { request, services, serviceSections, activities, progress } = query.data;
+  const { request, services, serviceSections, activities, progress } =
+    query.data;
   const isPending = request.status === "pending";
   const hasServices = services.length > 0;
 
   return (
     <div className="space-y-5 p-4 pb-10 sm:p-6 sm:pb-12">
+      {formattedOpeningDate && toastVisible && (
+        <div className="fixed top-16 left-1/2 z-50 flex w-[calc(100%-2rem)] max-w-4xl -translate-x-1/2 items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 shadow-xl ring-1 ring-amber-100">
+          <CalendarDays className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+          <p className="flex-1 text-sm leading-relaxed text-amber-950">
+            Your opening date is{" "}
+            <strong className="font-semibold">{formattedOpeningDate}</strong>.
+            After that you are able to login to the portal and submit your{" "}
+            <strong className="font-semibold">tickets/query</strong> directly to
+            the support. You can keep tracking your progress here as well.
+          </p>
+          <button
+            type="button"
+            onClick={() => setToastVisible(false)}
+            className="mt-0.5 shrink-0 rounded-lg p-1 text-amber-500 transition hover:bg-amber-100 hover:text-amber-700"
+            aria-label="Close"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
       <header className="overflow-hidden rounded-2xl border border-white/60 bg-white/90 shadow-card backdrop-blur-md">
         <div className="bg-gradient-to-br from-primary-50/90 via-white to-emerald-50/50 px-5 py-5 sm:px-6 sm:py-6">
           <div className="flex flex-wrap items-start justify-between gap-4">
@@ -138,9 +192,12 @@ export function PublicTrackingClient({ token }: { token: string }) {
             <div className="mt-5 flex flex-wrap items-center gap-6 border-t border-slate-200/60 pt-5">
               <ProgressRing percent={progress.percent} />
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold text-slate-900">Overall progress</p>
+                <p className="text-sm font-semibold text-slate-900">
+                  Overall progress
+                </p>
                 <p className="mt-1 text-sm text-slate-600">
-                  {progress.completedTasks} of {progress.totalTasks} tasks completed
+                  {progress.completedTasks} of {progress.totalTasks} tasks
+                  completed
                 </p>
                 <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-slate-200/80">
                   <div
@@ -172,7 +229,9 @@ export function PublicTrackingClient({ token }: { token: string }) {
         {hasServices && (
           <section className="rounded-2xl border border-white/60 bg-white/90 shadow-card backdrop-blur-md">
             <div className="border-b border-slate-100 bg-slate-50/60 px-5 py-3.5">
-              <h2 className="text-base font-semibold text-slate-900">Your services</h2>
+              <h2 className="text-base font-semibold text-slate-900">
+                Your services
+              </h2>
               <p className="text-xs text-slate-500">
                 {isPending
                   ? "Selected services — tasks begin after approval"
@@ -192,12 +251,18 @@ export function PublicTrackingClient({ token }: { token: string }) {
         {activities.length > 0 && (
           <section
             className={`rounded-2xl border border-white/60 bg-white/90 shadow-card backdrop-blur-md ${
-              !hasServices ? "lg:col-span-full lg:mx-auto lg:w-full lg:max-w-2xl" : ""
+              !hasServices
+                ? "lg:col-span-full lg:mx-auto lg:w-full lg:max-w-2xl"
+                : ""
             }`}
           >
             <div className="border-b border-slate-100 bg-slate-50/60 px-5 py-3.5">
-              <h2 className="text-base font-semibold text-slate-900">Recent activity</h2>
-              <p className="text-xs text-slate-500">Milestones on your onboarding journey</p>
+              <h2 className="text-base font-semibold text-slate-900">
+                Recent activity
+              </h2>
+              <p className="text-xs text-slate-500">
+                Milestones on your onboarding journey
+              </p>
             </div>
             <div className="p-4">
               <ul className="relative space-y-0">
@@ -213,7 +278,9 @@ export function PublicTrackingClient({ token }: { token: string }) {
                       <Sparkles className="h-3.5 w-3.5" />
                     </span>
                     <div className="min-w-0 flex-1 rounded-xl bg-slate-50/60 px-3 py-2.5 ring-1 ring-slate-100">
-                      <p className="text-sm font-medium text-slate-900">{a.title}</p>
+                      <p className="text-sm font-medium text-slate-900">
+                        {a.title}
+                      </p>
                       {a.description && (
                         <p className="mt-0.5 text-xs leading-relaxed text-slate-600">
                           {a.description}

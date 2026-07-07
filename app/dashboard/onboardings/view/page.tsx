@@ -22,5 +22,5 @@ export default function OnboardingViewPage() {
       <p className="text-sm text-slate-500">Missing onboarding request id.</p>
     );
   }
-  return <OnboardingDetailClient id={id} />;
+  return <OnboardingDetailClient id={id} role={user.role} />;
 }

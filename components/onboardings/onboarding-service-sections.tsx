@@ -96,7 +96,7 @@ function PublicServiceCard({ svc }: { svc: OnboardingPublicService }) {
 export function groupServicesBySection(
   services: OnboardingPublicService[],
 ): OnboardingServiceSection[] {
-  const order = ["Business Listings", "Website Listing", "Delivery Services"];
+  const order = ["Business Listings", "Website Listing", "Geo Tagging Listing", "Third Party", "Delivery Services", "Other"];
   const map = new Map<string, OnboardingPublicService[]>();
   for (const svc of services) {
     const key = svc.section || "Other";

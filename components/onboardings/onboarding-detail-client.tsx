@@ -13,6 +13,7 @@ import {
   ExternalLink,
   Loader2,
   MapPin,
+  UserPlus,
   User,
 } from "lucide-react";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
@@ -25,6 +26,7 @@ import {
   onboardingDetailQueryKey,
   ONBOARDING_STATUS_LABELS,
   ONBOARDING_STATUS_STYLES,
+  provisionOnboarding,
   rejectOnboardingRequest,
   updateOnboardingTask,
   type OnboardingServiceGroup,
@@ -275,9 +277,11 @@ function TaskRow({
   );
 }
 
-export function OnboardingDetailClient({ id }: { id: string }) {
+export function OnboardingDetailClient({ id, role }: { id: string; role?: string }) {
+  const isAdmin = role === "admin";
   const queryClient = useQueryClient();
   const [approving, setApproving] = useState(false);
+  const [provisioning, setProvisioning] = useState(false);
 
   const query = useQuery({
     queryKey: onboardingDetailQueryKey(id),
@@ -291,8 +295,20 @@ export function OnboardingDetailClient({ id }: { id: string }) {
 
   const data = query.data;
   const req = data?.request;
-  const canEdit = req?.status === "in_progress";
-  const canApprove = req?.status === "pending";
+  const canEdit = req?.status === "in_progress" || req?.status === "completed";
+  const canApprove = isAdmin && req?.status === "pending";
+
+  // Provision button conditions: admin + opening date reached + all tasks done + not yet provisioned
+  const openingDateReached = (() => {
+    const d = req?.location?.openingDate;
+    if (!d) return false;
+    try { return new Date(d) <= new Date(); } catch { return false; }
+  })();
+  const allTasksDone = (data?.progress.totalTasks ?? 0) > 0 &&
+    data?.progress.completedTasks === data?.progress.totalTasks;
+  const notProvisioned = !req?.locationId || !req?.userId;
+  const canProvision = isAdmin && openingDateReached && allTasksDone && notProvisioned &&
+    (req?.status === "in_progress" || req?.status === "completed");
 
   const progress = data?.progress.percent ?? req?.progressPercent ?? 0;
 
@@ -360,6 +376,27 @@ export function OnboardingDetailClient({ id }: { id: string }) {
         title: "Failed",
         text: e instanceof Error ? e.message : "Try again",
       });
+    }
+  }
+
+  async function handleProvision() {
+    const confirm = await Swal.fire({
+      icon: "question",
+      title: "Create location & user?",
+      text: "This will create the location in the panel and send a portal invite to the partner.",
+      showCancelButton: true,
+      confirmButtonText: "Create",
+    });
+    if (!confirm.isConfirmed) return;
+    setProvisioning(true);
+    try {
+      await provisionOnboarding(id);
+      void Swal.fire({ icon: "success", title: "Location & user created", timer: 2500, showConfirmButton: false });
+      refresh();
+    } catch (e) {
+      void Swal.fire({ icon: "error", title: "Failed", text: e instanceof Error ? e.message : "Try again" });
+    } finally {
+      setProvisioning(false);
     }
   }
 
@@ -441,6 +478,23 @@ export function OnboardingDetailClient({ id }: { id: string }) {
                       {approving ? "Approving…" : "Approve"}
                     </Button>
                   </>
+                )}
+                {canProvision && (
+                  <Button
+                    type="button"
+                    onClick={handleProvision}
+                    disabled={provisioning}
+                    className="gap-1.5"
+                  >
+                    <UserPlus className="h-4 w-4" />
+                    {provisioning ? "Creating…" : "Create Location & User"}
+                  </Button>
+                )}
+                {req?.locationId && req?.userId && (
+                  <span className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700">
+                    <Check className="h-3.5 w-3.5" />
+                    Location & user provisioned
+                  </span>
                 )}
                 {data?.trackingUrl && (
                   <a

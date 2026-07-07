@@ -80,6 +80,8 @@ export type OnboardingDetail = {
     reviewNotes: string;
     approvedAt: string | null;
     trackingToken?: string;
+    locationId: string | null;
+    userId: string | null;
   };
   trackingUrl: string | null;
   services: OnboardingServiceGroup[];
@@ -99,6 +101,7 @@ export type PublicTrackingData = {
     lastUpdated: string;
     submittedAt: string;
     approvedAt: string | null;
+    openingDate?: string | null;
   };
   services: {
     slug: string;
@@ -211,6 +214,13 @@ export async function syncOnboardingTemplates() {
     method: "POST",
   });
   return parseAuth<{ synced: number }>(res);
+}
+
+export async function provisionOnboarding(id: string) {
+  const res = await apiFetch(`/api/onboarding/admin/requests/${id}/provision`, {
+    method: "POST",
+  });
+  return parseAuth<{ request: OnboardingListRow }>(res);
 }
 
 export async function fetchPublicTracking(token: string) {

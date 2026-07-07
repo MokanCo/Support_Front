@@ -38,7 +38,7 @@ export const NAV_ITEMS: NavItem[] = [
     href: "/dashboard/onboardings",
     label: "Onboardings",
     icon: ClipboardList,
-    roles: ["admin"],
+    roles: ["admin", "support"],
   },
   {
     href: "/dashboard/conversations",

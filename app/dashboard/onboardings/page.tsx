@@ -15,5 +15,5 @@ export default function OnboardingsPage() {
   }, [user.role, router]);
 
   if (!canManageOnboardings(user.role)) return null;
-  return <OnboardingsListClient />;
+  return <OnboardingsListClient role={user.role} />;
 }

@@ -57,7 +57,7 @@ export function canListLocations(role: UserRole): boolean {
 }
 
 export function canManageOnboardings(role: UserRole): boolean {
-  return role === "admin";
+  return role === "admin" || role === "support";
 }
 
 /** Read-only location list (e.g. staff creating tickets). Locations pages stay admin-only. */
