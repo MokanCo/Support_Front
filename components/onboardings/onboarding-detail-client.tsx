@@ -16,7 +16,7 @@ import {
   UserPlus,
   User,
 } from "lucide-react";
-import { Card, CardBody, CardHeader } from "@/components/ui/Card";
+import { Card, CardBody } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Textarea } from "@/components/ui/Textarea";
 import { ProgressCircle } from "@/components/ui/progress-circle";
@@ -33,7 +33,6 @@ import {
   type OnboardingServiceSectionGroup,
   type OnboardingTask,
 } from "@/lib/queries/onboarding-admin";
-import { resolveServiceSections } from "@/components/onboardings/onboarding-service-sections";
 
 function StatusBadge({ status }: { status: string }) {
   const key = status as keyof typeof ONBOARDING_STATUS_STYLES;
@@ -316,10 +315,21 @@ export function OnboardingDetailClient({ id, role }: { id: string; role?: string
 
   const progress = data?.progress.percent ?? req?.progressPercent ?? 0;
 
-  const serviceSections: OnboardingServiceSectionGroup[] =
-    data?.serviceSections && data.serviceSections.length > 0
-      ? data.serviceSections
-      : resolveServiceSections(undefined, data?.services ?? []);
+  const serviceSections: OnboardingServiceSectionGroup[] = (() => {
+    if (data?.serviceSections && data.serviceSections.length > 0) return data.serviceSections;
+    const services = data?.services ?? [];
+    if (services.length === 0) return [];
+    const order = ["Business Listings", "Website Listing", "Geo Tagging Listing", "Third Party", "Delivery Services", "Other"];
+    const map = new Map<string, OnboardingServiceGroup[]>();
+    for (const svc of services) {
+      const key = svc.section || "Other";
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(svc);
+    }
+    return [...map.entries()]
+      .sort(([a], [b]) => (order.indexOf(a) === -1 ? 999 : order.indexOf(a)) - (order.indexOf(b) === -1 ? 999 : order.indexOf(b)))
+      .map(([title, svcs]) => ({ title, services: [...svcs].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)) }));
+  })();
 
   const totalServiceCount =
     serviceSections.reduce((n, s) => n + s.services.length, 0) ||
@@ -521,14 +531,14 @@ export function OnboardingDetailClient({ id, role }: { id: string; role?: string
         <aside className="flex min-h-0 min-w-0 flex-col overflow-hidden">
           <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain pr-0.5">
           <Card className="overflow-hidden border-slate-200/80 shadow-sm">
-            <CardHeader className="shrink-0 border-b border-slate-100 bg-slate-50/50 py-3">
+            <div className="shrink-0 border-b border-slate-100 bg-slate-50/50 px-4 py-3">
               <div className="flex items-center gap-2">
                 <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-100 text-primary-700">
                   <User className="h-4 w-4" />
                 </span>
                 <h2 className="text-sm font-semibold text-slate-900">Owner</h2>
               </div>
-            </CardHeader>
+            </div>
             <CardBody className="p-4">
               <dl className="grid gap-2">
                 <InfoRow label="Owner name" value={req.ownerName} />
@@ -542,14 +552,14 @@ export function OnboardingDetailClient({ id, role }: { id: string; role?: string
           </Card>
 
           <Card className="overflow-hidden border-slate-200/80 shadow-sm">
-            <CardHeader className="shrink-0 border-b border-slate-100 bg-slate-50/50 py-3">
+            <div className="shrink-0 border-b border-slate-100 bg-slate-50/50 px-4 py-3">
               <div className="flex items-center gap-2">
                 <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700">
                   <MapPin className="h-4 w-4" />
                 </span>
                 <h2 className="text-sm font-semibold text-slate-900">Location</h2>
               </div>
-            </CardHeader>
+            </div>
             <CardBody className="p-4">
               <dl className="grid gap-2">
                 <InfoRow label="Location name" value={req.location.locationName} />
@@ -568,14 +578,14 @@ export function OnboardingDetailClient({ id, role }: { id: string; role?: string
           </Card>
 
           <Card className="overflow-hidden border-slate-200/80 shadow-sm">
-            <CardHeader className="shrink-0 border-b border-slate-100 bg-slate-50/50 py-3">
+            <div className="shrink-0 border-b border-slate-100 bg-slate-50/50 px-4 py-3">
               <div className="flex items-center gap-2">
                 <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-200/80 text-slate-600">
                   <Clock className="h-4 w-4" />
                 </span>
                 <h2 className="text-sm font-semibold text-slate-900">Activity</h2>
               </div>
-            </CardHeader>
+            </div>
             <CardBody className="p-0">
               {timeline.length === 0 ? (
                 <p className="p-4 text-sm text-slate-500">No activity yet.</p>
@@ -605,7 +615,7 @@ export function OnboardingDetailClient({ id, role }: { id: string; role?: string
         </aside>
 
         <Card className="flex min-h-0 min-w-0 flex-col overflow-hidden border-slate-200/80 shadow-sm">
-          <CardHeader className="shrink-0 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white py-4">
+          <div className="shrink-0 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white px-4 py-4">
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-100 text-primary-700">
@@ -625,7 +635,7 @@ export function OnboardingDetailClient({ id, role }: { id: string; role?: string
                 </p>
               )}
             </div>
-          </CardHeader>
+          </div>
           <CardBody className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4">
             {serviceSections.length === 0 ? (
               <div className="flex h-full min-h-[200px] flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50/50 px-6 text-center">
