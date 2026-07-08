@@ -241,6 +241,8 @@ function TaskRow({
               Public comment
             </label>
             <Textarea
+              label="Public comment"
+              hideLabel
               rows={2}
               value={publicComment}
               onChange={(e) => setPublicComment(e.target.value)}
@@ -257,6 +259,8 @@ function TaskRow({
               Internal note
             </label>
             <Textarea
+              label="Internal note"
+              hideLabel
               rows={2}
               value={internalNote}
               onChange={(e) => setInternalNote(e.target.value)}
