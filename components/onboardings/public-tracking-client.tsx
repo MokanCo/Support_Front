@@ -145,7 +145,7 @@ export function PublicTrackingClient({ token }: { token: string }) {
   return (
     <div className="space-y-5 p-4 pb-10 sm:p-6 sm:pb-12">
       {formattedOpeningDate && toastVisible && (
-        <div className="fixed top-16 left-1/2 z-50 flex w-[calc(100%-2rem)] max-w-4xl -translate-x-1/2 items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 shadow-xl ring-1 ring-amber-100">
+        <div className="flex w-full items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 shadow-xl ring-1 ring-amber-100">
           <CalendarDays className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
           <p className="flex-1 text-sm leading-relaxed text-amber-950">
             Your opening date is{" "}
