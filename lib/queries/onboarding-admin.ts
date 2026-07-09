@@ -88,6 +88,7 @@ export type OnboardingDetail = {
   serviceSections?: OnboardingServiceSectionGroup[];
   activities: OnboardingActivity[];
   progress: { percent: number; totalTasks: number; completedTasks: number };
+  emailConflict?: { locationName: string } | null;
 };
 
 export type PublicTrackingData = {
@@ -214,6 +215,13 @@ export async function syncOnboardingTemplates() {
     method: "POST",
   });
   return parseAuth<{ synced: number }>(res);
+}
+
+export async function notifyEmailConflict(id: string) {
+  const res = await apiFetch(`/api/onboarding/admin/requests/${id}/notify-email-conflict`, {
+    method: "POST",
+  });
+  return parseAuth<{ sent: boolean }>(res);
 }
 
 export async function provisionOnboarding(id: string) {

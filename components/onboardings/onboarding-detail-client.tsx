@@ -5,6 +5,7 @@ import { useCallback, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Swal from "sweetalert2";
 import {
+  AlertTriangle,
   ArrowLeft,
   Building2,
   Check,
@@ -12,8 +13,8 @@ import {
   Clock,
   ExternalLink,
   Loader2,
+  Mail,
   MapPin,
-  UserPlus,
   User,
 } from "lucide-react";
 import { Card, CardBody } from "@/components/ui/Card";
@@ -23,10 +24,10 @@ import { ProgressCircle } from "@/components/ui/progress-circle";
 import {
   approveOnboardingRequest,
   fetchOnboardingDetail,
+  notifyEmailConflict,
   onboardingDetailQueryKey,
   ONBOARDING_STATUS_LABELS,
   ONBOARDING_STATUS_STYLES,
-  provisionOnboarding,
   rejectOnboardingRequest,
   updateOnboardingTask,
   type OnboardingServiceGroup,
@@ -284,7 +285,7 @@ export function OnboardingDetailClient({ id, role }: { id: string; role?: string
   const isAdmin = role === "admin";
   const queryClient = useQueryClient();
   const [approving, setApproving] = useState(false);
-  const [provisioning, setProvisioning] = useState(false);
+  const [notifying, setNotifying] = useState(false);
 
   const query = useQuery({
     queryKey: onboardingDetailQueryKey(id),
@@ -299,19 +300,7 @@ export function OnboardingDetailClient({ id, role }: { id: string; role?: string
   const data = query.data;
   const req = data?.request;
   const canEdit = req?.status === "in_progress" || req?.status === "completed";
-  const canApprove = isAdmin && req?.status === "pending";
-
-  // Provision button conditions: admin + opening date reached + all tasks done + not yet provisioned
-  const openingDateReached = (() => {
-    const d = req?.location?.openingDate;
-    if (!d) return false;
-    try { return new Date(d) <= new Date(); } catch { return false; }
-  })();
-  const allTasksDone = (data?.progress.totalTasks ?? 0) > 0 &&
-    data?.progress.completedTasks === data?.progress.totalTasks;
-  const notProvisioned = !req?.locationId || !req?.userId;
-  const canProvision = isAdmin && openingDateReached && allTasksDone && notProvisioned &&
-    (req?.status === "in_progress" || req?.status === "completed");
+  const canApprove = isAdmin && req?.status === "pending" && !data?.emailConflict;
 
   const progress = data?.progress.percent ?? req?.progressPercent ?? 0;
 
@@ -393,24 +382,25 @@ export function OnboardingDetailClient({ id, role }: { id: string; role?: string
     }
   }
 
-  async function handleProvision() {
-    const confirm = await Swal.fire({
-      icon: "question",
-      title: "Create location & user?",
-      text: "This will create the location in the panel and send a portal invite to the partner.",
-      showCancelButton: true,
-      confirmButtonText: "Create",
-    });
-    if (!confirm.isConfirmed) return;
-    setProvisioning(true);
+  async function handleNotifyEmailConflict() {
+    setNotifying(true);
     try {
-      await provisionOnboarding(id);
-      void Swal.fire({ icon: "success", title: "Location & user created", timer: 2500, showConfirmButton: false });
-      refresh();
+      await notifyEmailConflict(id);
+      void Swal.fire({
+        icon: "success",
+        title: "Notification sent",
+        text: "An email has been sent to the applicant asking them to re-submit with a different email.",
+        timer: 3500,
+        showConfirmButton: false,
+      });
     } catch (e) {
-      void Swal.fire({ icon: "error", title: "Failed", text: e instanceof Error ? e.message : "Try again" });
+      void Swal.fire({
+        icon: "error",
+        title: "Failed to send",
+        text: e instanceof Error ? e.message : "Try again",
+      });
     } finally {
-      setProvisioning(false);
+      setNotifying(false);
     }
   }
 
@@ -493,23 +483,6 @@ export function OnboardingDetailClient({ id, role }: { id: string; role?: string
                     </Button>
                   </>
                 )}
-                {canProvision && (
-                  <Button
-                    type="button"
-                    onClick={handleProvision}
-                    disabled={provisioning}
-                    className="gap-1.5"
-                  >
-                    <UserPlus className="h-4 w-4" />
-                    {provisioning ? "Creating…" : "Create Location & User"}
-                  </Button>
-                )}
-                {req?.locationId && req?.userId && (
-                  <span className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700">
-                    <Check className="h-3.5 w-3.5" />
-                    Location & user provisioned
-                  </span>
-                )}
                 {data?.trackingUrl && (
                   <a
                     href={data.trackingUrl}
@@ -526,6 +499,30 @@ export function OnboardingDetailClient({ id, role }: { id: string; role?: string
           </div>
         </div>
       </div>
+
+      {data?.emailConflict && (
+        <div className="flex shrink-0 items-start gap-3 rounded-2xl border border-red-200 bg-red-50 px-5 py-4 shadow-sm ring-1 ring-red-100">
+          <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-red-600" />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-red-900">Email already registered</p>
+            <p className="mt-1 text-sm text-red-800">
+              The email <strong>{req.email}</strong> is already attached to{" "}
+              <strong>{data.emailConflict.locationName}</strong>. Please notify the applicant to
+              re-submit their onboarding with a different email address.
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={handleNotifyEmailConflict}
+            disabled={notifying}
+            className="shrink-0 gap-1.5 border-red-200 bg-white text-red-700 hover:bg-red-50"
+          >
+            <Mail className="h-4 w-4" />
+            {notifying ? "Sending…" : "Send Notification"}
+          </Button>
+        </div>
+      )}
 
       <div className="grid min-h-0 flex-1 gap-5 lg:grid-cols-[minmax(0,340px)_minmax(0,1fr)] lg:items-stretch">
         <aside className="flex min-h-0 min-w-0 flex-col overflow-hidden">
