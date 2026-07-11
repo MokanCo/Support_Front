@@ -11,9 +11,11 @@ import {
   Mail,
   MapPin,
   MonitorSmartphone,
+  Plus,
   Smartphone,
   Star,
   User,
+  X,
   type LucideIcon,
 } from "lucide-react";
 import { BrandLogo } from "@/components/BrandLogo";
@@ -242,7 +244,7 @@ function OnboardingWizardPanel({
   onClose: () => void;
 }) {
   const [step, setStep] = useState<WizardStep>("personal");
-  const [personal, setPersonal] = useState<PersonalInfo>(emptyPersonal);
+  const [partners, setPartners] = useState<PersonalInfo[]>([{ ...emptyPersonal }]);
   const [location, setLocation] = useState<LocationInfo>(emptyLocation);
   const [selectedServices, setSelectedServices] = useState<Set<string>>(
     () => new Set(),
@@ -284,16 +286,27 @@ function OnboardingWizardPanel({
     [draftToken],
   );
 
-  const personalValid = !!(
-    personal.firstName.trim() &&
-    personal.lastName.trim() &&
-    personal.email.trim() &&
-    personal.phone.trim() &&
-    personal.address.trim() &&
-    personal.city.trim() &&
-    personal.state.trim() &&
-    personal.zip.trim()
-  );
+  function isPartnerValid(p: PersonalInfo) {
+    return !!(
+      p.firstName.trim() && p.lastName.trim() && p.email.trim() &&
+      p.phone.trim() && p.address.trim() && p.city.trim() &&
+      p.state.trim() && p.zip.trim()
+    );
+  }
+
+  const personalValid = partners.length > 0 && partners.every(isPartnerValid);
+
+  function updatePartner(index: number, patch: Partial<PersonalInfo>) {
+    setPartners((prev) => prev.map((p, i) => (i === index ? { ...p, ...patch } : p)));
+  }
+
+  function addPartner() {
+    setPartners((prev) => [...prev, { ...emptyPersonal }]);
+  }
+
+  function removePartner(index: number) {
+    setPartners((prev) => prev.filter((_, i) => i !== index));
+  }
 
   const locationValid = !!(
     location.locationName.trim() &&
@@ -326,7 +339,8 @@ function OnboardingWizardPanel({
     setServicesSaveError(null);
     try {
       const result = await createOnboardingDraft({
-        personal,
+        personal: partners[0],
+        additionalPartners: partners.slice(1),
         location,
         trackingToken: draftToken ?? undefined,
       });
@@ -497,105 +511,131 @@ function OnboardingWizardPanel({
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <Input
-                  label="First name"
-                  name="firstName"
-                  value={personal.firstName}
-                  onChange={(e) =>
-                    setPersonal((p) => ({ ...p, firstName: e.target.value }))
-                  }
-                  autoComplete="given-name"
-                  required
-                />
-                <Input
-                  label="Last name"
-                  name="lastName"
-                  value={personal.lastName}
-                  onChange={(e) =>
-                    setPersonal((p) => ({ ...p, lastName: e.target.value }))
-                  }
-                  autoComplete="family-name"
-                  required
-                />
-              </div>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <Input
-                  label="Email address"
-                  name="email"
-                  type="email"
-                  value={personal.email}
-                  onChange={(e) =>
-                    setPersonal((p) => ({ ...p, email: e.target.value }))
-                  }
-                  autoComplete="email"
-                  required
-                />
-                <Input
-                  label="Phone number"
-                  name="phone"
-                  type="tel"
-                  placeholder="(555) 000-0000"
-                  maxLength={14}
-                  value={personal.phone}
-                  onChange={(e) =>
-                    setPersonal((p) => ({
-                      ...p,
-                      phone: formatUSPhone(e.target.value),
-                    }))
-                  }
-                  autoComplete="tel"
-                  required
-                />
-              </div>
-              <AddressAutocomplete
-                label="Address"
-                value={personal.address}
-                onChange={(v) => setPersonal((p) => ({ ...p, address: v }))}
-                onSelect={(s: AddressSuggestion) =>
-                  setPersonal((p) => ({
-                    ...p,
-                    address: s.street || s.displayName.split(",")[0],
-                    city: s.city,
-                    state: s.state,
-                    zip: s.zip,
-                  }))
-                }
-                required
-              />
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                <Input
-                  label="City"
-                  name="city"
-                  value={personal.city}
-                  onChange={(e) =>
-                    setPersonal((p) => ({ ...p, city: e.target.value }))
-                  }
-                  autoComplete="address-level2"
-                  required
-                />
-                <Input
-                  label="State"
-                  name="state"
-                  value={personal.state}
-                  onChange={(e) =>
-                    setPersonal((p) => ({ ...p, state: e.target.value }))
-                  }
-                  autoComplete="address-level1"
-                  required
-                />
-                <div className="col-span-2 sm:col-span-1">
-                  <Input
-                    label="Zip"
-                    name="zip"
-                    value={personal.zip}
-                    onChange={(e) =>
-                      setPersonal((p) => ({ ...p, zip: e.target.value }))
-                    }
-                    autoComplete="postal-code"
-                    required
-                  />
-                </div>
+              <div className="space-y-3">
+                {partners.map((partner, idx) => (
+                  <div
+                    key={idx}
+                    className="overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-sm"
+                  >
+                    {/* Card header */}
+                    <div className="flex items-center justify-between gap-2 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white px-4 py-2.5">
+                      <div className="flex items-center gap-2">
+                        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary-700 text-[0.6rem] font-bold text-white">
+                          {idx + 1}
+                        </span>
+                        <span className="text-sm font-semibold text-slate-800">
+                          {idx === 0 ? "Primary Partner" : `Partner ${idx + 1}`}
+                        </span>
+                      </div>
+                      {partners.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => removePartner(idx)}
+                          className="flex h-6 w-6 items-center justify-center rounded-full text-slate-400 transition hover:bg-red-50 hover:text-red-500"
+                          aria-label={`Remove partner ${idx + 1}`}
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Card fields */}
+                    <div className="space-y-3 p-4">
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <Input
+                          label="First name"
+                          name={`firstName-${idx}`}
+                          value={partner.firstName}
+                          onChange={(e) => updatePartner(idx, { firstName: e.target.value })}
+                          autoComplete="given-name"
+                          required
+                        />
+                        <Input
+                          label="Last name"
+                          name={`lastName-${idx}`}
+                          value={partner.lastName}
+                          onChange={(e) => updatePartner(idx, { lastName: e.target.value })}
+                          autoComplete="family-name"
+                          required
+                        />
+                      </div>
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <Input
+                          label="Email address"
+                          name={`email-${idx}`}
+                          type="email"
+                          value={partner.email}
+                          onChange={(e) => updatePartner(idx, { email: e.target.value })}
+                          autoComplete="email"
+                          required
+                        />
+                        <Input
+                          label="Phone number"
+                          name={`phone-${idx}`}
+                          type="tel"
+                          placeholder="(555) 000-0000"
+                          maxLength={14}
+                          value={partner.phone}
+                          onChange={(e) => updatePartner(idx, { phone: formatUSPhone(e.target.value) })}
+                          autoComplete="tel"
+                          required
+                        />
+                      </div>
+                      <AddressAutocomplete
+                        label="Address"
+                        value={partner.address}
+                        onChange={(v) => updatePartner(idx, { address: v })}
+                        onSelect={(s: AddressSuggestion) =>
+                          updatePartner(idx, {
+                            address: s.street || s.displayName.split(",")[0],
+                            city: s.city,
+                            state: s.state,
+                            zip: s.zip,
+                          })
+                        }
+                        required
+                      />
+                      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                        <Input
+                          label="City"
+                          name={`city-${idx}`}
+                          value={partner.city}
+                          onChange={(e) => updatePartner(idx, { city: e.target.value })}
+                          autoComplete="address-level2"
+                          required
+                        />
+                        <Input
+                          label="State"
+                          name={`state-${idx}`}
+                          value={partner.state}
+                          onChange={(e) => updatePartner(idx, { state: e.target.value })}
+                          autoComplete="address-level1"
+                          required
+                        />
+                        <div className="col-span-2 sm:col-span-1">
+                          <Input
+                            label="Zip"
+                            name={`zip-${idx}`}
+                            value={partner.zip}
+                            onChange={(e) => updatePartner(idx, { zip: e.target.value })}
+                            autoComplete="postal-code"
+                            required
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+
+                {/* Add Partner button */}
+                <button
+                  type="button"
+                  onClick={addPartner}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-600 transition hover:border-primary-400 hover:bg-primary-50/40 hover:text-primary-700"
+                >
+                  <Plus className="h-4 w-4" />
+                  Add another partner
+                </button>
               </div>
             </div>
           )}
@@ -830,60 +870,54 @@ function OnboardingWizardPanel({
                       <User className="h-3 w-3 shrink-0" aria-hidden />
                       Personnel Information
                     </h3>
-                    <dl className="grid grid-cols-2 gap-x-4 gap-y-2.5 text-sm text-slate-700 sm:grid-cols-3">
-                      <div>
-                        <dt className="text-[0.6rem] font-medium uppercase tracking-wide text-slate-400">
-                          First Name
-                        </dt>
-                        <dd className="mt-0.5 font-medium">
-                          {personal.firstName}
-                        </dd>
-                      </div>
-                      <div>
-                        <dt className="text-[0.6rem] font-medium uppercase tracking-wide text-slate-400">
-                          Last Name
-                        </dt>
-                        <dd className="mt-0.5 font-medium">
-                          {personal.lastName}
-                        </dd>
-                      </div>
-                      <div>
-                        <dt className="text-[0.6rem] font-medium uppercase tracking-wide text-slate-400">
-                          Phone
-                        </dt>
-                        <dd className="mt-0.5">{personal.phone}</dd>
-                      </div>
-                      <div className="col-span-2 sm:col-span-3">
-                        <dt className="text-[0.6rem] font-medium uppercase tracking-wide text-slate-400">
-                          Email
-                        </dt>
-                        <dd className="mt-0.5 break-all">{personal.email}</dd>
-                      </div>
-                      <div className="col-span-2 sm:col-span-3">
-                        <dt className="text-[0.6rem] font-medium uppercase tracking-wide text-slate-400">
-                          Address
-                        </dt>
-                        <dd className="mt-0.5">{personal.address}</dd>
-                      </div>
-                      <div>
-                        <dt className="text-[0.6rem] font-medium uppercase tracking-wide text-slate-400">
-                          City
-                        </dt>
-                        <dd className="mt-0.5">{personal.city}</dd>
-                      </div>
-                      <div>
-                        <dt className="text-[0.6rem] font-medium uppercase tracking-wide text-slate-400">
-                          State
-                        </dt>
-                        <dd className="mt-0.5">{personal.state}</dd>
-                      </div>
-                      <div>
-                        <dt className="text-[0.6rem] font-medium uppercase tracking-wide text-slate-400">
-                          Zip
-                        </dt>
-                        <dd className="mt-0.5">{personal.zip}</dd>
-                      </div>
-                    </dl>
+                    <div className="space-y-3">
+                      {partners.map((p, idx) => (
+                        <div key={idx}>
+                          {partners.length > 1 && (
+                            <p className="mb-1.5 text-[0.6rem] font-bold uppercase tracking-widest text-primary-700">
+                              {idx === 0 ? "Primary Partner" : `Partner ${idx + 1}`}
+                            </p>
+                          )}
+                          <dl className="grid grid-cols-2 gap-x-4 gap-y-2.5 text-sm text-slate-700 sm:grid-cols-3">
+                            <div>
+                              <dt className="text-[0.6rem] font-medium uppercase tracking-wide text-slate-400">First Name</dt>
+                              <dd className="mt-0.5 font-medium">{p.firstName}</dd>
+                            </div>
+                            <div>
+                              <dt className="text-[0.6rem] font-medium uppercase tracking-wide text-slate-400">Last Name</dt>
+                              <dd className="mt-0.5 font-medium">{p.lastName}</dd>
+                            </div>
+                            <div>
+                              <dt className="text-[0.6rem] font-medium uppercase tracking-wide text-slate-400">Phone</dt>
+                              <dd className="mt-0.5">{p.phone}</dd>
+                            </div>
+                            <div className="col-span-2 sm:col-span-3">
+                              <dt className="text-[0.6rem] font-medium uppercase tracking-wide text-slate-400">Email</dt>
+                              <dd className="mt-0.5 break-all">{p.email}</dd>
+                            </div>
+                            <div className="col-span-2 sm:col-span-3">
+                              <dt className="text-[0.6rem] font-medium uppercase tracking-wide text-slate-400">Address</dt>
+                              <dd className="mt-0.5">{p.address}</dd>
+                            </div>
+                            <div>
+                              <dt className="text-[0.6rem] font-medium uppercase tracking-wide text-slate-400">City</dt>
+                              <dd className="mt-0.5">{p.city}</dd>
+                            </div>
+                            <div>
+                              <dt className="text-[0.6rem] font-medium uppercase tracking-wide text-slate-400">State</dt>
+                              <dd className="mt-0.5">{p.state}</dd>
+                            </div>
+                            <div>
+                              <dt className="text-[0.6rem] font-medium uppercase tracking-wide text-slate-400">Zip</dt>
+                              <dd className="mt-0.5">{p.zip}</dd>
+                            </div>
+                          </dl>
+                          {idx < partners.length - 1 && (
+                            <div className="mt-3 border-t border-slate-100" />
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   </div>
 
                   {/* Location Information */}
@@ -1016,7 +1050,7 @@ function OnboardingWizardPanel({
                     </p>
                     <p className="mt-1 text-xs leading-relaxed text-slate-600">
                       Once approved, a tracking link will be emailed to{" "}
-                      <strong className="break-all">{personal.email}</strong>.
+                      <strong className="break-all">{partners[0]?.email}</strong>.
                     </p>
                   </div>
                 </div>

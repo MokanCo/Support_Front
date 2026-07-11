@@ -96,6 +96,7 @@ export async function fetchOnboardingServices(): Promise<
 
 export async function createOnboardingDraft(payload: {
   personal: PersonalInfo;
+  additionalPartners?: PersonalInfo[];
   location: LocationInfo;
   trackingToken?: string;
 }): Promise<{ request: OnboardingRequest; trackingToken: string }> {

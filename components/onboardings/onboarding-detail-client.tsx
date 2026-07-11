@@ -21,6 +21,7 @@ import { Card, CardBody } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Textarea } from "@/components/ui/Textarea";
 import { ProgressCircle } from "@/components/ui/progress-circle";
+import { OnboardingDetailPageSkeleton } from "@/components/ui/skeleton";
 import {
   approveOnboardingRequest,
   fetchOnboardingDetail,
@@ -38,9 +39,11 @@ import {
 function StatusBadge({ status }: { status: string }) {
   const key = status as keyof typeof ONBOARDING_STATUS_STYLES;
   const style =
-    ONBOARDING_STATUS_STYLES[key] ?? "bg-slate-100 text-slate-700 ring-slate-200";
+    ONBOARDING_STATUS_STYLES[key] ??
+    "bg-slate-100 text-slate-700 ring-slate-200";
   const label =
-    ONBOARDING_STATUS_LABELS[key as keyof typeof ONBOARDING_STATUS_LABELS] ?? status;
+    ONBOARDING_STATUS_LABELS[key as keyof typeof ONBOARDING_STATUS_LABELS] ??
+    status;
   return (
     <span
       className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ring-inset ${style}`}
@@ -62,7 +65,13 @@ function InfoRow({ label, value }: { label: string; value?: string | null }) {
   );
 }
 
-function ServiceProgress({ completed, total }: { completed: number; total: number }) {
+function ServiceProgress({
+  completed,
+  total,
+}: {
+  completed: number;
+  total: number;
+}) {
   const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
   return (
     <div className="flex min-w-[88px] flex-col items-end gap-1">
@@ -153,7 +162,9 @@ function ServiceAccordion({
         <div className="min-w-0 flex-1">
           <p className="font-semibold text-slate-900">{group.title}</p>
           <p className="text-xs text-slate-500">
-            {allDone ? "All tasks complete" : `${completed} of ${group.tasks.length} done`}
+            {allDone
+              ? "All tasks complete"
+              : `${completed} of ${group.tasks.length} done`}
           </p>
         </div>
         <ServiceProgress completed={completed} total={group.tasks.length} />
@@ -281,7 +292,13 @@ function TaskRow({
   );
 }
 
-export function OnboardingDetailClient({ id, role }: { id: string; role?: string }) {
+export function OnboardingDetailClient({
+  id,
+  role,
+}: {
+  id: string;
+  role?: string;
+}) {
   const isAdmin = role === "admin";
   const queryClient = useQueryClient();
   const [approving, setApproving] = useState(false);
@@ -294,21 +311,32 @@ export function OnboardingDetailClient({ id, role }: { id: string; role?: string
   });
 
   const refresh = useCallback(() => {
-    void queryClient.invalidateQueries({ queryKey: onboardingDetailQueryKey(id) });
+    void queryClient.invalidateQueries({
+      queryKey: onboardingDetailQueryKey(id),
+    });
   }, [queryClient, id]);
 
   const data = query.data;
   const req = data?.request;
   const canEdit = req?.status === "in_progress" || req?.status === "completed";
-  const canApprove = isAdmin && req?.status === "pending" && !data?.emailConflict;
+  const canApprove =
+    isAdmin && req?.status === "pending" && !data?.emailConflict;
 
   const progress = data?.progress.percent ?? req?.progressPercent ?? 0;
 
   const serviceSections: OnboardingServiceSectionGroup[] = (() => {
-    if (data?.serviceSections && data.serviceSections.length > 0) return data.serviceSections;
+    if (data?.serviceSections && data.serviceSections.length > 0)
+      return data.serviceSections;
     const services = data?.services ?? [];
     if (services.length === 0) return [];
-    const order = ["Business Listings", "Website Listing", "Geo Tagging Listing", "Third Party", "Delivery Services", "Other"];
+    const order = [
+      "Business Listings",
+      "Website Listing",
+      "Geo Tagging Listing",
+      "Third Party",
+      "Delivery Services",
+      "Other",
+    ];
     const map = new Map<string, OnboardingServiceGroup[]>();
     for (const svc of services) {
       const key = svc.section || "Other";
@@ -316,8 +344,17 @@ export function OnboardingDetailClient({ id, role }: { id: string; role?: string
       map.get(key)!.push(svc);
     }
     return [...map.entries()]
-      .sort(([a], [b]) => (order.indexOf(a) === -1 ? 999 : order.indexOf(a)) - (order.indexOf(b) === -1 ? 999 : order.indexOf(b)))
-      .map(([title, svcs]) => ({ title, services: [...svcs].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)) }));
+      .sort(
+        ([a], [b]) =>
+          (order.indexOf(a) === -1 ? 999 : order.indexOf(a)) -
+          (order.indexOf(b) === -1 ? 999 : order.indexOf(b)),
+      )
+      .map(([title, svcs]) => ({
+        title,
+        services: [...svcs].sort(
+          (a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0),
+        ),
+      }));
   })();
 
   const totalServiceCount =
@@ -407,12 +444,7 @@ export function OnboardingDetailClient({ id, role }: { id: string; role?: string
   const timeline = useMemo(() => data?.activities ?? [], [data?.activities]);
 
   if (query.isPending && !data) {
-    return (
-      <div className="flex h-[calc(100dvh-8rem)] items-center justify-center text-slate-500">
-        <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-        Loading onboarding…
-      </div>
-    );
+    return <OnboardingDetailPageSkeleton />;
   }
 
   if (!req) {
@@ -467,7 +499,9 @@ export function OnboardingDetailClient({ id, role }: { id: string; role?: string
                     <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
                       Progress
                     </p>
-                    <p className="text-lg font-bold text-slate-900">{progress}%</p>
+                    <p className="text-lg font-bold text-slate-900">
+                      {progress}%
+                    </p>
                   </div>
                 </div>
               )}
@@ -475,10 +509,18 @@ export function OnboardingDetailClient({ id, role }: { id: string; role?: string
               <div className="flex flex-wrap gap-2">
                 {canApprove && (
                   <>
-                    <Button type="button" variant="secondary" onClick={handleReject}>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={handleReject}
+                    >
                       Reject
                     </Button>
-                    <Button type="button" onClick={handleApprove} disabled={approving}>
+                    <Button
+                      type="button"
+                      onClick={handleApprove}
+                      disabled={approving}
+                    >
                       {approving ? "Approving…" : "Approve"}
                     </Button>
                   </>
@@ -504,11 +546,14 @@ export function OnboardingDetailClient({ id, role }: { id: string; role?: string
         <div className="flex shrink-0 items-start gap-3 rounded-2xl border border-red-200 bg-red-50 px-5 py-4 shadow-sm ring-1 ring-red-100">
           <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-red-600" />
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold text-red-900">Email already registered</p>
+            <p className="text-sm font-semibold text-red-900">
+              Email already registered
+            </p>
             <p className="mt-1 text-sm text-red-800">
               The email <strong>{req.email}</strong> is already attached to{" "}
-              <strong>{data.emailConflict.locationName}</strong>. Please notify the applicant to
-              re-submit their onboarding with a different email address.
+              <strong>{data.emailConflict.locationName}</strong>. Please notify
+              the applicant to re-submit their onboarding with a different email
+              address.
             </p>
           </div>
           <Button
@@ -527,87 +572,103 @@ export function OnboardingDetailClient({ id, role }: { id: string; role?: string
       <div className="grid min-h-0 flex-1 gap-5 lg:grid-cols-[minmax(0,340px)_minmax(0,1fr)] lg:items-stretch">
         <aside className="flex min-h-0 min-w-0 flex-col overflow-hidden">
           <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain pr-0.5">
-          <Card className="overflow-hidden border-slate-200/80 shadow-sm">
-            <div className="shrink-0 border-b border-slate-100 bg-slate-50/50 px-4 py-3">
-              <div className="flex items-center gap-2">
-                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-100 text-primary-700">
-                  <User className="h-4 w-4" />
-                </span>
-                <h2 className="text-sm font-semibold text-slate-900">Owner</h2>
+            <Card className="overflow-hidden border-slate-200/80 shadow-sm">
+              <div className="shrink-0 border-b border-slate-100 bg-slate-50/50 px-4 py-3">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-100 text-primary-700">
+                    <User className="h-4 w-4" />
+                  </span>
+                  <h2 className="text-sm font-semibold text-slate-900">
+                    Owner
+                  </h2>
+                </div>
               </div>
-            </div>
-            <CardBody className="p-4">
-              <dl className="grid gap-2">
-                <InfoRow label="Owner name" value={req.ownerName} />
-                <InfoRow label="Email" value={req.email} />
-                <InfoRow label="Phone" value={req.phone} />
-                <InfoRow label="Business name" value={req.businessName} />
-                <InfoRow label="Website" value={req.website} />
-                <InfoRow label="Notes" value={req.notes} />
-              </dl>
-            </CardBody>
-          </Card>
+              <CardBody className="p-4">
+                <dl className="grid gap-2">
+                  <InfoRow label="Owner name" value={req.ownerName} />
+                  <InfoRow label="Email" value={req.email} />
+                  <InfoRow label="Phone" value={req.phone} />
+                  <InfoRow label="Business name" value={req.businessName} />
+                  <InfoRow label="Website" value={req.website} />
+                  <InfoRow label="Notes" value={req.notes} />
+                </dl>
+              </CardBody>
+            </Card>
 
-          <Card className="overflow-hidden border-slate-200/80 shadow-sm">
-            <div className="shrink-0 border-b border-slate-100 bg-slate-50/50 px-4 py-3">
-              <div className="flex items-center gap-2">
-                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700">
-                  <MapPin className="h-4 w-4" />
-                </span>
-                <h2 className="text-sm font-semibold text-slate-900">Location</h2>
+            <Card className="overflow-hidden border-slate-200/80 shadow-sm">
+              <div className="shrink-0 border-b border-slate-100 bg-slate-50/50 px-4 py-3">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700">
+                    <MapPin className="h-4 w-4" />
+                  </span>
+                  <h2 className="text-sm font-semibold text-slate-900">
+                    Location
+                  </h2>
+                </div>
               </div>
-            </div>
-            <CardBody className="p-4">
-              <dl className="grid gap-2">
-                <InfoRow label="Location name" value={req.location.locationName} />
-                <InfoRow label="Address" value={req.location.address} />
-                <InfoRow label="City" value={req.location.city} />
-                <InfoRow label="State" value={req.location.state} />
-                <InfoRow label="ZIP" value={req.location.zip} />
-                <InfoRow label="Country" value={req.location.country} />
-                <InfoRow label="Category" value={req.location.businessCategory} />
-                <InfoRow
-                  label="Submitted"
-                  value={new Date(req.submittedAt).toLocaleString()}
-                />
-              </dl>
-            </CardBody>
-          </Card>
+              <CardBody className="p-4">
+                <dl className="grid gap-2">
+                  <InfoRow
+                    label="Location name"
+                    value={req.location.locationName}
+                  />
+                  <InfoRow label="Address" value={req.location.address} />
+                  <InfoRow label="City" value={req.location.city} />
+                  <InfoRow label="State" value={req.location.state} />
+                  <InfoRow label="ZIP" value={req.location.zip} />
+                  <InfoRow label="Country" value={req.location.country} />
+                  <InfoRow
+                    label="Category"
+                    value={req.location.businessCategory}
+                  />
+                  <InfoRow
+                    label="Submitted"
+                    value={new Date(req.submittedAt).toLocaleString()}
+                  />
+                </dl>
+              </CardBody>
+            </Card>
 
-          <Card className="overflow-hidden border-slate-200/80 shadow-sm">
-            <div className="shrink-0 border-b border-slate-100 bg-slate-50/50 px-4 py-3">
-              <div className="flex items-center gap-2">
-                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-200/80 text-slate-600">
-                  <Clock className="h-4 w-4" />
-                </span>
-                <h2 className="text-sm font-semibold text-slate-900">Activity</h2>
+            <Card className="overflow-hidden border-slate-200/80 shadow-sm">
+              <div className="shrink-0 border-b border-slate-100 bg-slate-50/50 px-4 py-3">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-200/80 text-slate-600">
+                    <Clock className="h-4 w-4" />
+                  </span>
+                  <h2 className="text-sm font-semibold text-slate-900">
+                    Activity
+                  </h2>
+                </div>
               </div>
-            </div>
-            <CardBody className="p-0">
-              {timeline.length === 0 ? (
-                <p className="p-4 text-sm text-slate-500">No activity yet.</p>
-              ) : (
-                <ul className="divide-y divide-slate-100">
-                  {timeline.map((a) => (
-                    <li key={a.id} className="flex gap-3 px-4 py-3">
-                      <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary-50 text-primary-600">
-                        <Clock className="h-3.5 w-3.5" />
-                      </span>
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium text-slate-900">{a.title}</p>
-                        {a.description && (
-                          <p className="mt-0.5 text-xs text-slate-600">{a.description}</p>
-                        )}
-                        <p className="mt-1 text-[0.65rem] text-slate-400">
-                          {new Date(a.createdAt).toLocaleString()}
-                        </p>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </CardBody>
-          </Card>
+              <CardBody className="p-0">
+                {timeline.length === 0 ? (
+                  <p className="p-4 text-sm text-slate-500">No activity yet.</p>
+                ) : (
+                  <ul className="divide-y divide-slate-100">
+                    {timeline.map((a) => (
+                      <li key={a.id} className="flex gap-3 px-4 py-3">
+                        <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary-50 text-primary-600">
+                          <Clock className="h-3.5 w-3.5" />
+                        </span>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-slate-900">
+                            {a.title}
+                          </p>
+                          {a.description && (
+                            <p className="mt-0.5 text-xs text-slate-600">
+                              {a.description}
+                            </p>
+                          )}
+                          <p className="mt-1 text-[0.65rem] text-slate-400">
+                            {new Date(a.createdAt).toLocaleString()}
+                          </p>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </CardBody>
+            </Card>
           </div>
         </aside>
 
@@ -619,7 +680,9 @@ export function OnboardingDetailClient({ id, role }: { id: string; role?: string
                   <Building2 className="h-4 w-4" />
                 </span>
                 <div>
-                  <h2 className="text-sm font-semibold text-slate-900">Service tasks</h2>
+                  <h2 className="text-sm font-semibold text-slate-900">
+                    Service tasks
+                  </h2>
                   <p className="text-xs text-slate-500">
                     {totalServiceCount} services
                     {canApprove ? " · preview until approved" : ""}
@@ -628,7 +691,8 @@ export function OnboardingDetailClient({ id, role }: { id: string; role?: string
               </div>
               {canEdit && data?.progress && (
                 <p className="text-xs font-medium text-slate-500">
-                  {data.progress.completedTasks}/{data.progress.totalTasks} tasks
+                  {data.progress.completedTasks}/{data.progress.totalTasks}{" "}
+                  tasks
                 </p>
               )}
             </div>

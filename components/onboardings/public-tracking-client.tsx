@@ -5,7 +5,6 @@ import { useEffect, useState } from "react";
 import {
   CalendarDays,
   Circle,
-  Loader2,
   MapPin,
   Sparkles,
   X,
@@ -18,6 +17,7 @@ import {
   type OnboardingStatus,
 } from "@/lib/queries/onboarding-admin";
 import { OnboardingPublicServiceSections } from "@/components/onboardings/onboarding-service-sections";
+import { PublicTrackingPageSkeleton } from "@/components/ui/skeleton";
 
 function StatusBadge({ status }: { status: string }) {
   const key = status as OnboardingStatus;
@@ -108,14 +108,7 @@ export function PublicTrackingClient({ token }: { token: string }) {
     : null;
 
   if (query.isPending) {
-    return (
-      <div className="flex min-h-[50vh] items-center justify-center text-slate-500">
-        <Loader2 className="mr-2 h-6 w-6 animate-spin text-primary-600" />
-        <span className="text-sm font-medium">
-          Loading your onboarding progress…
-        </span>
-      </div>
-    );
+    return <PublicTrackingPageSkeleton />;
   }
 
   if (query.isError || !query.data) {

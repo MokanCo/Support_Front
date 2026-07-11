@@ -94,7 +94,9 @@ export function OnboardingsListClient({ role }: { role?: string }) {
     queryFn: () => fetchOnboardingRequestsList(filters),
   });
 
-  const rows = query.data?.requests ?? [];
+  const rows = (query.data?.requests ?? []).filter(
+    (r) => status === "completed" || r.status !== "completed",
+  );
   const totalPages = query.data?.totalPages ?? 1;
   const loading = query.isPending && !query.data;
 
