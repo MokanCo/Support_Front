@@ -158,6 +158,19 @@ export async function submitOnboardingRequest(payload: {
   return parseJson(res);
 }
 
+export async function checkEmailAvailable(
+  email: string,
+): Promise<{ available: boolean }> {
+  const res = await fetch(
+    resolveApiUrl(
+      `/api/onboarding/check-email?email=${encodeURIComponent(email)}`,
+    ),
+    { cache: "no-store" },
+  );
+  if (!res.ok) return { available: true };
+  return (await res.json()) as { available: boolean };
+}
+
 export async function trackOnboardingRequest(token: string): Promise<{
   request: OnboardingRequest;
   trackingUrl: string;

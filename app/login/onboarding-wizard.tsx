@@ -25,6 +25,7 @@ import { AddressAutocomplete } from "@/components/ui/address-autocomplete";
 import type { AddressSuggestion } from "@/components/ui/address-autocomplete";
 import { formatUSPhone } from "@/lib/format";
 import {
+  checkEmailAvailable,
   createOnboardingDraft,
   fetchOnboardingConfig,
   fetchOnboardingServices,
@@ -155,21 +156,21 @@ export function OnboardingWelcomeModal({
           </p>
 
           {config && config.welcomeSteps.length > 0 ? (
-          <div className="mt-6 grid grid-cols-4 gap-2">
-            {config.welcomeSteps.map((s) => (
-              <div
-                key={s.num}
-                className="flex flex-col items-center gap-1.5 rounded-xl bg-slate-50 px-1 py-3"
-              >
-                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary-700 text-[0.7rem] font-bold text-white">
-                  {s.num}
-                </span>
-                <span className="whitespace-pre-line text-center text-[0.6rem] font-semibold leading-tight text-slate-500 sm:text-[0.65rem]">
-                  {s.label}
-                </span>
-              </div>
-            ))}
-          </div>
+            <div className="mt-6 grid grid-cols-4 gap-2">
+              {config.welcomeSteps.map((s) => (
+                <div
+                  key={s.num}
+                  className="flex flex-col items-center gap-1.5 rounded-xl bg-slate-50 px-1 py-3"
+                >
+                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary-700 text-[0.7rem] font-bold text-white">
+                    {s.num}
+                  </span>
+                  <span className="whitespace-pre-line text-center text-[0.6rem] font-semibold leading-tight text-slate-500 sm:text-[0.65rem]">
+                    {s.label}
+                  </span>
+                </div>
+              ))}
+            </div>
           ) : null}
 
           <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-center">
@@ -244,17 +245,23 @@ function OnboardingWizardPanel({
   onClose: () => void;
 }) {
   const [step, setStep] = useState<WizardStep>("personal");
-  const [partners, setPartners] = useState<PersonalInfo[]>([{ ...emptyPersonal }]);
+  const [partners, setPartners] = useState<PersonalInfo[]>([
+    { ...emptyPersonal },
+  ]);
   const [location, setLocation] = useState<LocationInfo>(emptyLocation);
   const [selectedServices, setSelectedServices] = useState<Set<string>>(
     () => new Set(),
   );
+  const [emailErrors, setEmailErrors] = useState<Record<number, string>>({});
+  const [checkingEmails, setCheckingEmails] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [trackingUrl, setTrackingUrl] = useState<string | null>(null);
   const [draftToken, setDraftToken] = useState<string | null>(null);
   const [draftLoading, setDraftLoading] = useState(false);
-  const [servicesSaveError, setServicesSaveError] = useState<string | null>(null);
+  const [servicesSaveError, setServicesSaveError] = useState<string | null>(
+    null,
+  );
 
   const progressLabels = config?.stepLabels ?? [];
   const allServices = useMemo(
@@ -288,16 +295,30 @@ function OnboardingWizardPanel({
 
   function isPartnerValid(p: PersonalInfo) {
     return !!(
-      p.firstName.trim() && p.lastName.trim() && p.email.trim() &&
-      p.phone.trim() && p.address.trim() && p.city.trim() &&
-      p.state.trim() && p.zip.trim()
+      p.firstName.trim() &&
+      p.lastName.trim() &&
+      p.email.trim() &&
+      p.phone.trim() &&
+      p.address.trim() &&
+      p.city.trim() &&
+      p.state.trim() &&
+      p.zip.trim()
     );
   }
 
   const personalValid = partners.length > 0 && partners.every(isPartnerValid);
 
   function updatePartner(index: number, patch: Partial<PersonalInfo>) {
-    setPartners((prev) => prev.map((p, i) => (i === index ? { ...p, ...patch } : p)));
+    if (patch.email !== undefined && emailErrors[index]) {
+      setEmailErrors((prev) => {
+        const next = { ...prev };
+        delete next[index];
+        return next;
+      });
+    }
+    setPartners((prev) =>
+      prev.map((p, i) => (i === index ? { ...p, ...patch } : p)),
+    );
   }
 
   function addPartner() {
@@ -359,9 +380,35 @@ function OnboardingWizardPanel({
     }
   }
 
+  async function validatePartnerEmails(): Promise<boolean> {
+    setCheckingEmails(true);
+    const errors: Record<number, string> = {};
+    await Promise.all(
+      partners.map(async (p, idx) => {
+        const email = p.email.trim().toLowerCase();
+        if (!email) return;
+        try {
+          const { available } = await checkEmailAvailable(email);
+          if (!available) {
+            errors[idx] =
+              "Email already registered please use a different email.";
+          }
+        } catch {
+          // network error — allow through, backend will validate
+        }
+      }),
+    );
+    setEmailErrors(errors);
+    setCheckingEmails(false);
+    return Object.keys(errors).length === 0;
+  }
+
   async function goNext() {
-    if (step === "personal" && personalValid) setStep("location");
-    else if (step === "location" && locationValid) {
+    if (step === "personal" && personalValid) {
+      const ok = await validatePartnerEmails();
+      if (ok) setStep("location");
+      return;
+    } else if (step === "location" && locationValid) {
       const token = await ensureDraft();
       if (token) setStep("services");
     } else if (step === "services" && selectedServices.size > 0)
@@ -524,7 +571,7 @@ function OnboardingWizardPanel({
                           {idx + 1}
                         </span>
                         <span className="text-sm font-semibold text-slate-800">
-                          {idx === 0 ? "Primary Partner" : `Partner ${idx + 1}`}
+                          {idx === 0 ? "Primary Owner" : `Owner ${idx + 1}`}
                         </span>
                       </div>
                       {partners.length > 1 && (
@@ -532,7 +579,7 @@ function OnboardingWizardPanel({
                           type="button"
                           onClick={() => removePartner(idx)}
                           className="flex h-6 w-6 items-center justify-center rounded-full text-slate-400 transition hover:bg-red-50 hover:text-red-500"
-                          aria-label={`Remove partner ${idx + 1}`}
+                          aria-label={`Remove owner ${idx + 1}`}
                         >
                           <X className="h-3.5 w-3.5" />
                         </button>
@@ -546,7 +593,9 @@ function OnboardingWizardPanel({
                           label="First name"
                           name={`firstName-${idx}`}
                           value={partner.firstName}
-                          onChange={(e) => updatePartner(idx, { firstName: e.target.value })}
+                          onChange={(e) =>
+                            updatePartner(idx, { firstName: e.target.value })
+                          }
                           autoComplete="given-name"
                           required
                         />
@@ -554,21 +603,32 @@ function OnboardingWizardPanel({
                           label="Last name"
                           name={`lastName-${idx}`}
                           value={partner.lastName}
-                          onChange={(e) => updatePartner(idx, { lastName: e.target.value })}
+                          onChange={(e) =>
+                            updatePartner(idx, { lastName: e.target.value })
+                          }
                           autoComplete="family-name"
                           required
                         />
                       </div>
                       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                        <Input
-                          label="Email address"
-                          name={`email-${idx}`}
-                          type="email"
-                          value={partner.email}
-                          onChange={(e) => updatePartner(idx, { email: e.target.value })}
-                          autoComplete="email"
-                          required
-                        />
+                        <div>
+                          <Input
+                            label="Email address"
+                            name={`email-${idx}`}
+                            type="email"
+                            value={partner.email}
+                            onChange={(e) =>
+                              updatePartner(idx, { email: e.target.value })
+                            }
+                            autoComplete="email"
+                            required
+                          />
+                          {emailErrors[idx] && (
+                            <p className="mt-1 text-xs font-medium text-red-600">
+                              {emailErrors[idx]}
+                            </p>
+                          )}
+                        </div>
                         <Input
                           label="Phone number"
                           name={`phone-${idx}`}
@@ -576,7 +636,11 @@ function OnboardingWizardPanel({
                           placeholder="(555) 000-0000"
                           maxLength={14}
                           value={partner.phone}
-                          onChange={(e) => updatePartner(idx, { phone: formatUSPhone(e.target.value) })}
+                          onChange={(e) =>
+                            updatePartner(idx, {
+                              phone: formatUSPhone(e.target.value),
+                            })
+                          }
                           autoComplete="tel"
                           required
                         />
@@ -600,7 +664,9 @@ function OnboardingWizardPanel({
                           label="City"
                           name={`city-${idx}`}
                           value={partner.city}
-                          onChange={(e) => updatePartner(idx, { city: e.target.value })}
+                          onChange={(e) =>
+                            updatePartner(idx, { city: e.target.value })
+                          }
                           autoComplete="address-level2"
                           required
                         />
@@ -608,7 +674,9 @@ function OnboardingWizardPanel({
                           label="State"
                           name={`state-${idx}`}
                           value={partner.state}
-                          onChange={(e) => updatePartner(idx, { state: e.target.value })}
+                          onChange={(e) =>
+                            updatePartner(idx, { state: e.target.value })
+                          }
                           autoComplete="address-level1"
                           required
                         />
@@ -617,7 +685,9 @@ function OnboardingWizardPanel({
                             label="Zip"
                             name={`zip-${idx}`}
                             value={partner.zip}
-                            onChange={(e) => updatePartner(idx, { zip: e.target.value })}
+                            onChange={(e) =>
+                              updatePartner(idx, { zip: e.target.value })
+                            }
                             autoComplete="postal-code"
                             required
                           />
@@ -627,14 +697,14 @@ function OnboardingWizardPanel({
                   </div>
                 ))}
 
-                {/* Add Partner button */}
+                {/* Add Owner button */}
                 <button
                   type="button"
                   onClick={addPartner}
                   className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-600 transition hover:border-primary-400 hover:bg-primary-50/40 hover:text-primary-700"
                 >
                   <Plus className="h-4 w-4" />
-                  Add another partner
+                  Add secondary owner
                 </button>
               </div>
             </div>
@@ -775,8 +845,8 @@ function OnboardingWizardPanel({
                 <p className="text-sm text-slate-500">Loading services…</p>
               ) : serviceSections.length === 0 ? (
                 <p className="text-sm text-slate-500">
-                  No services have been added yet. An administrator must configure
-                  service options before you can continue.
+                  No services have been added yet. An administrator must
+                  configure service options before you can continue.
                 </p>
               ) : (
                 serviceSections.map((section) => (
@@ -875,40 +945,60 @@ function OnboardingWizardPanel({
                         <div key={idx}>
                           {partners.length > 1 && (
                             <p className="mb-1.5 text-[0.6rem] font-bold uppercase tracking-widest text-primary-700">
-                              {idx === 0 ? "Primary Partner" : `Partner ${idx + 1}`}
+                              {idx === 0 ? "Primary Owner" : `Owner ${idx + 1}`}
                             </p>
                           )}
                           <dl className="grid grid-cols-2 gap-x-4 gap-y-2.5 text-sm text-slate-700 sm:grid-cols-3">
                             <div>
-                              <dt className="text-[0.6rem] font-medium uppercase tracking-wide text-slate-400">First Name</dt>
-                              <dd className="mt-0.5 font-medium">{p.firstName}</dd>
+                              <dt className="text-[0.6rem] font-medium uppercase tracking-wide text-slate-400">
+                                First Name
+                              </dt>
+                              <dd className="mt-0.5 font-medium">
+                                {p.firstName}
+                              </dd>
                             </div>
                             <div>
-                              <dt className="text-[0.6rem] font-medium uppercase tracking-wide text-slate-400">Last Name</dt>
-                              <dd className="mt-0.5 font-medium">{p.lastName}</dd>
+                              <dt className="text-[0.6rem] font-medium uppercase tracking-wide text-slate-400">
+                                Last Name
+                              </dt>
+                              <dd className="mt-0.5 font-medium">
+                                {p.lastName}
+                              </dd>
                             </div>
                             <div>
-                              <dt className="text-[0.6rem] font-medium uppercase tracking-wide text-slate-400">Phone</dt>
+                              <dt className="text-[0.6rem] font-medium uppercase tracking-wide text-slate-400">
+                                Phone
+                              </dt>
                               <dd className="mt-0.5">{p.phone}</dd>
                             </div>
                             <div className="col-span-2 sm:col-span-3">
-                              <dt className="text-[0.6rem] font-medium uppercase tracking-wide text-slate-400">Email</dt>
+                              <dt className="text-[0.6rem] font-medium uppercase tracking-wide text-slate-400">
+                                Email
+                              </dt>
                               <dd className="mt-0.5 break-all">{p.email}</dd>
                             </div>
                             <div className="col-span-2 sm:col-span-3">
-                              <dt className="text-[0.6rem] font-medium uppercase tracking-wide text-slate-400">Address</dt>
+                              <dt className="text-[0.6rem] font-medium uppercase tracking-wide text-slate-400">
+                                Address
+                              </dt>
                               <dd className="mt-0.5">{p.address}</dd>
                             </div>
                             <div>
-                              <dt className="text-[0.6rem] font-medium uppercase tracking-wide text-slate-400">City</dt>
+                              <dt className="text-[0.6rem] font-medium uppercase tracking-wide text-slate-400">
+                                City
+                              </dt>
                               <dd className="mt-0.5">{p.city}</dd>
                             </div>
                             <div>
-                              <dt className="text-[0.6rem] font-medium uppercase tracking-wide text-slate-400">State</dt>
+                              <dt className="text-[0.6rem] font-medium uppercase tracking-wide text-slate-400">
+                                State
+                              </dt>
                               <dd className="mt-0.5">{p.state}</dd>
                             </div>
                             <div>
-                              <dt className="text-[0.6rem] font-medium uppercase tracking-wide text-slate-400">Zip</dt>
+                              <dt className="text-[0.6rem] font-medium uppercase tracking-wide text-slate-400">
+                                Zip
+                              </dt>
                               <dd className="mt-0.5">{p.zip}</dd>
                             </div>
                           </dl>
@@ -1050,7 +1140,10 @@ function OnboardingWizardPanel({
                     </p>
                     <p className="mt-1 text-xs leading-relaxed text-slate-600">
                       Once approved, a tracking link will be emailed to{" "}
-                      <strong className="break-all">{partners[0]?.email}</strong>.
+                      <strong className="break-all">
+                        {partners[0]?.email}
+                      </strong>
+                      .
                     </p>
                   </div>
                 </div>
@@ -1099,7 +1192,9 @@ function OnboardingWizardPanel({
               disabled={
                 submitting ||
                 draftLoading ||
-                (step === "personal" && !personalValid) ||
+                checkingEmails ||
+                (step === "personal" &&
+                  (!personalValid || Object.keys(emailErrors).length > 0)) ||
                 (step === "location" && !locationValid) ||
                 (step === "services" &&
                   (servicesLoading ||
@@ -1110,9 +1205,11 @@ function OnboardingWizardPanel({
             >
               {submitting
                 ? "Submitting…"
-                : step === "confirm"
-                  ? "Submit request"
-                  : "Next"}
+                : checkingEmails
+                  ? "Checking…"
+                  : step === "confirm"
+                    ? "Submit request"
+                    : "Next"}
             </Button>
           </>
         )}
@@ -1261,12 +1358,12 @@ export function OnboardingWizardSplit({ onClose }: OnboardingWizardSplitProps) {
         {/* Right: wizard form */}
         <div className="flex min-h-0 flex-1 flex-col">
           {config ? (
-          <OnboardingWizardPanel
-            config={config}
-            serviceSections={serviceSections}
-            servicesLoading={servicesLoading}
-            onClose={handleClose}
-          />
+            <OnboardingWizardPanel
+              config={config}
+              serviceSections={serviceSections}
+              servicesLoading={servicesLoading}
+              onClose={handleClose}
+            />
           ) : (
             <div className="flex flex-1 items-center justify-center p-8 text-sm text-slate-500">
               Loading onboarding…

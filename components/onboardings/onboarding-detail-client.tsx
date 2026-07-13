@@ -216,7 +216,7 @@ function TaskRow({
           type="button"
           disabled={!canEdit || saving}
           onClick={onToggle}
-          className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border-2 transition-all ${
+          className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border-2 transition-all disabled:cursor-not-allowed disabled:opacity-40 ${
             task.completed
               ? "border-emerald-600 bg-emerald-600 text-white shadow-sm shadow-emerald-200"
               : "border-slate-300 bg-white hover:border-primary-400 hover:bg-primary-50/50"
@@ -672,7 +672,7 @@ export function OnboardingDetailClient({
           </div>
         </aside>
 
-        <Card className="flex min-h-0 min-w-0 flex-col overflow-hidden border-slate-200/80 shadow-sm">
+        <Card className={`flex min-h-0 min-w-0 flex-col overflow-hidden border-slate-200/80 shadow-sm transition-opacity ${req.status === "pending" ? "pointer-events-none opacity-50" : ""}`}>
           <div className="shrink-0 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white px-4 py-4">
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2">
