@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Check,
   ChevronLeft,
@@ -252,8 +252,16 @@ function OnboardingWizardPanel({
   const [selectedServices, setSelectedServices] = useState<Set<string>>(
     () => new Set(),
   );
-  const [emailErrors, setEmailErrors] = useState<Record<number, string>>({});
-  const [checkingEmails, setCheckingEmails] = useState(false);
+  const [duplicateErrors, setDuplicateErrors] = useState<Record<number, string>>({});
+  const [registeredErrors, setRegisteredErrors] = useState<Record<number, string>>({});
+  const [checkingIdx, setCheckingIdx] = useState<Set<number>>(new Set());
+  const emailErrors = useMemo(
+    () => ({ ...registeredErrors, ...duplicateErrors }),
+    [registeredErrors, duplicateErrors],
+  );
+  // Ref so async blur handlers always read the current email, not a stale closure
+  const partnersRef = useRef(partners);
+  useEffect(() => { partnersRef.current = partners; }, [partners]);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [trackingUrl, setTrackingUrl] = useState<string | null>(null);
@@ -308,17 +316,35 @@ function OnboardingWizardPanel({
 
   const personalValid = partners.length > 0 && partners.every(isPartnerValid);
 
+  function checkDuplicates(currentPartners: PersonalInfo[]) {
+    const seen: Record<string, number[]> = {};
+    for (let i = 0; i < currentPartners.length; i++) {
+      const email = currentPartners[i].email.trim().toLowerCase();
+      if (!email) continue;
+      (seen[email] ??= []).push(i);
+    }
+    const errors: Record<number, string> = {};
+    for (const indices of Object.values(seen)) {
+      if (indices.length > 1) {
+        for (const idx of indices) {
+          errors[idx] = "This email is already used by another owner in this form.";
+        }
+      }
+    }
+    setDuplicateErrors(errors);
+  }
+
   function updatePartner(index: number, patch: Partial<PersonalInfo>) {
-    if (patch.email !== undefined && emailErrors[index]) {
-      setEmailErrors((prev) => {
+    const updated = partners.map((p, i) => (i === index ? { ...p, ...patch } : p));
+    setPartners(updated);
+    if (patch.email !== undefined) {
+      checkDuplicates(updated);
+      setRegisteredErrors((prev) => {
         const next = { ...prev };
         delete next[index];
         return next;
       });
     }
-    setPartners((prev) =>
-      prev.map((p, i) => (i === index ? { ...p, ...patch } : p)),
-    );
   }
 
   function addPartner() {
@@ -326,7 +352,27 @@ function OnboardingWizardPanel({
   }
 
   function removePartner(index: number) {
-    setPartners((prev) => prev.filter((_, i) => i !== index));
+    const updated = partners.filter((_, i) => i !== index);
+    setPartners(updated);
+    checkDuplicates(updated);
+    // Re-index: cards after the removed one shift down by 1
+    setRegisteredErrors((prev) => {
+      const next: Record<number, string> = {};
+      for (const [k, v] of Object.entries(prev)) {
+        const n = Number(k);
+        if (n < index) next[n] = v;
+        else if (n > index) next[n - 1] = v;
+      }
+      return next;
+    });
+    setCheckingIdx((prev) => {
+      const next = new Set<number>();
+      for (const n of prev) {
+        if (n < index) next.add(n);
+        else if (n > index) next.add(n - 1);
+      }
+      return next;
+    });
   }
 
   const locationValid = !!(
@@ -380,32 +426,70 @@ function OnboardingWizardPanel({
     }
   }
 
-  async function validatePartnerEmails(): Promise<boolean> {
-    setCheckingEmails(true);
-    const errors: Record<number, string> = {};
+  async function handleEmailBlur(idx: number) {
+    const email = partners[idx]?.email.trim().toLowerCase();
+    if (!email || duplicateErrors[idx]) return;
+    setCheckingIdx((prev) => new Set([...prev, idx]));
+    try {
+      const { available } = await checkEmailAvailable(email);
+      // Guard: email may have changed while the request was in flight — discard stale result
+      const currentEmail = partnersRef.current[idx]?.email.trim().toLowerCase();
+      if (currentEmail !== email) return;
+      setRegisteredErrors((prev) => {
+        const next = { ...prev };
+        if (!available) {
+          next[idx] = "Email already registered, please use a different email.";
+        } else {
+          delete next[idx];
+        }
+        return next;
+      });
+    } catch {
+      // network error — allow through
+    } finally {
+      // Only release spinner if this check is still the relevant one
+      const currentEmail = partnersRef.current[idx]?.email.trim().toLowerCase();
+      if (currentEmail === email) {
+        setCheckingIdx((prev) => {
+          const next = new Set(prev);
+          next.delete(idx);
+          return next;
+        });
+      }
+    }
+  }
+
+  async function verifyUncheckedEmails(): Promise<boolean> {
+    // Emails not yet verified via blur (neither errored nor confirmed available)
+    const unchecked = partners
+      .map((p, idx) => ({ idx, email: p.email.trim().toLowerCase() }))
+      .filter(({ idx, email }) => email && !duplicateErrors[idx] && !(idx in registeredErrors) && !checkingIdx.has(idx));
+    if (unchecked.length === 0) return Object.keys(emailErrors).length === 0;
+    setCheckingIdx((prev) => new Set([...prev, ...unchecked.map((u) => u.idx)]));
+    const newErrors: Record<number, string> = {};
     await Promise.all(
-      partners.map(async (p, idx) => {
-        const email = p.email.trim().toLowerCase();
-        if (!email) return;
+      unchecked.map(async ({ idx, email }) => {
         try {
           const { available } = await checkEmailAvailable(email);
-          if (!available) {
-            errors[idx] =
-              "Email already registered please use a different email.";
-          }
-        } catch {
-          // network error — allow through, backend will validate
-        }
+          if (!available) newErrors[idx] = "Email already registered, please use a different email.";
+        } catch { /* network error — allow through */ }
       }),
     );
-    setEmailErrors(errors);
-    setCheckingEmails(false);
-    return Object.keys(errors).length === 0;
+    setRegisteredErrors((prev) => ({ ...prev, ...newErrors }));
+    setCheckingIdx((prev) => {
+      const next = new Set(prev);
+      unchecked.forEach(({ idx }) => next.delete(idx));
+      return next;
+    });
+    // Use the freshly computed state to decide — don't read stale closure
+    const freshRegistered = { ...registeredErrors, ...newErrors };
+    const combined = { ...freshRegistered, ...duplicateErrors };
+    return Object.keys(combined).length === 0;
   }
 
   async function goNext() {
     if (step === "personal" && personalValid) {
-      const ok = await validatePartnerEmails();
+      const ok = await verifyUncheckedEmails();
       if (ok) setStep("location");
       return;
     } else if (step === "location" && locationValid) {
@@ -620,14 +704,19 @@ function OnboardingWizardPanel({
                             onChange={(e) =>
                               updatePartner(idx, { email: e.target.value })
                             }
+                            onBlur={() => handleEmailBlur(idx)}
                             autoComplete="email"
                             required
                           />
-                          {emailErrors[idx] && (
+                          {emailErrors[idx] ? (
                             <p className="mt-1 text-xs font-medium text-red-600">
                               {emailErrors[idx]}
                             </p>
-                          )}
+                          ) : checkingIdx.has(idx) ? (
+                            <p className="mt-1 text-xs text-slate-400">
+                              Checking…
+                            </p>
+                          ) : null}
                         </div>
                         <Input
                           label="Phone number"
@@ -1192,7 +1281,7 @@ function OnboardingWizardPanel({
               disabled={
                 submitting ||
                 draftLoading ||
-                checkingEmails ||
+                checkingIdx.size > 0 ||
                 (step === "personal" &&
                   (!personalValid || Object.keys(emailErrors).length > 0)) ||
                 (step === "location" && !locationValid) ||
@@ -1205,7 +1294,7 @@ function OnboardingWizardPanel({
             >
               {submitting
                 ? "Submitting…"
-                : checkingEmails
+                : checkingIdx.size > 0
                   ? "Checking…"
                   : step === "confirm"
                     ? "Submit request"
