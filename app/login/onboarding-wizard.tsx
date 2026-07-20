@@ -259,9 +259,12 @@ function OnboardingWizardPanel({
     () => ({ ...registeredErrors, ...duplicateErrors }),
     [registeredErrors, duplicateErrors],
   );
-  // Ref so async blur handlers always read the current email, not a stale closure
+  // Refs so async/delayed handlers always read current state, not stale closures
   const partnersRef = useRef(partners);
   useEffect(() => { partnersRef.current = partners; }, [partners]);
+  const duplicateErrorsRef = useRef(duplicateErrors);
+  useEffect(() => { duplicateErrorsRef.current = duplicateErrors; }, [duplicateErrors]);
+  const emailCheckTimers = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [trackingUrl, setTrackingUrl] = useState<string | null>(null);
@@ -327,7 +330,7 @@ function OnboardingWizardPanel({
     for (const indices of Object.values(seen)) {
       if (indices.length > 1) {
         for (const idx of indices) {
-          errors[idx] = "This email is already used by another owner in this form.";
+          errors[idx] = "Already used by another owner in this form.";
         }
       }
     }
@@ -344,6 +347,7 @@ function OnboardingWizardPanel({
         delete next[index];
         return next;
       });
+      scheduleEmailCheck(index);
     }
   }
 
@@ -352,6 +356,9 @@ function OnboardingWizardPanel({
   }
 
   function removePartner(index: number) {
+    // Cancel all pending debounced checks — indices shift after removal
+    for (const timer of Object.values(emailCheckTimers.current)) clearTimeout(timer);
+    emailCheckTimers.current = {};
     const updated = partners.filter((_, i) => i !== index);
     setPartners(updated);
     checkDuplicates(updated);
@@ -426,9 +433,18 @@ function OnboardingWizardPanel({
     }
   }
 
+  function scheduleEmailCheck(idx: number) {
+    clearTimeout(emailCheckTimers.current[idx]);
+    emailCheckTimers.current[idx] = setTimeout(() => {
+      void handleEmailBlur(idx);
+    }, 600);
+  }
+
   async function handleEmailBlur(idx: number) {
-    const email = partners[idx]?.email.trim().toLowerCase();
-    if (!email || duplicateErrors[idx]) return;
+    clearTimeout(emailCheckTimers.current[idx]);
+    delete emailCheckTimers.current[idx];
+    const email = partnersRef.current[idx]?.email.trim().toLowerCase();
+    if (!email || duplicateErrorsRef.current[idx]) return;
     setCheckingIdx((prev) => new Set([...prev, idx]));
     try {
       const { available } = await checkEmailAvailable(email);
@@ -438,7 +454,7 @@ function OnboardingWizardPanel({
       setRegisteredErrors((prev) => {
         const next = { ...prev };
         if (!available) {
-          next[idx] = "Email already registered, please use a different email.";
+          next[idx] = "Email already registered to another location.";
         } else {
           delete next[idx];
         }
@@ -471,7 +487,7 @@ function OnboardingWizardPanel({
       unchecked.map(async ({ idx, email }) => {
         try {
           const { available } = await checkEmailAvailable(email);
-          if (!available) newErrors[idx] = "Email already registered, please use a different email.";
+          if (!available) newErrors[idx] = "Email already registered to another location.";
         } catch { /* network error — allow through */ }
       }),
     );
@@ -704,19 +720,22 @@ function OnboardingWizardPanel({
                             onChange={(e) =>
                               updatePartner(idx, { email: e.target.value })
                             }
-                            onBlur={() => handleEmailBlur(idx)}
+                            onBlur={() => void handleEmailBlur(idx)}
                             autoComplete="email"
                             required
                           />
-                          {emailErrors[idx] ? (
-                            <p className="mt-1 text-xs font-medium text-red-600">
-                              {emailErrors[idx]}
-                            </p>
-                          ) : checkingIdx.has(idx) ? (
-                            <p className="mt-1 text-xs text-slate-400">
-                              Checking…
-                            </p>
-                          ) : null}
+                          <p
+                            className={`mt-1 min-h-[1rem] text-xs transition-all duration-200 ${
+                              emailErrors[idx]
+                                ? "font-medium text-red-600 opacity-100"
+                                : checkingIdx.has(idx)
+                                  ? "text-slate-400 opacity-100"
+                                  : "opacity-0 select-none"
+                            }`}
+                            aria-live="polite"
+                          >
+                            {emailErrors[idx] ?? (checkingIdx.has(idx) ? "Checking…" : " ")}
+                          </p>
                         </div>
                         <Input
                           label="Phone number"
