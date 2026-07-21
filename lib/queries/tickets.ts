@@ -72,7 +72,7 @@ export async function fetchAssignableUsersForTicket(
     role?: string;
   }[];
   return list
-    .filter((u) => u.role === "support")
+    .filter((u) => u.role === "support" || u.role === "admin")
     .map((u) => ({
       id: u.id,
       name: u.name,
