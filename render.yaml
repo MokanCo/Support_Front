@@ -6,3 +6,7 @@ services:
     runtime: static
     buildCommand: npm ci && npm run build
     staticPublishPath: ./out
+    routes:
+      - type: redirect
+        source: /onboarding/track/*
+        destination: /onboarding/track?token=*

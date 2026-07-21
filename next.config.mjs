@@ -28,6 +28,16 @@ const nextConfig = {
     NEXT_PUBLIC_API_URL: apiUrl,
     NEXT_PUBLIC_SOCKET_URL: socketUrl,
   },
+  /** Legacy approval emails used `/onboarding/track/:token`; static export uses `?token=`. */
+  async redirects() {
+    return [
+      {
+        source: "/onboarding/track/:token",
+        destination: "/onboarding/track?token=:token",
+        permanent: false,
+      },
+    ];
+  },
 };
 
 export default nextConfig;

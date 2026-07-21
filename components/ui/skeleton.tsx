@@ -351,6 +351,224 @@ export function SkeletonCentered({ children }: { children?: ReactNode }) {
   );
 }
 
+/** Onboarding admin detail page skeleton — mirrors the two-column layout. */
+export function OnboardingDetailPageSkeleton() {
+  return (
+    <div className="flex h-[calc(100dvh-8rem)] flex-col gap-4">
+      {/* back link */}
+      <Skeleton className="h-4 w-28" />
+
+      {/* header card */}
+      <div className="shrink-0 overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-card">
+        <div className="bg-gradient-to-r from-primary-50/80 via-white to-emerald-50/40 px-5 py-4 sm:px-6">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="min-w-0 flex-1 space-y-2">
+              <div className="flex gap-2">
+                <Skeleton className="h-5 w-24 rounded-lg" />
+                <Skeleton className="h-5 w-16 rounded-full" />
+              </div>
+              <Skeleton className="h-8 w-64 max-w-full" />
+              <Skeleton className="h-4 w-40" />
+            </div>
+            <div className="flex items-center gap-4">
+              <Skeleton className="h-16 w-16 rounded-full" />
+              <div className="flex gap-2">
+                <Skeleton className="h-9 w-20 rounded-xl" />
+                <Skeleton className="h-9 w-24 rounded-xl" />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* two-column body */}
+      <div className="grid min-h-0 flex-1 gap-5 lg:grid-cols-[minmax(0,340px)_minmax(0,1fr)] lg:items-stretch">
+        {/* sidebar */}
+        <aside className="flex min-h-0 min-w-0 flex-col overflow-hidden">
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain pr-0.5">
+            {/* Owner card */}
+            <Card className="overflow-hidden border-slate-200/80 shadow-sm">
+              <div className="shrink-0 border-b border-slate-100 bg-slate-50/50 px-4 py-3">
+                <div className="flex items-center gap-2">
+                  <Skeleton className="h-8 w-8 rounded-lg" />
+                  <Skeleton className="h-4 w-16" />
+                </div>
+              </div>
+              <CardBody className="p-4">
+                <div className="grid gap-2">
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <div key={i} className="animate-pulse rounded-xl bg-slate-50/80 px-3 py-2.5 ring-1 ring-slate-100 space-y-1">
+                      <Skeleton className="h-2.5 w-16" />
+                      <Skeleton className="h-4 w-36 max-w-full" />
+                    </div>
+                  ))}
+                </div>
+              </CardBody>
+            </Card>
+            {/* Location card */}
+            <Card className="overflow-hidden border-slate-200/80 shadow-sm">
+              <div className="shrink-0 border-b border-slate-100 bg-slate-50/50 px-4 py-3">
+                <div className="flex items-center gap-2">
+                  <Skeleton className="h-8 w-8 rounded-lg" />
+                  <Skeleton className="h-4 w-20" />
+                </div>
+              </div>
+              <CardBody className="p-4">
+                <div className="grid gap-2">
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <div key={i} className="animate-pulse rounded-xl bg-slate-50/80 px-3 py-2.5 ring-1 ring-slate-100 space-y-1">
+                      <Skeleton className="h-2.5 w-20" />
+                      <Skeleton className="h-4 w-32 max-w-full" />
+                    </div>
+                  ))}
+                </div>
+              </CardBody>
+            </Card>
+            {/* Activity card */}
+            <Card className="overflow-hidden border-slate-200/80 shadow-sm">
+              <div className="shrink-0 border-b border-slate-100 bg-slate-50/50 px-4 py-3">
+                <div className="flex items-center gap-2">
+                  <Skeleton className="h-8 w-8 rounded-lg" />
+                  <Skeleton className="h-4 w-16" />
+                </div>
+              </div>
+              <CardBody className="p-0">
+                <ul className="divide-y divide-slate-100">
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <li key={i} className="flex animate-pulse gap-3 px-4 py-3">
+                      <Skeleton className="h-7 w-7 shrink-0 rounded-full" />
+                      <div className="min-w-0 flex-1 space-y-1.5">
+                        <Skeleton className="h-4 w-28" />
+                        <Skeleton className="h-3 w-full" />
+                        <Skeleton className="h-3 w-20" />
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </CardBody>
+            </Card>
+          </div>
+        </aside>
+
+        {/* service tasks */}
+        <Card className="flex min-h-0 min-w-0 flex-col overflow-hidden border-slate-200/80 shadow-sm">
+          <div className="shrink-0 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white px-4 py-4">
+            <div className="flex items-center gap-2">
+              <Skeleton className="h-8 w-8 rounded-lg" />
+              <div className="space-y-1">
+                <Skeleton className="h-4 w-24" />
+                <Skeleton className="h-3 w-20" />
+              </div>
+            </div>
+          </div>
+          <CardBody className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4">
+            <div className="space-y-6">
+              {Array.from({ length: 3 }).map((_, si) => (
+                <div key={si} className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Skeleton className="h-2 w-2 rounded-full" />
+                    <Skeleton className="h-3 w-32" />
+                  </div>
+                  <div className="space-y-3">
+                    {Array.from({ length: 2 }).map((_, ti) => (
+                      <div key={ti} className="animate-pulse overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+                        <div className="flex items-center justify-between gap-4 px-4 py-3.5">
+                          <div className="min-w-0 flex-1 space-y-1">
+                            <Skeleton className="h-4 w-40 max-w-full" />
+                            <Skeleton className="h-3 w-24" />
+                          </div>
+                          <Skeleton className="h-1.5 w-24 rounded-full" />
+                          <Skeleton className="h-4 w-4 rounded" />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardBody>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+/** Public tracking page skeleton — mirrors the header + two-column layout. */
+export function PublicTrackingPageSkeleton() {
+  return (
+    <div className="space-y-5 p-4 pb-10 sm:p-6 sm:pb-12">
+      {/* header card */}
+      <div className="overflow-hidden rounded-2xl border border-white/60 bg-white/90 shadow-card">
+        <div className="bg-gradient-to-br from-primary-50/90 via-white to-emerald-50/50 px-5 py-5 sm:px-6 sm:py-6">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="min-w-0 space-y-2">
+              <Skeleton className="h-6 w-28 rounded-lg" />
+              <Skeleton className="h-9 w-64 max-w-full" />
+              <Skeleton className="h-4 w-40" />
+            </div>
+            <Skeleton className="h-7 w-20 rounded-full" />
+          </div>
+          <div className="mt-5 flex flex-wrap items-center gap-6 border-t border-slate-200/60 pt-5">
+            <Skeleton className="h-[88px] w-[88px] shrink-0 rounded-full" />
+            <div className="min-w-0 flex-1 space-y-2">
+              <Skeleton className="h-4 w-28" />
+              <Skeleton className="h-3 w-40" />
+              <Skeleton className="mt-1 h-2.5 w-full max-w-sm rounded-full" />
+              <Skeleton className="h-3 w-32" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* two-column */}
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,300px)] lg:items-start">
+        {/* services */}
+        <div className="rounded-2xl border border-white/60 bg-white/90 shadow-card">
+          <div className="border-b border-slate-100 bg-slate-50/60 px-5 py-3.5">
+            <Skeleton className="h-5 w-28" />
+            <Skeleton className="mt-1 h-3 w-48" />
+          </div>
+          <div className="space-y-3 p-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="animate-pulse overflow-hidden rounded-2xl border border-slate-200/80 bg-white">
+                <div className="flex items-center justify-between gap-4 px-4 py-3.5">
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <Skeleton className="h-4 w-36 max-w-full" />
+                    <Skeleton className="h-3 w-20" />
+                  </div>
+                  <Skeleton className="h-1.5 w-16 rounded-full" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* activity */}
+        <div className="rounded-2xl border border-white/60 bg-white/90 shadow-card">
+          <div className="border-b border-slate-100 bg-slate-50/60 px-5 py-3.5">
+            <Skeleton className="h-5 w-28" />
+            <Skeleton className="mt-1 h-3 w-44" />
+          </div>
+          <div className="p-4">
+            <ul className="space-y-0">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <li key={i} className="relative flex animate-pulse gap-3 pb-5 last:pb-0">
+                  <Skeleton className="mt-0.5 h-7 w-7 shrink-0 rounded-full" />
+                  <div className="min-w-0 flex-1 space-y-1.5 rounded-xl bg-slate-50/60 px-3 py-2.5 ring-1 ring-slate-100">
+                    <Skeleton className="h-4 w-32" />
+                    <Skeleton className="h-3 w-full" />
+                    <Skeleton className="h-2.5 w-24" />
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /** Full dashboard chrome placeholder while session loads. */
 export function DashboardShellSkeleton() {
   return (

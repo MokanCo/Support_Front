@@ -1,0 +1,2 @@
+# Legacy tracking links: /onboarding/track/<token> → query param (static export compatible)
+/onboarding/track/*  /onboarding/track?token=:splat  302

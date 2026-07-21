@@ -50,10 +50,14 @@ type MergedRow =
       message: MessageInboxItem;
     };
 
-type BellTab = "all" | "assigned" | "updates" | "messages";
+type BellTab = "all" | "assigned" | "updates" | "onboardings" | "messages";
 
 function isAssignmentNotification(s: StatusNotificationRow): boolean {
   return s.kind === "ticket_assigned";
+}
+
+function isOnboardingNotification(s: StatusNotificationRow): boolean {
+  return s.kind.startsWith("onboarding");
 }
 
 function statusToRows(items: StatusNotificationRow[]): MergedRow[] {
@@ -137,8 +141,12 @@ export function AppHeader({
     () => statusItems.filter(isAssignmentNotification),
     [statusItems],
   );
+  const onboardingStatus = useMemo(
+    () => statusItems.filter(isOnboardingNotification),
+    [statusItems],
+  );
   const updateStatus = useMemo(
-    () => statusItems.filter((s) => !isAssignmentNotification(s)),
+    () => statusItems.filter((s) => !isAssignmentNotification(s) && !isOnboardingNotification(s)),
     [statusItems],
   );
 
@@ -161,6 +169,7 @@ export function AppHeader({
     let rows: MergedRow[];
     if (bellTab === "assigned") rows = statusToRows(assignmentStatus);
     else if (bellTab === "updates") rows = statusToRows(updateStatus);
+    else if (bellTab === "onboardings") rows = statusToRows(onboardingStatus);
     else if (bellTab === "messages") rows = messagesToRows(messageDropdownItems);
     else rows = mergedRows;
     return [...rows].sort((a, b) => b.sortAt - a.sortAt);
@@ -168,6 +177,7 @@ export function AppHeader({
     bellTab,
     assignmentStatus,
     updateStatus,
+    onboardingStatus,
     messageDropdownItems,
     mergedRows,
   ]);
@@ -182,8 +192,14 @@ export function AppHeader({
     [updateStatus, readKeys],
   );
 
+  const unreadOnboardingCount = useMemo(
+    () => onboardingStatus.filter((s) => !readKeys.has(`s:${s.id}`)).length,
+    [onboardingStatus, readKeys],
+  );
+
   const showAssignedTab = role === "support" || assignmentStatus.length > 0;
   const showUpdatesTab = updateStatus.length > 0 || role !== "support";
+  const showOnboardingsTab = (role === "admin" || role === "support") && onboardingStatus.length > 0;
   const showMessagesTab = !hideMessageBellSection && messageDropdownItems.length > 0;
 
   const unreadStatusCount = useMemo(
@@ -251,6 +267,11 @@ export function AppHeader({
     (s: StatusNotificationRow) => {
       markRead(`s:${s.id}`);
       setBellOpen(false);
+      if (isOnboardingNotification(s)) {
+        if (s.ticketId) router.push(`/dashboard/onboardings/view?id=${s.ticketId}`);
+        else router.push("/dashboard/onboardings");
+        return;
+      }
       if (!s.ticketId) return;
       if (isAssignmentNotification(s) || s.kind === "ticket_completed") {
         goToTicketDetail(s.ticketId);
@@ -258,7 +279,7 @@ export function AppHeader({
       }
       goToTicketFromBell(s.ticketId);
     },
-    [markRead, goToTicketDetail, goToTicketFromBell],
+    [markRead, router, goToTicketDetail, goToTicketFromBell],
   );
 
   const onDismissStatus = useCallback(
@@ -290,13 +311,16 @@ export function AppHeader({
       const s = entry.status;
       const isNewTicket = s.kind === "ticket_created";
       const isAssigned = isAssignmentNotification(s);
+      const isOnboarding = isOnboardingNotification(s);
       const label = isAssigned
         ? "Assigned to you"
-        : isNewTicket
-          ? "New ticket"
-          : s.kind === "ticket_completed"
-            ? "Completed"
-            : "Update";
+        : isOnboarding
+          ? "New Onboarding"
+          : isNewTicket
+            ? "New ticket"
+            : s.kind === "ticket_completed"
+              ? "Completed"
+              : "Update";
       if (read) {
         return {
           muted: true,
@@ -305,13 +329,15 @@ export function AppHeader({
             "border-slate-100 bg-slate-50/95 opacity-[0.72] ring-0 shadow-sm hover:brightness-[0.98]",
         };
       }
-      const boxClass = isAssigned
-        ? "border-violet-200/90 bg-violet-50/90 ring-2 ring-violet-200/50 ring-offset-1 ring-offset-white shadow-sm hover:brightness-[0.98]"
-        : isNewTicket
-          ? "border-sky-200/90 bg-sky-50/90 ring-2 ring-sky-200/50 ring-offset-1 ring-offset-white shadow-sm hover:brightness-[0.98]"
-          : s.kind === "ticket_completed"
-            ? "border-emerald-200/90 bg-emerald-50/90 ring-2 ring-emerald-200/50 ring-offset-1 ring-offset-white shadow-sm hover:brightness-[0.98]"
-            : "border-amber-200/90 bg-amber-50/90 ring-2 ring-amber-200/50 ring-offset-1 ring-offset-white shadow-sm hover:brightness-[0.98]";
+      const boxClass = isOnboarding
+        ? "border-orange-200/90 bg-orange-50/90 ring-2 ring-orange-200/50 ring-offset-1 ring-offset-white shadow-sm hover:brightness-[0.98]"
+        : isAssigned
+          ? "border-violet-200/90 bg-violet-50/90 ring-2 ring-violet-200/50 ring-offset-1 ring-offset-white shadow-sm hover:brightness-[0.98]"
+          : isNewTicket
+            ? "border-sky-200/90 bg-sky-50/90 ring-2 ring-sky-200/50 ring-offset-1 ring-offset-white shadow-sm hover:brightness-[0.98]"
+            : s.kind === "ticket_completed"
+              ? "border-emerald-200/90 bg-emerald-50/90 ring-2 ring-emerald-200/50 ring-offset-1 ring-offset-white shadow-sm hover:brightness-[0.98]"
+              : "border-amber-200/90 bg-amber-50/90 ring-2 ring-amber-200/50 ring-offset-1 ring-offset-white shadow-sm hover:brightness-[0.98]";
       return { muted: false, label, boxClass };
     }
     if (read) {
@@ -416,6 +442,14 @@ export function AppHeader({
                     label="Updates"
                     unread={unreadUpdatesCount}
                     onClick={() => setBellTab("updates")}
+                  />
+                ) : null}
+                {showOnboardingsTab ? (
+                  <BellTabButton
+                    active={bellTab === "onboardings"}
+                    label="Onboardings"
+                    unread={unreadOnboardingCount}
+                    onClick={() => setBellTab("onboardings")}
                   />
                 ) : null}
                 {showMessagesTab ? (

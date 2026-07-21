@@ -6,6 +6,10 @@ import { LoginWelcomeHeading } from "./login-welcome-heading";
 import { ContactForm } from "./contact-form";
 import { OnboardingWelcomeModal, OnboardingWizardSplit } from "./onboarding-wizard";
 import { BrandLogo } from "@/components/BrandLogo";
+import {
+  fetchOnboardingConfig,
+  type OnboardingConfig,
+} from "@/lib/queries/onboarding";
 
 /** Empty beat before the brand card fades in */
 const BLANK_MS = 140;
@@ -24,6 +28,24 @@ export default function LoginPage() {
   const [reduceMotion, setReduceMotion] = useState(false);
   const [onboardingPhase, setOnboardingPhase] = useState<null | "welcome" | "wizard">(null);
   const [onboardingWizardKey, setOnboardingWizardKey] = useState(0);
+  const [onboardingConfig, setOnboardingConfig] = useState<OnboardingConfig | null>(null);
+  const [onboardingConfigLoading, setOnboardingConfigLoading] = useState(false);
+
+  useEffect(() => {
+    if (onboardingPhase === null) return;
+    let cancelled = false;
+    setOnboardingConfigLoading(true);
+    fetchOnboardingConfig()
+      .then((c) => {
+        if (!cancelled) setOnboardingConfig(c);
+      })
+      .finally(() => {
+        if (!cancelled) setOnboardingConfigLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [onboardingPhase]);
 
   function exitOnboarding() {
     setOnboardingPhase(null);
@@ -37,6 +59,8 @@ export default function LoginPage() {
   const onboardingWelcomeLayer =
     onboardingPhase === "welcome" ? (
       <OnboardingWelcomeModal
+        config={onboardingConfig}
+        configLoading={onboardingConfigLoading}
         onStart={() => setOnboardingPhase("wizard")}
         onClose={exitOnboarding}
       />
@@ -97,17 +121,12 @@ export default function LoginPage() {
 
   return (
     <div className="relative flex min-h-dvh items-center justify-center overflow-y-auto overflow-x-hidden px-4 py-4 md:py-6">
-      <div className="my-auto w-full max-w-5xl">
-        {onboardingPhase === "wizard" ? (
-          <OnboardingWizardSplit key={onboardingWizardKey} onClose={exitOnboarding} />
-        ) : stage === "blank" ? (
-          <>
-            <div
-              className="mx-auto min-h-[min(560px,calc(100dvh-3rem))] w-full max-w-xl lg:w-[420px]"
-              aria-hidden
-            />
-            {onboardingWelcomeLayer}
-          </>
+      <div className={`my-auto w-full max-w-5xl ${onboardingPhase ? "invisible" : ""}`}>
+        {stage === "blank" ? (
+          <div
+            className="mx-auto min-h-[min(560px,calc(100dvh-3rem))] w-full max-w-xl lg:w-[420px]"
+            aria-hidden
+          />
         ) : (
           <>
           <div
@@ -171,12 +190,12 @@ export default function LoginPage() {
             {/* Right (form) — with duo; gentle entrance in sync with left overlap */}
             {stage === "duo" ? (
               <div
-                className={`login-right-enter relative z-20 w-full max-w-xl shrink-0 lg:h-[min(560px,calc(100dvh-3rem))] lg:min-w-0 lg:overflow-y-auto ${
+                className={`login-right-enter relative z-20 w-full max-w-xl shrink-0 lg:h-[min(560px,calc(100dvh-3rem))] lg:min-w-0 lg:overflow-hidden ${
                   !reduceMotion ? "login-right-enter-animate" : ""
                 }`}
               >
                 <div className="relative w-full max-w-xl rounded-[3px] bg-white/85 shadow-[0_22px_70px_rgba(15,23,42,0.18)] backdrop-blur lg:h-full">
-                  <div className="px-8 py-8 sm:px-12 sm:py-12 md:py-14">
+                  <div className="px-8 py-8 sm:px-10 sm:py-10">
                     <div className="mx-auto w-full max-w-sm">
                       {mode === "login" ? (
                         <>
@@ -201,30 +220,28 @@ export default function LoginPage() {
                         </>
                       )}
 
-                      <div className="mt-6 min-h-[300px]">
+                      <div className="mt-6">
                         <Suspense
                           fallback={<p className="text-sm text-slate-500">Loading…</p>}
                         >
-                          <div className="h-full overflow-y-auto">
-                            {mode === "login" ? (
-                              <div>
-                                <LoginForm onOnboardNewLocation={beginOnboarding} />
-                                <p className="mt-6 text-sm text-slate-600">
-                                  Facing issues with login?{" "}
-                                  <button
-                                    type="button"
-                                    onClick={() => setMode("contact")}
-                                    className="font-medium text-primary-700 underline decoration-primary-300 underline-offset-4 hover:text-primary-800"
-                                  >
-                                    Contact administrator
-                                  </button>{" "}
-                                  for any help.
-                                </p>
-                              </div>
-                            ) : (
-                              <ContactForm onBack={() => setMode("login")} />
-                            )}
-                          </div>
+                          {mode === "login" ? (
+                            <div>
+                              <LoginForm onOnboardNewLocation={beginOnboarding} />
+                              <p className="mt-5 text-sm text-slate-600">
+                                Facing issues with login?{" "}
+                                <button
+                                  type="button"
+                                  onClick={() => setMode("contact")}
+                                  className="font-medium text-primary-700 underline decoration-primary-300 underline-offset-4 hover:text-primary-800"
+                                >
+                                  Contact administrator
+                                </button>{" "}
+                                for any help.
+                              </p>
+                            </div>
+                          ) : (
+                            <ContactForm onBack={() => setMode("login")} />
+                          )}
                         </Suspense>
                       </div>
                     </div>
@@ -233,10 +250,13 @@ export default function LoginPage() {
               </div>
             ) : null}
           </div>
-          {onboardingWelcomeLayer}
           </>
         )}
       </div>
+      {onboardingWelcomeLayer}
+      {onboardingPhase === "wizard" && (
+        <OnboardingWizardSplit key={onboardingWizardKey} onClose={exitOnboarding} />
+      )}
       <style jsx>{`
         @keyframes loginStageFade {
           from {
