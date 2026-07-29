@@ -1,14 +1,22 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useSession } from "@/lib/session-context";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Upload } from "lucide-react";
-import { fetchAssets, type Asset } from "@/lib/queries/assets";
-import { fetchLocationOptions } from "@/lib/queries/locations";
+import { useSession } from "@/lib/session-context";
+import {
+  assetsListQueryOptions,
+  setAssetsListCache,
+  type Asset,
+} from "@/lib/queries/assets";
+import {
+  fetchLocationOptions,
+  locationOptionsQueryKey,
+} from "@/lib/queries/locations";
 import { AssetCard } from "@/components/assets/AssetCard";
 import { AssetUploadModal } from "@/components/assets/AssetUploadModal";
-import { Skeleton } from "@/components/ui/skeleton";
+import { AssetsPageSkeleton } from "@/components/ui/skeleton";
 
 function AssetGrid({
   assets,
@@ -34,56 +42,58 @@ function AssetGrid({
 export default function DocumentsPage() {
   const { user, location } = useSession();
   const router = useRouter();
-
-  const [assets, setAssets] = useState<Asset[]>([]);
-  const [locationMap, setLocationMap] = useState<Record<string, string>>({});
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [showUpload, setShowUpload] = useState(false);
 
-  useEffect(() => {
-    if (user.role !== "admin" && user.role !== "partner") {
-      router.replace("/dashboard");
-    }
-  }, [user.role, router]);
+  const canAccess = user.role === "admin" || user.role === "partner";
+  const isAdmin = user.role === "admin";
 
   useEffect(() => {
-    if (user.role !== "admin" && user.role !== "partner") return;
+    if (!canAccess) router.replace("/dashboard");
+  }, [canAccess, router]);
 
-    const promises: Promise<void>[] = [
-      fetchAssets("documents").then((data) => setAssets(data)),
-    ];
+  const assetsQuery = useQuery({
+    ...assetsListQueryOptions("documents"),
+    enabled: canAccess,
+  });
 
-    if (user.role === "admin") {
-      promises.push(
-        fetchLocationOptions().then((locs) => {
-          const map: Record<string, string> = {};
-          for (const l of locs) map[l.id] = l.name;
-          setLocationMap(map);
-        }),
-      );
-    }
+  const locsQuery = useQuery({
+    queryKey: locationOptionsQueryKey,
+    queryFn: fetchLocationOptions,
+    enabled: canAccess && isAdmin,
+  });
 
-    Promise.all(promises).finally(() => setLoading(false));
-  }, [user.role]);
+  const assets = assetsQuery.data ?? [];
+  // Show layout skeleton only on first load (no cached data yet).
+  const loading = assetsQuery.isLoading;
+
+  const locationMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const l of locsQuery.data ?? []) map[l.id] = l.name;
+    return map;
+  }, [locsQuery.data]);
 
   function handleDeleted(id: string) {
-    setAssets((prev) => prev.filter((a) => a.id !== id));
+    setAssetsListCache(queryClient, "documents", (prev) =>
+      prev.filter((a) => a.id !== id),
+    );
   }
 
   function handleAssetUpdated(updated: Asset) {
-    setAssets((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
+    setAssetsListCache(queryClient, "documents", (prev) =>
+      prev.map((a) => (a.id === updated.id ? updated : a)),
+    );
   }
 
-  if (user.role !== "admin" && user.role !== "partner") return null;
+  function handleUploaded(asset: Asset) {
+    setAssetsListCache(queryClient, "documents", (prev) => [asset, ...prev]);
+  }
 
-  const isAdmin = user.role === "admin";
+  if (!canAccess) return null;
+
   const generalAssets = assets.filter((a) => a.visibility === "global");
   const locationAssets = assets.filter((a) => a.visibility === "location");
 
-  // Group location-specific assets by every location they're assigned to.
-  // Partners only ever see their own location's bucket, even if an asset is
-  // shared with other locations too — the backend already scopes the list to
-  // global + their location, so group everything under just that one id.
   const locationGroups: Record<string, Asset[]> = {};
   for (const asset of locationAssets) {
     const lids = isAdmin
@@ -122,19 +132,9 @@ export default function DocumentsPage() {
       </div>
 
       {loading ? (
-        <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
-          {Array.from({ length: 2 }).map((_, col) => (
-            <div key={col} className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <Skeleton key={i} className="h-60 rounded-xl" />
-              ))}
-            </div>
-          ))}
-        </div>
+        <AssetsPageSkeleton variant="documents" />
       ) : (
-        /* General and Location side by side — same layout for admin and partner */
         <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
-          {/* General documents */}
           <section>
             <div className="mb-3 flex items-center gap-2">
               <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
@@ -147,7 +147,6 @@ export default function DocumentsPage() {
             <AssetGrid assets={generalAssets} role={user.role} onDeleted={handleDeleted} />
           </section>
 
-          {/* Location-specific documents */}
           <section>
             <div className="mb-3 flex items-center gap-2">
               <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
@@ -191,7 +190,7 @@ export default function DocumentsPage() {
       {showUpload && (
         <AssetUploadModal
           category="documents"
-          onUploaded={(asset) => setAssets((prev) => [asset, ...prev])}
+          onUploaded={handleUploaded}
           onClose={() => setShowUpload(false)}
         />
       )}

@@ -588,3 +588,87 @@ export function DashboardShellSkeleton() {
     </div>
   );
 }
+
+/** Mirrors AssetCard: preview tile + title + meta. */
+export function AssetCardSkeleton() {
+  return (
+    <div className="relative flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800">
+      <div className="flex h-44 w-full items-center justify-center bg-slate-100 dark:bg-slate-700">
+        <Skeleton className="h-full w-full rounded-none" />
+      </div>
+      <div className="space-y-2 px-3 py-2">
+        <Skeleton className="h-4 w-4/5" />
+        <Skeleton className="h-3 w-1/2" />
+      </div>
+    </div>
+  );
+}
+
+function AssetsSectionSkeleton({
+  titleWidth = "w-40",
+  cards = 6,
+  withTypeGroups = false,
+}: {
+  titleWidth?: string;
+  cards?: number;
+  withTypeGroups?: boolean;
+}) {
+  return (
+    <section>
+      <div className="mb-3 flex items-center gap-2">
+        <Skeleton className={`h-4 ${titleWidth}`} />
+        <Skeleton className="h-5 w-7 rounded-full" />
+      </div>
+      {withTypeGroups ? (
+        <div className="space-y-6">
+          {Array.from({ length: 2 }).map((_, gi) => (
+            <div key={gi}>
+              <Skeleton className="mb-2 h-3 w-20" />
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+                {Array.from({ length: gi === 0 ? 3 : 2 }).map((_, i) => (
+                  <AssetCardSkeleton key={i} />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+          {Array.from({ length: cards }).map((_, i) => (
+            <AssetCardSkeleton key={i} />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+/**
+ * Documents / Marketing Assets page body skeleton.
+ * Mirrors the two-column General + Location layout (and type groups for marketing).
+ */
+export function AssetsPageSkeleton({
+  variant = "documents",
+}: {
+  variant?: "documents" | "marketing_assets";
+}) {
+  const withTypeGroups = variant === "marketing_assets";
+  return (
+    <div
+      className="grid grid-cols-1 gap-8 lg:grid-cols-2"
+      aria-busy="true"
+      aria-label="Loading assets"
+    >
+      <AssetsSectionSkeleton
+        titleWidth={withTypeGroups ? "w-32" : "w-40"}
+        cards={6}
+        withTypeGroups={withTypeGroups}
+      />
+      <AssetsSectionSkeleton
+        titleWidth={withTypeGroups ? "w-36" : "w-44"}
+        cards={3}
+        withTypeGroups={withTypeGroups}
+      />
+    </div>
+  );
+}

@@ -65,6 +65,7 @@ export function AssetUploadModal({ category, onUploaded, onClose }: Props) {
         const fd = new FormData();
         fd.append("file", file);
         fd.append("category", category);
+        fd.append("name", file.name.replace(/\.[^.]+$/, "") || file.name);
         fd.append("visibility", visibility);
         if (visibility === "location") {
           for (const id of locationIds) fd.append("locationIds", id);

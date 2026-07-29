@@ -33,3 +33,7 @@ export function invalidateDashboard(queryClient: QueryClient) {
 export function invalidateSidebarCounts(queryClient: QueryClient) {
   return queryClient.invalidateQueries({ queryKey: ["sidebar"] });
 }
+
+export function invalidateAssets(queryClient: QueryClient) {
+  return queryClient.invalidateQueries({ queryKey: queryKeys.assets.all });
+}
