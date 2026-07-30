@@ -42,16 +42,16 @@ export function AssetViewerModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+      className="fixed inset-0 z-[600] flex items-center justify-center bg-slate-900/55 p-4 backdrop-blur-sm"
       onClick={onClose}
     >
       <div
-        className="flex h-[85vh] w-full max-w-3xl flex-col rounded-2xl bg-white shadow-xl dark:bg-slate-800"
+        className="flex h-[85vh] w-full max-w-3xl flex-col rounded-2xl border border-slate-200 bg-white shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 dark:border-slate-700">
+        <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-6 py-4">
           <p
-            className="min-w-0 flex-1 truncate text-sm font-medium text-slate-700 dark:text-slate-200"
+            className="min-w-0 flex-1 truncate text-lg font-semibold tracking-tight text-slate-900"
             title={filename}
           >
             {filename}
@@ -62,7 +62,7 @@ export function AssetViewerModal({
                 type="button"
                 onClick={() => void handleDownload()}
                 disabled={downloading}
-                className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 disabled:opacity-50 dark:text-slate-300 dark:hover:bg-slate-700 dark:hover:text-white"
+                className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 disabled:opacity-50"
                 title="Download"
               >
                 <Download className="h-4 w-4" />
@@ -72,7 +72,7 @@ export function AssetViewerModal({
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-700 dark:hover:text-slate-200"
+              className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
               aria-label="Close"
             >
               <X className="h-5 w-5" />
@@ -80,7 +80,7 @@ export function AssetViewerModal({
           </div>
         </div>
 
-        <div className="flex flex-1 items-center justify-center overflow-auto bg-slate-100 p-4 dark:bg-slate-900">
+        <div className="flex flex-1 items-center justify-center overflow-auto bg-slate-100 p-4">
           {isImage ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
@@ -95,7 +95,7 @@ export function AssetViewerModal({
               className="h-full w-full rounded-lg bg-white"
             />
           ) : (
-            <p className="text-sm text-slate-500 dark:text-slate-400">
+            <p className="text-sm text-slate-500">
               Preview not available for this file type.
             </p>
           )}
