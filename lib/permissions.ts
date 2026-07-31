@@ -64,3 +64,13 @@ export function canManageOnboardings(role: UserRole): boolean {
 export function canFetchLocationDirectory(role: UserRole): boolean {
   return role === "admin" || role === "support";
 }
+
+/** View Accounts Receivable module */
+export function canViewAr(role: UserRole): boolean {
+  return role === "admin" || role === "support" || role === "partner";
+}
+
+/** Create/update AR records (admin = accounting) */
+export function canManageAr(role: UserRole): boolean {
+  return role === "admin";
+}
