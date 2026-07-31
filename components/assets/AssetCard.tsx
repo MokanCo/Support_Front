@@ -36,6 +36,21 @@ function formatUploadedDate(iso: string): string {
   }
 }
 
+export interface AssetBadge {
+  label: string;
+  tone?: "slate" | "primary" | "blue";
+  /** Full set of values this badge summarizes (e.g. every location name).
+   *  When there's more than one, the badge becomes hoverable and opens a
+   *  popover listing them all instead of relying on truncation. */
+  details?: string[];
+}
+
+const BADGE_TONE_CLASSES: Record<NonNullable<AssetBadge["tone"]>, string> = {
+  slate: "bg-slate-100 text-slate-700 ring-slate-200/80",
+  primary: "bg-primary-50 text-primary-800 ring-primary-200/80",
+  blue: "bg-blue-50 text-blue-800 ring-blue-200/80",
+};
+
 interface Props {
   asset: Asset;
   role: "admin" | "support" | "partner";
@@ -43,10 +58,13 @@ interface Props {
   /** Location id this card is being shown under, when viewed in a per-location group. */
   locationContext?: string;
   onUpdated?: (asset: Asset) => void;
+  /** Small pills shown over the preview (e.g. location name, asset type). */
+  badges?: AssetBadge[];
 }
 
-export function AssetCard({ asset, role, onDeleted, locationContext, onUpdated }: Props) {
+export function AssetCard({ asset, role, onDeleted, locationContext, onUpdated, badges }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [openBadge, setOpenBadge] = useState<number | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewFailed, setPreviewFailed] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -189,36 +207,69 @@ export function AssetCard({ asset, role, onDeleted, locationContext, onUpdated }
   }, [asset.id, asset.fileUrl, category, isImage]);
 
   return (
-    <div className="relative flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800">
-      <button
-        type="button"
-        disabled={busy}
-        onClick={() => void handleView()}
-        className="flex h-44 w-full cursor-pointer items-center justify-center bg-slate-100 transition hover:bg-slate-200/80 disabled:cursor-wait dark:bg-slate-700 dark:hover:bg-slate-600/80"
-        title="View"
-        aria-label={`View ${displayName}`}
-      >
-        {isImage ? (
-          previewUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={previewUrl}
-              alt={displayName}
-              className="pointer-events-none h-full w-full object-cover"
-              onError={() => setPreviewFailed(true)}
-            />
-          ) : previewFailed ? (
-            <div className="flex flex-col items-center gap-1 text-slate-400">
-              <ImageOff className="h-8 w-8" />
-              <span className="text-xs">File unavailable</span>
-            </div>
-          ) : (
-            <Skeleton className="h-full w-full" />
-          )
-        ) : (
-          <PreviewIcon mimeType={asset.mimeType} />
+    <div className="group relative flex flex-col overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-card transition-shadow duration-200 hover:shadow-md">
+      <div className="relative">
+        {badges && badges.length > 0 && (
+          <div className="absolute left-2 top-2 z-10 flex max-w-[calc(100%-2.5rem)] flex-wrap gap-1">
+            {badges.map((b, i) => {
+              const hasMore = (b.details?.length ?? 0) > 1;
+              return (
+                <div
+                  key={i}
+                  className="relative leading-none"
+                  onMouseEnter={() => hasMore && setOpenBadge(i)}
+                  onMouseLeave={() => hasMore && setOpenBadge(null)}
+                >
+                  <span
+                    className={`inline-block truncate rounded-full px-2 py-0.5 align-middle text-[10px] font-medium leading-[14px] ring-1 ring-inset ${BADGE_TONE_CLASSES[b.tone ?? "slate"]} ${hasMore ? "cursor-default" : ""}`}
+                  >
+                    {b.label}
+                  </span>
+                  {hasMore && openBadge === i && (
+                    <div className="absolute left-0 top-full z-20 mt-1 min-w-[160px] max-w-[220px] rounded-xl border border-slate-200 bg-white p-2 text-xs shadow-lg">
+                      <ul className="space-y-1">
+                        {b.details?.map((d, di) => (
+                          <li key={di} className="truncate text-slate-700">{d}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         )}
-      </button>
+
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => void handleView()}
+          className="flex h-44 w-full cursor-pointer items-center justify-center bg-slate-100 transition hover:bg-slate-200/80 disabled:cursor-wait"
+          title="View"
+          aria-label={`View ${displayName}`}
+        >
+          {isImage ? (
+            previewUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={previewUrl}
+                alt={displayName}
+                className="pointer-events-none h-full w-full object-cover"
+                onError={() => setPreviewFailed(true)}
+              />
+            ) : previewFailed ? (
+              <div className="flex flex-col items-center gap-1 text-slate-400">
+                <ImageOff className="h-8 w-8" />
+                <span className="text-xs">File unavailable</span>
+              </div>
+            ) : (
+              <Skeleton className="h-full w-full" />
+            )
+          ) : (
+            <PreviewIcon mimeType={asset.mimeType} />
+          )}
+        </button>
+      </div>
 
       <div className="absolute right-2 top-2" ref={menuRef}>
         <button
@@ -228,25 +279,25 @@ export function AssetCard({ asset, role, onDeleted, locationContext, onUpdated }
             e.stopPropagation();
             setMenuOpen((v) => !v);
           }}
-          className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-full bg-white/80 text-slate-600 shadow backdrop-blur-sm hover:bg-white dark:bg-slate-800/80 dark:text-slate-300 dark:hover:bg-slate-800"
+          className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-full bg-white/80 text-slate-600 shadow backdrop-blur-sm hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-600"
         >
           <MoreVertical className="h-4 w-4" />
         </button>
         {menuOpen && (
           <>
             <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
-            <div className="absolute right-0 top-8 z-20 min-w-[140px] rounded-lg border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-700 dark:bg-slate-800">
+            <div className="absolute right-0 top-8 z-20 min-w-[140px] rounded-xl border border-slate-200 bg-white py-1 shadow-lg">
               <button
                 type="button"
                 onClick={handleView}
-                className="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-700"
+                className="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
               >
                 <Eye className="h-4 w-4" /> View
               </button>
               <button
                 type="button"
                 onClick={handleDownload}
-                className="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-700"
+                className="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
               >
                 <Download className="h-4 w-4" /> Download
               </button>
@@ -254,7 +305,7 @@ export function AssetCard({ asset, role, onDeleted, locationContext, onUpdated }
                 <button
                   type="button"
                   onClick={handleDelete}
-                  className="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
+                  className="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50"
                 >
                   <Trash2 className="h-4 w-4" /> Delete
                 </button>
@@ -267,11 +318,11 @@ export function AssetCard({ asset, role, onDeleted, locationContext, onUpdated }
       <div className="px-3 py-2">
         <p
           title={displayName}
-          className="truncate text-sm font-medium text-slate-700 dark:text-slate-200"
+          className="truncate text-sm font-medium text-slate-900"
         >
           {displayName}
         </p>
-        <p className="mt-0.5 text-xs text-slate-400">
+        <p className="mt-0.5 text-xs text-slate-500">
           {(asset.size / 1024).toFixed(0)} KB
           {asset.createdAt ? ` · ${formatUploadedDate(asset.createdAt)}` : ""}
         </p>
