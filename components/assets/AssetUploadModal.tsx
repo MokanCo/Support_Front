@@ -10,6 +10,12 @@ import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/Button";
 import { Select } from "@/components/ui/Select";
 
+const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024;
+
+function formatFileSize(bytes: number): string {
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 interface Props {
   category: AssetCategory;
   onUploaded: (asset: Asset) => void;
@@ -27,6 +33,7 @@ export function AssetUploadModal({ category, onUploaded, onClose }: Props) {
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState({ done: 0, total: 0 });
   const [error, setError] = useState("");
+  const [failedUploads, setFailedUploads] = useState<string[]>([]);
 
   useEffect(() => {
     if (visibility !== "location") return;
@@ -60,11 +67,17 @@ export function AssetUploadModal({ category, onUploaded, onClose }: Props) {
     }
     setUploading(true);
     setError("");
+    setFailedUploads([]);
     setProgress({ done: 0, total: files.length });
 
     const failures: string[] = [];
     for (const file of files) {
       try {
+        if (file.size > MAX_FILE_SIZE_BYTES) {
+          throw new Error(
+            `${formatFileSize(file.size)} exceeds the 50 MB limit`,
+          );
+        }
         const fd = new FormData();
         fd.append("file", file);
         fd.append("category", category);
@@ -85,7 +98,8 @@ export function AssetUploadModal({ category, onUploaded, onClose }: Props) {
         }
         onUploaded(asset);
       } catch (err) {
-        failures.push(file.name);
+        const reason = err instanceof Error ? err.message : "Upload failed";
+        failures.push(`${file.name} (${reason})`);
       } finally {
         setProgress((p) => ({ ...p, done: p.done + 1 }));
       }
@@ -93,7 +107,7 @@ export function AssetUploadModal({ category, onUploaded, onClose }: Props) {
 
     setUploading(false);
     if (failures.length > 0) {
-      setError(`Failed to upload: ${failures.join(", ")}`);
+      setFailedUploads(failures);
       return;
     }
     onClose();
@@ -203,6 +217,18 @@ export function AssetUploadModal({ category, onUploaded, onClose }: Props) {
         )}
 
         {error && <p className="text-sm font-medium text-red-600">{error}</p>}
+        {failedUploads.length > 0 && (
+          <div className="rounded-lg bg-red-50 p-3">
+            <p className="text-sm font-medium text-red-700">
+              {failedUploads.length === 1 ? "1 file failed to upload:" : `${failedUploads.length} files failed to upload:`}
+            </p>
+            <ul className="mt-1 list-disc space-y-0.5 pl-4 text-xs text-red-600">
+              {failedUploads.map((f, i) => (
+                <li key={i}>{f}</li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         <div className="flex justify-end gap-2 pt-1">
           <Button type="button" variant="secondary" onClick={onClose} disabled={uploading}>
