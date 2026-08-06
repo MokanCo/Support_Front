@@ -84,6 +84,75 @@ export async function updateArSettings(body: Record<string, unknown>) {
   return data.settings;
 }
 
+export type ArInvoiceBlock = {
+  id: string;
+  type: string;
+  enabled: boolean;
+  label: string;
+  content?: string;
+  align?: "left" | "center" | "right";
+  fontSize?: number;
+};
+
+export type ArInvoiceTemplate = {
+  id: string;
+  name: string;
+  description?: string;
+  isDefault?: boolean;
+  isActive?: boolean;
+  blocks: ArInvoiceBlock[];
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export async function fetchArInvoiceTemplates() {
+  const data = await arJson<{ templates: ArInvoiceTemplate[] }>("/api/ar/invoice-templates");
+  return data.templates;
+}
+
+export async function fetchArInvoiceTemplatePalette() {
+  return arJson<{
+    blocks: ArInvoiceBlock[];
+    blockTypes: { type: string; label: string }[];
+  }>("/api/ar/invoice-templates/palette");
+}
+
+export async function createArInvoiceTemplate(body: {
+  name: string;
+  description?: string;
+  blocks: ArInvoiceBlock[];
+  isDefault?: boolean;
+}) {
+  const data = await arJson<{ template: ArInvoiceTemplate }>("/api/ar/invoice-templates", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return data.template;
+}
+
+export async function updateArInvoiceTemplate(
+  id: string,
+  body: Partial<{
+    name: string;
+    description: string;
+    blocks: ArInvoiceBlock[];
+    isDefault: boolean;
+    isActive: boolean;
+  }>,
+) {
+  const data = await arJson<{ template: ArInvoiceTemplate }>(`/api/ar/invoice-templates/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return data.template;
+}
+
+export async function deleteArInvoiceTemplate(id: string) {
+  return arJson(`/api/ar/invoice-templates/${id}`, { method: "DELETE" });
+}
+
 export type ArProduct = {
   id: string;
   name: string;
@@ -185,12 +254,21 @@ export type ArInvoice = {
   invoiceNumber: string;
   locationId: string;
   locationName?: string;
+  invoiceTemplateId?: string | null;
   status: string;
   invoiceDate?: string;
   dueDate?: string;
+  currency?: string;
+  subtotal?: number;
+  taxAmount?: number;
+  discountAmount?: number;
+  lateFeeAmount?: number;
+  creditApplied?: number;
   total: number;
   amountPaid: number;
   balanceDue: number;
+  sentAt?: string | null;
+  paidAt?: string | null;
   notes?: string;
   items?: {
     name: string;
@@ -242,12 +320,14 @@ export type ArPayment = {
   id: string;
   invoiceId: string;
   invoiceNumber?: string;
+  locationId?: string;
   locationName?: string;
   amount: number;
   paymentDate?: string;
   paymentMethod?: string;
   transactionReference?: string;
   notes?: string;
+  createdAt?: string;
 };
 
 export async function fetchArPayments(params?: ArListParams) {

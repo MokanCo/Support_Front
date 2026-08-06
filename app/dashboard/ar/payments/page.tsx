@@ -1,36 +1,105 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useSession } from "@/lib/session-context";
-import { canManageAr } from "@/lib/permissions";
+import {
+  Banknote,
+  CircleDollarSign,
+  Hash,
+  TrendingUp,
+} from "lucide-react";
+import { AreaTrendChart } from "@/components/ar/ui/charts";
+import { DataTable, type Column } from "@/components/ar/ui/data-table";
+import { ArFilterBar } from "@/components/ar/ui/filter-bar";
+import { KpiCard, KpiCardSkeleton } from "@/components/ar/ui/kpi-card";
+import { Panel, PanelBody, PanelHeader } from "@/components/ar/ui/panel";
+import {
+  Chip,
+  ErrorState,
+  Money,
+  SkeletonChart,
+} from "@/components/ar/ui/primitives";
+import { useArToast } from "@/components/ar/ui/toast";
 import { Button } from "@/components/ui/Button";
-import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/modal";
 import { Select } from "@/components/ui/Select";
 import { Textarea } from "@/components/ui/Textarea";
-import { fetchArPayments, moneyFmt, recordArPayment } from "@/lib/queries/ar";
+import {
+  arDatasetQueryKey,
+  filterPayments,
+  monthlySeries,
+  useArDataset,
+} from "@/lib/ar/dataset";
+import { useArFilters } from "@/lib/ar/filters";
+import { count, humanize, money, shortDate, toNumber } from "@/lib/ar/format";
+import { ACCENTS } from "@/lib/ar/theme";
+import { canManageAr } from "@/lib/permissions";
+import {
+  fetchArInvoices,
+  recordArPayment,
+  type ArPayment,
+} from "@/lib/queries/ar";
+import { useSession } from "@/lib/session-context";
 
-const PAYMENT_METHODS = ["zelle", "check", "wire", "ach", "cash", "credit_card", "other"];
+const PAYMENT_METHODS = [
+  "zelle",
+  "check",
+  "wire",
+  "ach",
+  "cash",
+  "credit_card",
+  "other",
+];
+
+function paymentKpis(payments: ArPayment[]) {
+  const amounts = payments.map((p) => toNumber(p.amount));
+  const total = amounts.reduce((s, n) => s + n, 0);
+  return {
+    totalReceived: total,
+    count: payments.length,
+    average: payments.length ? total / payments.length : 0,
+    largest: amounts.length ? Math.max(...amounts) : 0,
+  };
+}
 
 export default function ArPaymentsPage() {
   const { user } = useSession();
   const manage = canManageAr(user.role);
+  const toast = useArToast();
   const queryClient = useQueryClient();
+  const { filters } = useArFilters();
+  const { data, isLoading, error, refetch } = useArDataset();
+
   const [modalOpen, setModalOpen] = useState(false);
   const [invoiceId, setInvoiceId] = useState("");
   const [amount, setAmount] = useState("");
-  const [paymentDate, setPaymentDate] = useState(new Date().toISOString().slice(0, 10));
+  const [paymentDate, setPaymentDate] = useState(() =>
+    new Date().toISOString().slice(0, 10),
+  );
   const [paymentMethod, setPaymentMethod] = useState("zelle");
   const [transactionReference, setTransactionReference] = useState("");
   const [notes, setNotes] = useState("");
-  const [error, setError] = useState<string | null>(null);
 
-  const { data, isLoading } = useQuery({
-    queryKey: ["ar", "payments"],
-    queryFn: () => fetchArPayments({ pageSize: 200 }),
+  const payments = useMemo(
+    () => filterPayments(data.payments, filters, data.invoices),
+    [data.payments, data.invoices, filters],
+  );
+  const kpis = useMemo(() => paymentKpis(payments), [payments]);
+  const months = useMemo(
+    () => monthlySeries([], payments, 12),
+    [payments],
+  );
+
+  const { data: invoiceData } = useQuery({
+    queryKey: ["ar", "invoices", "payable"],
+    queryFn: () => fetchArInvoices({ pageSize: 200 }),
+    enabled: manage && modalOpen,
   });
+
+  const payableInvoices = (invoiceData?.invoices ?? []).filter(
+    (inv) => !["draft", "void", "cancelled"].includes(inv.status),
+  );
 
   const recordMutation = useMutation({
     mutationFn: () =>
@@ -43,6 +112,7 @@ export default function ArPaymentsPage() {
         notes: notes.trim() || undefined,
       }),
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: arDatasetQueryKey });
       queryClient.invalidateQueries({ queryKey: ["ar", "payments"] });
       queryClient.invalidateQueries({ queryKey: ["ar", "invoices"] });
       setModalOpen(false);
@@ -52,17 +122,138 @@ export default function ArPaymentsPage() {
       setPaymentMethod("zelle");
       setTransactionReference("");
       setNotes("");
-      setError(null);
+      toast.success("Payment recorded");
     },
-    onError: (e: Error) => setError(e.message),
+    onError: (e: Error) => toast.error("Could not record payment", e.message),
   });
 
-  const payments = data?.payments ?? [];
+  const columns = useMemo<Column<ArPayment>[]>(
+    () => [
+      {
+        id: "date",
+        header: "Date",
+        accessor: (row) => row.paymentDate ?? "",
+        cell: (row) => shortDate(row.paymentDate),
+      },
+      {
+        id: "invoice",
+        header: "Invoice #",
+        accessor: (row) => row.invoiceNumber ?? row.invoiceId,
+        cell: (row) => (
+          <span className="font-medium font-mono text-slate-900">
+            {row.invoiceNumber ?? row.invoiceId}
+          </span>
+        ),
+      },
+      {
+        id: "customer",
+        header: "Customer",
+        accessor: (row) => row.locationName ?? "—",
+      },
+      {
+        id: "method",
+        header: "Method",
+        accessor: (row) => row.paymentMethod ?? "",
+        cell: (row) => (
+          <Chip>{humanize(row.paymentMethod ?? "—")}</Chip>
+        ),
+      },
+      {
+        id: "reference",
+        header: "Reference",
+        accessor: (row) => row.transactionReference ?? "",
+        cell: (row) => row.transactionReference || "—",
+      },
+      {
+        id: "amount",
+        header: "Amount",
+        accessor: (row) => toNumber(row.amount),
+        align: "right",
+        cell: (row) => <Money value={row.amount} tone="positive" />,
+      },
+    ],
+    [],
+  );
+
+  if (error) {
+    return (
+      <ErrorState
+        message={(error as Error).message}
+        onRetry={() => refetch()}
+      />
+    );
+  }
 
   return (
-    <div className="space-y-4">
-      <Card>
-        <CardHeader
+    <div className="space-y-5">
+      <Panel className="sticky top-0 z-30" padded={false}>
+        <div className="px-4 py-3 sm:px-5">
+          <ArFilterBar showStatus={false} />
+        </div>
+      </Panel>
+
+      {isLoading ? (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <KpiCardSkeleton key={i} />
+          ))}
+        </div>
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <KpiCard
+            label="Total received"
+            value={money(kpis.totalReceived)}
+            icon={CircleDollarSign}
+            accent="green"
+          />
+          <KpiCard
+            label="Payments recorded"
+            value={count(kpis.count)}
+            icon={Hash}
+            accent="blue"
+          />
+          <KpiCard
+            label="Average payment size"
+            value={money(kpis.average)}
+            icon={Banknote}
+            accent="teal"
+          />
+          <KpiCard
+            label="Largest payment"
+            value={money(kpis.largest)}
+            icon={TrendingUp}
+            accent="purple"
+          />
+        </div>
+      )}
+
+      <Panel padded={false}>
+        <PanelHeader
+          title="Collections over time"
+          description="Cash received month by month in the filtered set"
+        />
+        <PanelBody className="pt-2">
+          {isLoading ? (
+            <SkeletonChart />
+          ) : (
+            <AreaTrendChart
+              data={months}
+              xKey="label"
+              series={[
+                {
+                  key: "collected",
+                  label: "Collected",
+                  color: ACCENTS.green.hex,
+                },
+              ]}
+              emptyMessage="No payments in this range yet."
+            />
+          )}
+        </PanelBody>
+      </Panel>
+
+      <Panel padded={false}>
+        <PanelHeader
           title="Payments"
           description="Recorded payments against invoices"
           action={
@@ -73,56 +264,47 @@ export default function ArPaymentsPage() {
             ) : undefined
           }
         />
-        <CardBody className="overflow-x-auto p-0">
-          {isLoading ? (
-            <p className="p-6 text-sm text-slate-500">Loading payments…</p>
-          ) : payments.length === 0 ? (
-            <p className="p-6 text-sm text-slate-500">No payments recorded yet.</p>
-          ) : (
-            <table className="min-w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-100 text-left text-xs uppercase tracking-wide text-slate-500">
-                  <th className="px-6 py-3 font-medium">Date</th>
-                  <th className="px-6 py-3 font-medium">Invoice</th>
-                  <th className="px-6 py-3 font-medium">Location</th>
-                  <th className="px-6 py-3 font-medium">Amount</th>
-                  <th className="px-6 py-3 font-medium">Method</th>
-                  <th className="px-6 py-3 font-medium">Reference</th>
-                </tr>
-              </thead>
-              <tbody>
-                {payments.map((p) => (
-                  <tr key={p.id} className="border-b border-slate-50 hover:bg-slate-50/50">
-                    <td className="px-6 py-3 text-slate-600">
-                      {p.paymentDate?.slice(0, 10) ?? "—"}
-                    </td>
-                    <td className="px-6 py-3 font-medium text-slate-900">
-                      {p.invoiceNumber ?? p.invoiceId}
-                    </td>
-                    <td className="px-6 py-3 text-slate-600">{p.locationName ?? "—"}</td>
-                    <td className="px-6 py-3 text-slate-900">{moneyFmt(p.amount)}</td>
-                    <td className="px-6 py-3 capitalize text-slate-600">
-                      {(p.paymentMethod ?? "—").replace(/_/g, " ")}
-                    </td>
-                    <td className="px-6 py-3 text-slate-600">
-                      {p.transactionReference || "—"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </CardBody>
-      </Card>
+        <DataTable
+          columns={columns}
+          rows={payments}
+          getRowId={(row) => row.id}
+          loading={isLoading}
+          searchable={false}
+          initialSort={{ id: "date", dir: "desc" }}
+          exportFileName="accounts-payments"
+          emptyTitle="No payments recorded"
+          emptyDescription="Adjust filters or record a payment to see activity here."
+          emptyAction={
+            manage ? (
+              <Button size="sm" onClick={() => setModalOpen(true)}>
+                Record payment
+              </Button>
+            ) : undefined
+          }
+        />
+      </Panel>
 
-      <Modal open={modalOpen} title="Record payment" onClose={() => setModalOpen(false)}>
+      <Modal
+        open={modalOpen}
+        title="Record payment"
+        onClose={() => setModalOpen(false)}
+      >
         <div className="space-y-4">
-          <Input
-            label="Invoice ID"
+          <Select
+            label="Invoice"
             value={invoiceId}
             onChange={(e) => setInvoiceId(e.target.value)}
             required
-          />
+          >
+            <option value="">Select an invoice…</option>
+            {payableInvoices.map((inv) => (
+              <option key={inv.id} value={inv.id}>
+                {inv.invoiceNumber}
+                {inv.locationName ? ` · ${inv.locationName}` : ""} ·{" "}
+                {money(inv.balanceDue)} due
+              </option>
+            ))}
+          </Select>
           <Input
             label="Amount"
             type="number"
@@ -146,7 +328,7 @@ export default function ArPaymentsPage() {
           >
             {PAYMENT_METHODS.map((m) => (
               <option key={m} value={m}>
-                {m.replace(/_/g, " ")}
+                {humanize(m)}
               </option>
             ))}
           </Select>
@@ -155,8 +337,11 @@ export default function ArPaymentsPage() {
             value={transactionReference}
             onChange={(e) => setTransactionReference(e.target.value)}
           />
-          <Textarea label="Notes" value={notes} onChange={(e) => setNotes(e.target.value)} />
-          {error ? <p className="text-sm text-red-600">{error}</p> : null}
+          <Textarea
+            label="Notes"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+          />
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setModalOpen(false)}>
               Cancel

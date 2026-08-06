@@ -1,22 +1,32 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useSession } from "@/lib/session-context";
-import { canManageAr } from "@/lib/permissions";
+import {
+  Archive,
+  BadgePercent,
+  Package,
+  Receipt,
+} from "lucide-react";
+import { DataTable, type Column } from "@/components/ar/ui/data-table";
+import { KpiCard, KpiCardSkeleton } from "@/components/ar/ui/kpi-card";
+import { Panel, PanelBody, PanelHeader } from "@/components/ar/ui/panel";
+import { Amount, Chip, ErrorState } from "@/components/ar/ui/primitives";
+import { useArToast } from "@/components/ar/ui/toast";
 import { Button } from "@/components/ui/Button";
-import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/modal";
+import { count, money, toNumber } from "@/lib/ar/format";
+import { canManageAr } from "@/lib/permissions";
 import {
   archiveArProduct,
   createArProduct,
   deleteArProduct,
   fetchArProducts,
-  moneyFmt,
   updateArProduct,
   type ArProduct,
 } from "@/lib/queries/ar";
+import { useSession } from "@/lib/session-context";
 
 type ProductForm = {
   name: string;
@@ -39,13 +49,14 @@ const emptyForm: ProductForm = {
 export default function ArProductsPage() {
   const { user } = useSession();
   const manage = canManageAr(user.role);
+  const toast = useArToast();
   const queryClient = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<ArProduct | null>(null);
   const [form, setForm] = useState<ProductForm>(emptyForm);
-  const [error, setError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["ar", "products"],
     queryFn: () => fetchArProducts({ pageSize: 200 }),
   });
@@ -65,25 +76,37 @@ export default function ArProductsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["ar", "products"] });
+      toast.success(editing ? "Product updated" : "Product created");
       closeModal();
     },
-    onError: (e: Error) => setError(e.message),
+    onError: (e: Error) => {
+      setFormError(e.message);
+      toast.error("Could not save product", e.message);
+    },
   });
 
   const archiveMutation = useMutation({
     mutationFn: archiveArProduct,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["ar", "products"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["ar", "products"] });
+      toast.success("Product archived");
+    },
+    onError: (e: Error) => toast.error("Could not archive product", e.message),
   });
 
   const deleteMutation = useMutation({
     mutationFn: deleteArProduct,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["ar", "products"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["ar", "products"] });
+      toast.success("Product deleted");
+    },
+    onError: (e: Error) => toast.error("Could not delete product", e.message),
   });
 
   function openCreate() {
     setEditing(null);
     setForm(emptyForm);
-    setError(null);
+    setFormError(null);
     setModalOpen(true);
   }
 
@@ -97,7 +120,7 @@ export default function ArProductsPage() {
       taxable: product.taxable ?? true,
       taxPercentage: String(product.taxPercentage ?? 0),
     });
-    setError(null);
+    setFormError(null);
     setModalOpen(true);
   }
 
@@ -105,15 +128,183 @@ export default function ArProductsPage() {
     setModalOpen(false);
     setEditing(null);
     setForm(emptyForm);
-    setError(null);
+    setFormError(null);
   }
 
   const products = data?.products ?? [];
 
+  const kpis = useMemo(() => {
+    const active = products.filter((p) => p.isActive !== false).length;
+    const archived = products.filter((p) => p.isActive === false).length;
+    const avgPrice =
+      products.length > 0
+        ? products.reduce((s, p) => s + toNumber(p.price), 0) / products.length
+        : 0;
+    const taxable = products.filter((p) => p.taxable).length;
+    return { active, archived, avgPrice, taxable };
+  }, [products]);
+
+  const columns = useMemo<Column<ArProduct>[]>(
+    () => [
+      {
+        id: "name",
+        header: "Name",
+        accessor: (r) => r.name,
+        cell: (r) => (
+          <span className="font-medium text-slate-900">{r.name}</span>
+        ),
+      },
+      {
+        id: "category",
+        header: "Category",
+        accessor: (r) => r.category ?? "",
+        cell: (r) =>
+          r.category ? <Chip>{r.category}</Chip> : (
+            <span className="text-slate-400">—</span>
+          ),
+      },
+      {
+        id: "description",
+        header: "Description",
+        accessor: (r) => r.description ?? "",
+        cell: (r) => (
+          <span className="line-clamp-2 max-w-xs text-slate-600">
+            {r.description?.trim() || "—"}
+          </span>
+        ),
+      },
+      {
+        id: "price",
+        header: "Price",
+        accessor: (r) => toNumber(r.price),
+        align: "right",
+        cell: (r) => <Amount value={toNumber(r.price)} />,
+      },
+      {
+        id: "taxable",
+        header: "Taxable",
+        accessor: (r) => (r.taxable ? "yes" : "no"),
+        cell: (r) =>
+          r.taxable ? (
+            <Chip tone="pending">
+              Taxable{r.taxPercentage != null ? ` ${r.taxPercentage}%` : ""}
+            </Chip>
+          ) : (
+            <Chip>Non-taxable</Chip>
+          ),
+      },
+      {
+        id: "status",
+        header: "Status",
+        accessor: (r) => (r.isActive !== false ? "active" : "archived"),
+        cell: (r) =>
+          r.isActive !== false ? (
+            <Chip tone="positive">Active</Chip>
+          ) : (
+            <Chip>Archived</Chip>
+          ),
+      },
+      {
+        id: "actions",
+        header: "Actions",
+        accessor: () => "",
+        sortable: false,
+        locked: true,
+        cell: (r) =>
+          manage ? (
+            <div className="flex flex-wrap gap-1.5">
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openEdit(r);
+                }}
+              >
+                Edit
+              </Button>
+              {r.isActive !== false ? (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={archiveMutation.isPending}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    archiveMutation.mutate(r.id);
+                  }}
+                >
+                  Archive
+                </Button>
+              ) : null}
+              <Button
+                size="sm"
+                variant="danger"
+                disabled={deleteMutation.isPending}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (confirm("Delete this product permanently?")) {
+                    deleteMutation.mutate(r.id);
+                  }
+                }}
+              >
+                Delete
+              </Button>
+            </div>
+          ) : null,
+      },
+    ],
+    [manage, archiveMutation.isPending, deleteMutation.isPending],
+  );
+
+  if (error) {
+    return (
+      <ErrorState message={(error as Error).message} onRetry={() => refetch()} />
+    );
+  }
+
   return (
-    <div className="space-y-4">
-      <Card>
-        <CardHeader
+    <div className="space-y-5">
+      {isLoading ? (
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <KpiCardSkeleton key={i} />
+          ))}
+        </div>
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <KpiCard
+            label="Active products"
+            value={count(kpis.active)}
+            icon={Package}
+            accent="blue"
+            changePct={null}
+          />
+          <KpiCard
+            label="Archived"
+            value={count(kpis.archived)}
+            icon={Archive}
+            accent="slate"
+            changePct={null}
+          />
+          <KpiCard
+            label="Average price"
+            value={money(kpis.avgPrice)}
+            icon={Receipt}
+            accent="purple"
+            changePct={null}
+          />
+          <KpiCard
+            label="Taxable items"
+            value={count(kpis.taxable)}
+            icon={BadgePercent}
+            accent="orange"
+            changePct={null}
+          />
+        </div>
+      )}
+
+      <Panel padded={false}>
+        <PanelHeader
           title="Products"
           description="Billable products and services for invoicing"
           action={
@@ -124,86 +315,20 @@ export default function ArProductsPage() {
             ) : undefined
           }
         />
-        <CardBody className="overflow-x-auto p-0">
-          {isLoading ? (
-            <p className="p-6 text-sm text-slate-500">Loading products…</p>
-          ) : products.length === 0 ? (
-            <p className="p-6 text-sm text-slate-500">No products yet.</p>
-          ) : (
-            <table className="min-w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-100 text-left text-xs uppercase tracking-wide text-slate-500">
-                  <th className="px-6 py-3 font-medium">Name</th>
-                  <th className="px-6 py-3 font-medium">Category</th>
-                  <th className="px-6 py-3 font-medium">Price</th>
-                  <th className="px-6 py-3 font-medium">Tax</th>
-                  <th className="px-6 py-3 font-medium">Status</th>
-                  {manage ? <th className="px-6 py-3 font-medium">Actions</th> : null}
-                </tr>
-              </thead>
-              <tbody>
-                {products.map((p) => (
-                  <tr key={p.id} className="border-b border-slate-50 hover:bg-slate-50/50">
-                    <td className="px-6 py-3">
-                      <div className="font-medium text-slate-900">{p.name}</div>
-                      {p.description ? (
-                        <div className="text-xs text-slate-500">{p.description}</div>
-                      ) : null}
-                    </td>
-                    <td className="px-6 py-3 text-slate-600">{p.category || "—"}</td>
-                    <td className="px-6 py-3 text-slate-900">{moneyFmt(p.price)}</td>
-                    <td className="px-6 py-3 text-slate-600">
-                      {p.taxable ? `${p.taxPercentage ?? 0}%` : "Non-taxable"}
-                    </td>
-                    <td className="px-6 py-3">
-                      <span
-                        className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                          p.isActive !== false
-                            ? "bg-green-50 text-green-700"
-                            : "bg-slate-100 text-slate-600"
-                        }`}
-                      >
-                        {p.isActive !== false ? "Active" : "Archived"}
-                      </span>
-                    </td>
-                    {manage ? (
-                      <td className="px-6 py-3">
-                        <div className="flex flex-wrap gap-2">
-                          <Button size="sm" variant="ghost" onClick={() => openEdit(p)}>
-                            Edit
-                          </Button>
-                          {p.isActive !== false ? (
-                            <Button
-                              size="sm"
-                              variant="secondary"
-                              disabled={archiveMutation.isPending}
-                              onClick={() => archiveMutation.mutate(p.id)}
-                            >
-                              Archive
-                            </Button>
-                          ) : null}
-                          <Button
-                            size="sm"
-                            variant="danger"
-                            disabled={deleteMutation.isPending}
-                            onClick={() => {
-                              if (confirm("Delete this product permanently?")) {
-                                deleteMutation.mutate(p.id);
-                              }
-                            }}
-                          >
-                            Delete
-                          </Button>
-                        </div>
-                      </td>
-                    ) : null}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </CardBody>
-      </Card>
+        <PanelBody className="p-0 sm:p-0">
+          <DataTable
+            columns={columns}
+            rows={products}
+            getRowId={(r) => r.id}
+            loading={isLoading}
+            searchPlaceholder="Search products…"
+            exportFileName="accounts-products"
+            emptyTitle="No products yet"
+            emptyDescription="Add billable products and services to use on invoices."
+            initialSort={{ id: "name", dir: "asc" }}
+          />
+        </PanelBody>
+      </Panel>
 
       <Modal
         open={modalOpen}
@@ -220,12 +345,16 @@ export default function ArProductsPage() {
           <Input
             label="Description"
             value={form.description}
-            onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, description: e.target.value }))
+            }
           />
           <Input
             label="Category"
             value={form.category}
-            onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, category: e.target.value }))
+            }
           />
           <Input
             label="Price"
@@ -240,7 +369,9 @@ export default function ArProductsPage() {
             <input
               type="checkbox"
               checked={form.taxable}
-              onChange={(e) => setForm((f) => ({ ...f, taxable: e.target.checked }))}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, taxable: e.target.checked }))
+              }
             />
             Taxable
           </label>
@@ -251,10 +382,12 @@ export default function ArProductsPage() {
               min="0"
               step="0.01"
               value={form.taxPercentage}
-              onChange={(e) => setForm((f) => ({ ...f, taxPercentage: e.target.value }))}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, taxPercentage: e.target.value }))
+              }
             />
           ) : null}
-          {error ? <p className="text-sm text-red-600">{error}</p> : null}
+          {formError ? <p className="text-sm text-red-600">{formError}</p> : null}
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={closeModal}>
               Cancel

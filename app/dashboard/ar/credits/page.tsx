@@ -1,29 +1,61 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useSession } from "@/lib/session-context";
-import { canManageAr } from "@/lib/permissions";
-import { fetchLocationOptions, locationOptionsQueryKey } from "@/lib/queries/locations";
+import {
+  BadgePercent,
+  CircleDollarSign,
+  Layers,
+  Wallet,
+} from "lucide-react";
+import { DataTable, type Column } from "@/components/ar/ui/data-table";
+import { KpiCard, KpiCardSkeleton } from "@/components/ar/ui/kpi-card";
+import { Panel, PanelBody, PanelHeader } from "@/components/ar/ui/panel";
+import { Chip, ErrorState, Money } from "@/components/ar/ui/primitives";
+import { useArToast } from "@/components/ar/ui/toast";
 import { Button } from "@/components/ui/Button";
-import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/modal";
 import { Select } from "@/components/ui/Select";
 import { Textarea } from "@/components/ui/Textarea";
 import {
+  count,
+  humanize,
+  money,
+  shortDate,
+  toDate,
+  toNumber,
+} from "@/lib/ar/format";
+import { canManageAr } from "@/lib/permissions";
+import {
   applyArCredit,
   createArCredit,
   fetchArCredits,
-  moneyFmt,
   type ArCredit,
 } from "@/lib/queries/ar";
+import { fetchLocationOptions, locationOptionsQueryKey } from "@/lib/queries/locations";
+import { useSession } from "@/lib/session-context";
 
 const CREDIT_TYPES = ["adjustment", "refund", "promotional", "write_off", "other"];
+
+type CreditRow = ArCredit & { createdAt?: string; issuedAt?: string; creditDate?: string };
+
+function creditDate(c: CreditRow): string | undefined {
+  return c.createdAt || c.issuedAt || c.creditDate || undefined;
+}
+
+function remainingOf(c: ArCredit): number {
+  return toNumber(c.remainingAmount ?? c.amount);
+}
+
+function appliedOf(c: ArCredit): number {
+  return Math.max(0, toNumber(c.amount) - remainingOf(c));
+}
 
 export default function ArCreditsPage() {
   const { user } = useSession();
   const manage = canManageAr(user.role);
+  const toast = useArToast();
   const queryClient = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
   const [applyCredit, setApplyCredit] = useState<ArCredit | null>(null);
@@ -33,9 +65,9 @@ export default function ArCreditsPage() {
   const [reason, setReason] = useState("");
   const [applyInvoiceId, setApplyInvoiceId] = useState("");
   const [applyAmount, setApplyAmount] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["ar", "credits"],
     queryFn: () => fetchArCredits({ pageSize: 200 }),
   });
@@ -56,14 +88,18 @@ export default function ArCreditsPage() {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["ar", "credits"] });
+      toast.success("Credit created");
       setCreateOpen(false);
       setLocationId("");
       setAmount("");
       setType("adjustment");
       setReason("");
-      setError(null);
+      setFormError(null);
     },
-    onError: (e: Error) => setError(e.message),
+    onError: (e: Error) => {
+      setFormError(e.message);
+      toast.error("Could not create credit", e.message);
+    },
   });
 
   const applyMutation = useMutation({
@@ -75,86 +111,202 @@ export default function ArCreditsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["ar", "credits"] });
       queryClient.invalidateQueries({ queryKey: ["ar", "invoices"] });
+      toast.success("Credit applied");
       setApplyCredit(null);
       setApplyInvoiceId("");
       setApplyAmount("");
-      setError(null);
+      setFormError(null);
     },
-    onError: (e: Error) => setError(e.message),
+    onError: (e: Error) => {
+      setFormError(e.message);
+      toast.error("Could not apply credit", e.message);
+    },
   });
 
-  const credits = data?.credits ?? [];
+  const credits = (data?.credits ?? []) as CreditRow[];
+
+  const kpis = useMemo(() => {
+    const totalIssued = credits.reduce((s, c) => s + toNumber(c.amount), 0);
+    const remaining = credits.reduce((s, c) => s + remainingOf(c), 0);
+    const applied = credits.reduce((s, c) => s + appliedOf(c), 0);
+    return { totalIssued, remaining, applied, count: credits.length };
+  }, [credits]);
+
+  const columns = useMemo<Column<CreditRow>[]>(
+    () => [
+      {
+        id: "date",
+        header: "Date",
+        accessor: (r) => {
+          const d = toDate(creditDate(r));
+          return d ? d.getTime() : 0;
+        },
+        cell: (r) => shortDate(creditDate(r)),
+      },
+      {
+        id: "customer",
+        header: "Customer",
+        accessor: (r) => r.locationName ?? r.locationId,
+        cell: (r) => (
+          <span className="font-medium text-slate-900">
+            {r.locationName ?? r.locationId}
+          </span>
+        ),
+      },
+      {
+        id: "type",
+        header: "Type",
+        accessor: (r) => r.type ?? "credit",
+        cell: (r) => <Chip>{humanize(r.type ?? "credit")}</Chip>,
+      },
+      {
+        id: "reason",
+        header: "Reason",
+        accessor: (r) => r.reason ?? "",
+        cell: (r) => (
+          <span className="text-slate-600">{r.reason?.trim() || "—"}</span>
+        ),
+      },
+      {
+        id: "amount",
+        header: "Amount",
+        accessor: (r) => toNumber(r.amount),
+        align: "right",
+        cell: (r) => <Money value={toNumber(r.amount)} />,
+      },
+      {
+        id: "remaining",
+        header: "Remaining",
+        accessor: (r) => remainingOf(r),
+        align: "right",
+        cell: (r) => {
+          const rem = remainingOf(r);
+          return <Money value={rem} tone={rem > 0 ? "pending" : "neutral"} />;
+        },
+      },
+      {
+        id: "status",
+        header: "Status",
+        accessor: (r) => r.status ?? "",
+        cell: (r) => {
+          const status = (r.status ?? "").toLowerCase();
+          const tone =
+            status === "applied" || status === "exhausted"
+              ? "positive"
+              : status === "partial" || remPending(r)
+                ? "pending"
+                : "neutral";
+          return <Chip tone={tone}>{humanize(r.status) || "—"}</Chip>;
+        },
+      },
+      {
+        id: "actions",
+        header: "Actions",
+        accessor: () => "",
+        sortable: false,
+        locked: true,
+        cell: (r) =>
+          manage ? (
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={remainingOf(r) <= 0}
+              onClick={(e) => {
+                e.stopPropagation();
+                setApplyCredit(r);
+                setApplyAmount(String(remainingOf(r)));
+                setApplyInvoiceId("");
+                setFormError(null);
+              }}
+            >
+              Apply
+            </Button>
+          ) : null,
+      },
+    ],
+    [manage],
+  );
+
+  if (error) {
+    return (
+      <ErrorState message={(error as Error).message} onRetry={() => refetch()} />
+    );
+  }
 
   return (
-    <div className="space-y-4">
-      <Card>
-        <CardHeader
+    <div className="space-y-5">
+      {isLoading ? (
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <KpiCardSkeleton key={i} />
+          ))}
+        </div>
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <KpiCard
+            label="Total issued"
+            value={money(kpis.totalIssued)}
+            icon={CircleDollarSign}
+            accent="purple"
+            changePct={null}
+          />
+          <KpiCard
+            label="Remaining balance"
+            value={money(kpis.remaining)}
+            icon={Wallet}
+            accent="teal"
+            changePct={null}
+            upIsGood={false}
+          />
+          <KpiCard
+            label="Applied"
+            value={money(kpis.applied)}
+            icon={BadgePercent}
+            accent="green"
+            changePct={null}
+          />
+          <KpiCard
+            label="Credits count"
+            value={count(kpis.count)}
+            icon={Layers}
+            accent="slate"
+            changePct={null}
+          />
+        </div>
+      )}
+
+      <Panel padded={false}>
+        <PanelHeader
           title="Credits"
           description="Account credits and applications to invoices"
           action={
             manage ? (
-              <Button size="sm" onClick={() => setCreateOpen(true)}>
+              <Button
+                size="sm"
+                onClick={() => {
+                  setFormError(null);
+                  setCreateOpen(true);
+                }}
+              >
                 Create credit
               </Button>
             ) : undefined
           }
         />
-        <CardBody className="overflow-x-auto p-0">
-          {isLoading ? (
-            <p className="p-6 text-sm text-slate-500">Loading credits…</p>
-          ) : credits.length === 0 ? (
-            <p className="p-6 text-sm text-slate-500">No credits yet.</p>
-          ) : (
-            <table className="min-w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-100 text-left text-xs uppercase tracking-wide text-slate-500">
-                  <th className="px-6 py-3 font-medium">Location</th>
-                  <th className="px-6 py-3 font-medium">Type</th>
-                  <th className="px-6 py-3 font-medium">Amount</th>
-                  <th className="px-6 py-3 font-medium">Remaining</th>
-                  <th className="px-6 py-3 font-medium">Status</th>
-                  <th className="px-6 py-3 font-medium">Reason</th>
-                  {manage ? <th className="px-6 py-3 font-medium">Actions</th> : null}
-                </tr>
-              </thead>
-              <tbody>
-                {credits.map((c) => (
-                  <tr key={c.id} className="border-b border-slate-50 hover:bg-slate-50/50">
-                    <td className="px-6 py-3 font-medium text-slate-900">
-                      {c.locationName ?? c.locationId}
-                    </td>
-                    <td className="px-6 py-3 capitalize text-slate-600">
-                      {(c.type ?? "—").replace(/_/g, " ")}
-                    </td>
-                    <td className="px-6 py-3 text-slate-900">{moneyFmt(c.amount)}</td>
-                    <td className="px-6 py-3 text-slate-900">
-                      {moneyFmt(c.remainingAmount ?? c.amount)}
-                    </td>
-                    <td className="px-6 py-3 capitalize text-slate-600">{c.status ?? "—"}</td>
-                    <td className="px-6 py-3 text-slate-600">{c.reason || "—"}</td>
-                    {manage ? (
-                      <td className="px-6 py-3">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          disabled={(c.remainingAmount ?? c.amount) <= 0}
-                          onClick={() => {
-                            setApplyCredit(c);
-                            setApplyAmount(String(c.remainingAmount ?? c.amount));
-                            setError(null);
-                          }}
-                        >
-                          Apply
-                        </Button>
-                      </td>
-                    ) : null}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </CardBody>
-      </Card>
+        <PanelBody className="p-0 sm:p-0">
+          <DataTable
+            columns={columns}
+            rows={credits}
+            getRowId={(r) => r.id}
+            loading={isLoading}
+            searchPlaceholder="Search credits…"
+            exportFileName="accounts-credits"
+            emptyTitle="No credits yet"
+            emptyDescription="Credits issued to partner accounts will appear here."
+            initialSort={{ id: "date", dir: "desc" }}
+          />
+        </PanelBody>
+      </Panel>
 
       <Modal open={createOpen} title="Create credit" onClose={() => setCreateOpen(false)}>
         <div className="space-y-4">
@@ -183,12 +335,12 @@ export default function ArCreditsPage() {
           <Select label="Type" value={type} onChange={(e) => setType(e.target.value)}>
             {CREDIT_TYPES.map((t) => (
               <option key={t} value={t}>
-                {t.replace(/_/g, " ")}
+                {humanize(t)}
               </option>
             ))}
           </Select>
           <Textarea label="Reason" value={reason} onChange={(e) => setReason(e.target.value)} />
-          {error ? <p className="text-sm text-red-600">{error}</p> : null}
+          {formError ? <p className="text-sm text-red-600">{formError}</p> : null}
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setCreateOpen(false)}>
               Cancel
@@ -206,7 +358,13 @@ export default function ArCreditsPage() {
       <Modal
         open={Boolean(applyCredit)}
         title="Apply credit"
-        description={applyCredit ? `Credit: ${moneyFmt(applyCredit.amount)}` : undefined}
+        description={
+          applyCredit ? (
+            <span>
+              Available balance: <Money value={remainingOf(applyCredit)} tone="pending" />
+            </span>
+          ) : undefined
+        }
         onClose={() => setApplyCredit(null)}
       >
         <div className="space-y-4">
@@ -224,7 +382,7 @@ export default function ArCreditsPage() {
             value={applyAmount}
             onChange={(e) => setApplyAmount(e.target.value)}
           />
-          {error ? <p className="text-sm text-red-600">{error}</p> : null}
+          {formError ? <p className="text-sm text-red-600">{formError}</p> : null}
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setApplyCredit(null)}>
               Cancel
@@ -240,4 +398,8 @@ export default function ArCreditsPage() {
       </Modal>
     </div>
   );
+}
+
+function remPending(c: ArCredit): boolean {
+  return remainingOf(c) > 0 && remainingOf(c) < toNumber(c.amount);
 }
