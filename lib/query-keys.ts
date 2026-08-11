@@ -125,4 +125,10 @@ export const queryKeys = {
     public: (token: string) =>
       [...queryKeys.onboardings.all, "public", token] as const,
   },
+  assets: {
+    all: ["assets"] as const,
+    lists: () => [...queryKeys.assets.all, "list"] as const,
+    list: (category: "documents" | "marketing_assets") =>
+      [...queryKeys.assets.lists(), category] as const,
+  },
 } as const;

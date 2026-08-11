@@ -7,6 +7,8 @@ import {
   MessageSquare,
   Ticket,
   ClipboardList,
+  FileText,
+  ImageIcon,
 } from "lucide-react";
 import type { UserRole } from "@/lib/user-roles";
 
@@ -46,6 +48,18 @@ export const NAV_ITEMS: NavItem[] = [
     icon: MessageSquare,
     roles: ["admin", "support"],
     badgeSource: "conversations",
+  },
+  {
+    href: "/dashboard/documents",
+    label: "Documents",
+    icon: FileText,
+    roles: ["admin", "partner"],
+  },
+  {
+    href: "/dashboard/marketing-assets",
+    label: "Marketing Assets",
+    icon: ImageIcon,
+    roles: ["admin", "partner"],
   },
   // {
   //   href: "/dashboard/reports",
@@ -92,6 +106,8 @@ export function titleForPath(pathname: string): string {
     "/dashboard/conversations": "Conversations",
     "/dashboard/reports": "Reports",
     "/dashboard/boards": "Boards",
+    "/dashboard/documents": "Documents",
+    "/dashboard/marketing-assets": "Marketing Assets",
   };
   return map[pathname] ?? "Dashboard";
 }

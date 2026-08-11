@@ -25,6 +25,7 @@ import { boardsListQueryOptions } from "@/lib/queries/boards";
 import { inboxQueryOptions } from "@/lib/queries/conversations";
 import { statusNotificationsQueryOptions } from "@/lib/queries/notifications";
 import { fetchSidebarNavCounts, sidebarCountsQueryKey } from "@/lib/queries/sidebar";
+import { assetsListQueryOptions } from "@/lib/queries/assets";
 
 /**
  * Warm the React Query cache after login so sidebar navigation reuses data.
@@ -68,6 +69,8 @@ export async function prefetchAppData(
         queryKey: sidebarCountsQueryKey(role),
         queryFn: () => fetchSidebarNavCounts(role),
       }),
+      queryClient.prefetchQuery(assetsListQueryOptions("documents")),
+      queryClient.prefetchQuery(assetsListQueryOptions("marketing_assets")),
     );
   } else if (role === "support") {
     tasks.push(
@@ -87,6 +90,8 @@ export async function prefetchAppData(
         queryKey: locationListQueryKey(LOCATIONS_OPTIONS_FILTERS),
         queryFn: () => fetchLocationsList(LOCATIONS_OPTIONS_FILTERS),
       }),
+      queryClient.prefetchQuery(assetsListQueryOptions("documents")),
+      queryClient.prefetchQuery(assetsListQueryOptions("marketing_assets")),
     );
   }
 
@@ -110,6 +115,8 @@ export function prefetchAppDataQueryKeys(role: UserRole): readonly unknown[][] {
       [queryKeys.boards.list()],
       [queryKeys.conversations.inbox()],
       [sidebarCountsQueryKey(role)],
+      [queryKeys.assets.list("documents")],
+      [queryKeys.assets.list("marketing_assets")],
     );
   } else if (role === "support") {
     keys.push(
@@ -117,6 +124,11 @@ export function prefetchAppDataQueryKeys(role: UserRole): readonly unknown[][] {
       [queryKeys.boards.list()],
       [queryKeys.conversations.inbox()],
       [sidebarCountsQueryKey(role)],
+    );
+  } else if (role === "partner") {
+    keys.push(
+      [queryKeys.assets.list("documents")],
+      [queryKeys.assets.list("marketing_assets")],
     );
   }
   return keys;
