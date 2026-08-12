@@ -179,9 +179,13 @@ export function filterPayments(
 export function filterCredits(
   credits: ArCredit[],
   filters: ArFilters,
+  now = new Date(),
 ): ArCredit[] {
+  const range = resolveRange(filters, now);
   const term = filters.search.trim().toLowerCase();
   return credits.filter((c) => {
+    const date = c.createdAt ?? c.issuedAt ?? c.creditDate;
+    if (date && !inRange(date, range)) return false;
     if (filters.locationId && c.locationId !== filters.locationId) return false;
     if (term) {
       const hay = `${c.locationName ?? ""} ${c.reason ?? ""} ${

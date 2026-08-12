@@ -88,6 +88,7 @@ export default function ArInvoicesPage() {
 
   const [createOpen, setCreateOpen] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [locationId, setLocationId] = useState("");
   const [invoiceTemplateId, setInvoiceTemplateId] = useState("");
   const [items, setItems] = useState<LineItem[]>([
@@ -163,12 +164,15 @@ export default function ArInvoicesPage() {
   });
 
   async function handleDownload(invoice: ArInvoice) {
+    setDownloadingId(invoice.id);
     try {
       const blob = await downloadArInvoicePdf(invoice.id);
       downloadBlob(blob, `${invoice.invoiceNumber || invoice.id}.pdf`);
       toast.success("PDF downloaded");
     } catch (e) {
       toast.error("Download failed", (e as Error).message);
+    } finally {
+      setDownloadingId(null);
     }
   }
 
@@ -266,7 +270,10 @@ export default function ArInvoicesPage() {
         cell: (row) => (
           <InvoiceRowActions
             canManage={manage}
-            busy={actionMutation.isPending}
+            busy={
+              (actionMutation.isPending && actionMutation.variables?.id === row.id) ||
+              downloadingId === row.id
+            }
             onView={() => setDetailId(row.id)}
             onSend={() => actionMutation.mutate({ id: row.id, action: "send" })}
             onApprove={() =>
@@ -281,7 +288,7 @@ export default function ArInvoicesPage() {
         ),
       },
     ],
-    [manage, actionMutation.isPending],
+    [manage, actionMutation.isPending, actionMutation.variables, downloadingId],
   );
 
   if (error) {
@@ -297,7 +304,7 @@ export default function ArInvoicesPage() {
 
   return (
     <div className="space-y-5">
-      <Panel className="sticky top-0 z-30" padded={false}>
+      <Panel className="sticky top-0 z-30" padded={false} overflowVisible>
         <div className="px-4 py-3 sm:px-5">
           <ArFilterBar />
         </div>
@@ -491,7 +498,16 @@ export default function ArInvoicesPage() {
           <InvoiceDetail
             invoice={detail}
             canManage={manage}
-            busy={actionMutation.isPending}
+            pendingAction={
+              actionMutation.isPending && actionMutation.variables?.id === detail.id
+                ? (actionMutation.variables.action as
+                    | "approve"
+                    | "send"
+                    | "duplicate"
+                    | "cancel")
+                : null
+            }
+            downloading={downloadingId === detail.id}
             onDownload={() => handleDownload(detail)}
             onApprove={() =>
               actionMutation.mutate({ id: detail.id, action: "approve" })

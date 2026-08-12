@@ -9,6 +9,7 @@ import {
   Wallet,
 } from "lucide-react";
 import { DataTable, type Column } from "@/components/ar/ui/data-table";
+import { ArFilterBar } from "@/components/ar/ui/filter-bar";
 import { KpiCard, KpiCardSkeleton } from "@/components/ar/ui/kpi-card";
 import { Panel, PanelBody, PanelHeader } from "@/components/ar/ui/panel";
 import { Amount, ErrorState } from "@/components/ar/ui/primitives";
@@ -17,6 +18,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/modal";
 import { Select } from "@/components/ui/Select";
+import { inRange, resolveRange, useArFilters } from "@/lib/ar/filters";
 import { count, money, shortDate, toDate } from "@/lib/ar/format";
 import { canManageAr } from "@/lib/permissions";
 import { fetchArStatements, generateArStatement } from "@/lib/queries/ar";
@@ -66,6 +68,7 @@ export default function ArStatementsPage() {
   const manage = canManageAr(user.role);
   const toast = useArToast();
   const queryClient = useQueryClient();
+  const { filters } = useArFilters();
   const [modalOpen, setModalOpen] = useState(false);
   const [locationId, setLocationId] = useState("");
   const [periodStart, setPeriodStart] = useState("");
@@ -105,7 +108,22 @@ export default function ArStatementsPage() {
     },
   });
 
-  const statements = (data?.statements ?? []) as StatementRow[];
+  const allStatements = (data?.statements ?? []) as StatementRow[];
+  const statements = useMemo(() => {
+    const range = resolveRange(filters, new Date());
+    const term = filters.search.trim().toLowerCase();
+    return allStatements.filter((s) => {
+      const sLocationId = pick(s, ["locationId"]);
+      if (filters.locationId && sLocationId !== filters.locationId) return false;
+      const generated = pick(s, ["createdAt", "generatedAt", "generatedOn", "issuedAt"]);
+      if (generated != null && !inRange(String(generated), range)) return false;
+      if (term) {
+        const hay = String(pick(s, ["locationName", "customerName"]) ?? "").toLowerCase();
+        if (!hay.includes(term)) return false;
+      }
+      return true;
+    });
+  }, [allStatements, filters]);
   const canDeriveInvoiced = hasNumericField(statements, INVOICED_KEYS);
 
   const kpis = useMemo(() => {
@@ -234,6 +252,16 @@ export default function ArStatementsPage() {
 
   return (
     <div className="space-y-5">
+      <Panel className="sticky top-0 z-30" padded={false} overflowVisible>
+        <div className="px-4 py-3 sm:px-5">
+          <ArFilterBar
+            showStatus={false}
+            showPaymentStatus={false}
+            searchPlaceholder="Search statements, customers…"
+          />
+        </div>
+      </Panel>
+
       {isLoading ? (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {Array.from({ length: 4 }).map((_, i) => (
@@ -305,9 +333,9 @@ export default function ArStatementsPage() {
               )
             }
             loading={isLoading}
-            searchPlaceholder="Search statements…"
+            searchable={false}
             exportFileName="accounts-statements"
-            emptyTitle="No statements yet"
+            emptyTitle="No statements in this range"
             emptyDescription="Generated partner statements will appear here."
             initialSort={{ id: "generated", dir: "desc" }}
           />

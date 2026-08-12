@@ -112,11 +112,15 @@ function OptionRow({
  * three dropdowns that would filter the identical field.
  */
 export function ArFilterBar({
+  showDateRange = true,
+  showCustomer = true,
   showStatus = true,
   showPaymentStatus = true,
   showSearch = true,
   searchPlaceholder = "Search invoices, customers, references…",
 }: {
+  showDateRange?: boolean;
+  showCustomer?: boolean;
   showStatus?: boolean;
   showPaymentStatus?: boolean;
   showSearch?: boolean;
@@ -129,7 +133,7 @@ export function ArFilterBar({
   const { data: locations = [] } = useQuery({
     queryKey: locationOptionsQueryKey,
     queryFn: fetchLocationOptions,
-    enabled: !isPartner,
+    enabled: showCustomer && !isPartner,
     staleTime: 5 * 60_000,
   });
 
@@ -138,53 +142,55 @@ export function ArFilterBar({
   return (
     <div className="flex flex-wrap items-center gap-2">
       {/* date range */}
-      <Popover
-        label="Date range"
-        value={describeRange(filters)}
-        icon={<CalendarDays className="h-4 w-4 text-slate-400" />}
-      >
-        {(close) => (
-          <div className="space-y-1">
-            {DATE_PRESETS.map((preset) => (
-              <OptionRow
-                key={preset.value}
-                active={filters.preset === preset.value}
-                onClick={() => {
-                  setFilters({ preset: preset.value });
-                  if (preset.value !== "custom") close();
-                }}
-              >
-                {preset.label}
-              </OptionRow>
-            ))}
-            {filters.preset === "custom" ? (
-              <div className="mt-2 space-y-2 border-t border-slate-100 pt-2">
-                <label className="block text-[11px] font-medium uppercase tracking-wide text-slate-400">
-                  From
-                  <input
-                    type="date"
-                    value={filters.from ? filters.from.slice(0, 10) : ""}
-                    onChange={(e) => setFilters({ from: e.target.value })}
-                    className="mt-1 h-8 w-full rounded-lg border border-slate-200 px-2 text-sm text-slate-700 outline-none focus:border-slate-300"
-                  />
-                </label>
-                <label className="block text-[11px] font-medium uppercase tracking-wide text-slate-400">
-                  To
-                  <input
-                    type="date"
-                    value={filters.to ? filters.to.slice(0, 10) : ""}
-                    onChange={(e) => setFilters({ to: e.target.value })}
-                    className="mt-1 h-8 w-full rounded-lg border border-slate-200 px-2 text-sm text-slate-700 outline-none focus:border-slate-300"
-                  />
-                </label>
-              </div>
-            ) : null}
-          </div>
-        )}
-      </Popover>
+      {showDateRange ? (
+        <Popover
+          label="Date range"
+          value={describeRange(filters)}
+          icon={<CalendarDays className="h-4 w-4 text-slate-400" />}
+        >
+          {(close) => (
+            <div className="space-y-1">
+              {DATE_PRESETS.map((preset) => (
+                <OptionRow
+                  key={preset.value}
+                  active={filters.preset === preset.value}
+                  onClick={() => {
+                    setFilters({ preset: preset.value });
+                    if (preset.value !== "custom") close();
+                  }}
+                >
+                  {preset.label}
+                </OptionRow>
+              ))}
+              {filters.preset === "custom" ? (
+                <div className="mt-2 space-y-2 border-t border-slate-100 pt-2">
+                  <label className="block text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                    From
+                    <input
+                      type="date"
+                      value={filters.from ? filters.from.slice(0, 10) : ""}
+                      onChange={(e) => setFilters({ from: e.target.value })}
+                      className="mt-1 h-8 w-full rounded-lg border border-slate-200 px-2 text-sm text-slate-700 outline-none focus:border-slate-300"
+                    />
+                  </label>
+                  <label className="block text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                    To
+                    <input
+                      type="date"
+                      value={filters.to ? filters.to.slice(0, 10) : ""}
+                      onChange={(e) => setFilters({ to: e.target.value })}
+                      className="mt-1 h-8 w-full rounded-lg border border-slate-200 px-2 text-sm text-slate-700 outline-none focus:border-slate-300"
+                    />
+                  </label>
+                </div>
+              ) : null}
+            </div>
+          )}
+        </Popover>
+      ) : null}
 
       {/* customer / partner / location */}
-      {!isPartner ? (
+      {showCustomer && !isPartner ? (
         <Popover
           label="Customer"
           value={selectedLocation?.name ?? "All customers"}

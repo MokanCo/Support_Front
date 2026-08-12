@@ -96,7 +96,7 @@ export default function AccountsInsightsPage() {
   return (
     <div className="space-y-5">
       {/* filters */}
-      <Panel className="sticky top-0 z-30" padded={false}>
+      <Panel className="sticky top-0 z-30" padded={false} overflowVisible>
         <div className="px-4 py-3 sm:px-5">
           <ArFilterBar />
         </div>

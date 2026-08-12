@@ -4,11 +4,13 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CalendarClock,
+  Loader2,
   PauseCircle,
   PlayCircle,
   RefreshCw,
 } from "lucide-react";
 import { DataTable, type Column } from "@/components/ar/ui/data-table";
+import { ArFilterBar } from "@/components/ar/ui/filter-bar";
 import { KpiCard, KpiCardSkeleton } from "@/components/ar/ui/kpi-card";
 import { Panel, PanelBody, PanelHeader } from "@/components/ar/ui/panel";
 import { Chip, ErrorState } from "@/components/ar/ui/primitives";
@@ -17,6 +19,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/modal";
 import { Select } from "@/components/ui/Select";
+import { useArFilters } from "@/lib/ar/filters";
 import {
   count,
   daysBetween,
@@ -98,6 +101,7 @@ export default function ArRecurringPage() {
   const manage = canManageAr(user.role);
   const toast = useArToast();
   const queryClient = useQueryClient();
+  const { filters } = useArFilters();
   const [modalOpen, setModalOpen] = useState(false);
   const [name, setName] = useState("");
   const [locationId, setLocationId] = useState("");
@@ -178,7 +182,18 @@ export default function ArRecurringPage() {
     onError: (e: Error) => toast.error("Could not delete template", e.message),
   });
 
-  const templates = (data?.templates ?? []) as RecurringRow[];
+  const allTemplates = (data?.templates ?? []) as RecurringRow[];
+  const templates = useMemo(() => {
+    const term = filters.search.trim().toLowerCase();
+    return allTemplates.filter((t) => {
+      if (filters.locationId && t.locationId !== filters.locationId) return false;
+      if (term) {
+        const hay = `${t.name} ${t.locationName ?? ""} ${t.frequency ?? ""}`.toLowerCase();
+        if (!hay.includes(term)) return false;
+      }
+      return true;
+    });
+  }, [allTemplates, filters]);
 
   const kpis = useMemo(() => {
     const now = new Date();
@@ -298,7 +313,13 @@ export default function ArRecurringPage() {
                   runMutation.mutate(r.id);
                 }}
               >
-                Run now
+                {runMutation.isPending && runMutation.variables === r.id ? (
+                  <>
+                    <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Running…
+                  </>
+                ) : (
+                  "Run now"
+                )}
               </Button>
               <Button
                 size="sm"
@@ -311,13 +332,25 @@ export default function ArRecurringPage() {
                   }
                 }}
               >
-                Delete
+                {deleteMutation.isPending && deleteMutation.variables === r.id ? (
+                  <>
+                    <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Deleting…
+                  </>
+                ) : (
+                  "Delete"
+                )}
               </Button>
             </div>
           ) : null,
       },
     ],
-    [manage, runMutation.isPending, deleteMutation.isPending],
+    [
+      manage,
+      runMutation.isPending,
+      runMutation.variables,
+      deleteMutation.isPending,
+      deleteMutation.variables,
+    ],
   );
 
   if (error) {
@@ -328,6 +361,17 @@ export default function ArRecurringPage() {
 
   return (
     <div className="space-y-5">
+      <Panel className="sticky top-0 z-30" padded={false} overflowVisible>
+        <div className="px-4 py-3 sm:px-5">
+          <ArFilterBar
+            showDateRange={false}
+            showStatus={false}
+            showPaymentStatus={false}
+            searchPlaceholder="Search recurring templates…"
+          />
+        </div>
+      </Panel>
+
       {isLoading ? (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {Array.from({ length: kpis.monthlyValue != null ? 4 : 3 }).map(
@@ -396,9 +440,9 @@ export default function ArRecurringPage() {
             rows={templates}
             getRowId={(r) => r.id}
             loading={isLoading}
-            searchPlaceholder="Search templates…"
+            searchable={false}
             exportFileName="accounts-recurring"
-            emptyTitle="No recurring templates yet"
+            emptyTitle="No recurring templates match your filters"
             emptyDescription="Create a template to automatically generate invoices on a schedule."
             initialSort={{ id: "nextRun", dir: "asc" }}
           />

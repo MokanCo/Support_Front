@@ -6,6 +6,7 @@ import {
   Copy,
   Download,
   Eye,
+  Loader2,
   MoreHorizontal,
   Send,
   XCircle,
@@ -13,6 +14,8 @@ import {
 
 type Props = {
   canManage: boolean;
+  /** True while an action for THIS row is in flight — shows a spinner on the
+   *  trigger so the user has feedback even after the dropdown menu closes. */
   busy?: boolean;
   onView: () => void;
   onSend: () => void;
@@ -53,7 +56,7 @@ export function InvoiceRowActions({
     <div className="relative flex justify-end" ref={ref}>
       <button
         type="button"
-        aria-label="Invoice actions"
+        aria-label={busy ? "Processing…" : "Invoice actions"}
         disabled={busy}
         onClick={(e) => {
           e.stopPropagation();
@@ -61,7 +64,11 @@ export function InvoiceRowActions({
         }}
         className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 disabled:opacity-50"
       >
-        <MoreHorizontal className="h-4 w-4" />
+        {busy ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : (
+          <MoreHorizontal className="h-4 w-4" />
+        )}
       </button>
       {open ? (
         <div

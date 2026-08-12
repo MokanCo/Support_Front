@@ -9,6 +9,7 @@ import {
   Wallet,
 } from "lucide-react";
 import { DataTable, type Column } from "@/components/ar/ui/data-table";
+import { ArFilterBar } from "@/components/ar/ui/filter-bar";
 import { KpiCard, KpiCardSkeleton } from "@/components/ar/ui/kpi-card";
 import { Panel, PanelHeader } from "@/components/ar/ui/panel";
 import { Chip, ErrorState, Money } from "@/components/ar/ui/primitives";
@@ -17,7 +18,8 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/modal";
 import { Textarea } from "@/components/ui/Textarea";
-import { paymentStateOf, useArDataset } from "@/lib/ar/dataset";
+import { filterInvoices, paymentStateOf, useArDataset } from "@/lib/ar/dataset";
+import { useArFilters } from "@/lib/ar/filters";
 import { count, money, toNumber } from "@/lib/ar/format";
 import { canManageAr } from "@/lib/permissions";
 import {
@@ -69,6 +71,7 @@ export default function ArCustomersPage() {
   const toast = useArToast();
   const queryClient = useQueryClient();
   const dataset = useArDataset();
+  const { filters } = useArFilters();
   const [selected, setSelected] = useState<ArBillingProfile | null>(null);
   const [form, setForm] = useState<ProfileForm | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -123,12 +126,23 @@ export default function ArCustomersPage() {
 
   const { rows, kpis } = useMemo(() => {
     const now = new Date();
+    const term = filters.search.trim().toLowerCase();
+    const filteredProfiles = profiles.filter((p) => {
+      if (filters.locationId && p.locationId !== filters.locationId) return false;
+      if (term) {
+        const hay = `${p.locationName ?? ""} ${p.billingEmail ?? ""}`.toLowerCase();
+        if (!hay.includes(term)) return false;
+      }
+      return true;
+    });
+
+    const invoicesInRange = filterInvoices(dataset.data.invoices, filters, now);
     const byLocation = new Map<
       string,
       { invoiced: number; outstanding: number; overdue: number }
     >();
 
-    for (const inv of dataset.data.invoices) {
+    for (const inv of invoicesInRange) {
       if (["draft", "cancelled", "void"].includes(inv.status)) continue;
       const agg = byLocation.get(inv.locationId) ?? {
         invoiced: 0,
@@ -146,7 +160,7 @@ export default function ArCustomersPage() {
       byLocation.set(inv.locationId, agg);
     }
 
-    const customerRows: CustomerRow[] = profiles.map((profile) => {
+    const customerRows: CustomerRow[] = filteredProfiles.map((profile) => {
       const agg = byLocation.get(profile.locationId) ?? {
         invoiced: 0,
         outstanding: 0,
@@ -157,7 +171,7 @@ export default function ArCustomersPage() {
       return { profile, ...agg, status };
     });
 
-    const termsValues = profiles.map((p) => p.paymentTermsDays ?? 30);
+    const termsValues = filteredProfiles.map((p) => p.paymentTermsDays ?? 30);
     const avgTerms = termsValues.length
       ? termsValues.reduce((s, n) => s + n, 0) / termsValues.length
       : null;
@@ -165,13 +179,13 @@ export default function ArCustomersPage() {
     return {
       rows: customerRows,
       kpis: {
-        total: profiles.length,
+        total: filteredProfiles.length,
         balanceOwed: customerRows.reduce((s, r) => s + r.outstanding, 0),
         overdueCount: customerRows.filter((r) => r.status === "overdue").length,
         avgTerms,
       },
     };
-  }, [profiles, dataset.data.invoices]);
+  }, [profiles, dataset.data.invoices, filters]);
 
   const columns = useMemo<Column<CustomerRow>[]>(
     () => [
@@ -291,6 +305,12 @@ export default function ArCustomersPage() {
 
   return (
     <div className="space-y-5">
+      <Panel className="sticky top-0 z-30" padded={false} overflowVisible>
+        <div className="px-4 py-3 sm:px-5">
+          <ArFilterBar showStatus={false} showPaymentStatus={false} searchPlaceholder="Search customers…" />
+        </div>
+      </Panel>
+
       {loading ? (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {Array.from({ length: 4 }).map((_, i) => (
@@ -346,9 +366,9 @@ export default function ArCustomersPage() {
           rows={rows}
           getRowId={(r) => r.profile.locationId}
           loading={loading}
-          searchPlaceholder="Search customers…"
+          searchable={false}
           exportFileName="accounts-customers"
-          emptyTitle="No customers yet"
+          emptyTitle="No customers match your filters"
           emptyDescription="Billing profiles appear here once partner locations are configured for invoicing."
           onRowClick={manage ? (r) => openEdit(r.profile) : undefined}
           initialSort={{ id: "customer", dir: "asc" }}

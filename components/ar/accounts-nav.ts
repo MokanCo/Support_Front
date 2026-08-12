@@ -47,21 +47,23 @@ export const ACCOUNTS_NAV: AccountsNavGroup[] = [
     items: [
       { href: "/dashboard/ar", label: "Insights", icon: ChartNoAxesCombined },
       { href: "/dashboard/ar/receivable", label: "Receivable", icon: HandCoins },
-      {
-        href: "/dashboard/ar/payable",
-        label: "Payable",
-        icon: Banknote,
-        roles: ["admin", "support"],
-      },
+      // Commented out until Payable is ready for release — keep the entry so it's a one-line restore.
+      // {
+      //   href: "/dashboard/ar/payable",
+      //   label: "Payable",
+      //   icon: Banknote,
+      //   roles: ["admin", "support"],
+      // },
       { href: "/dashboard/ar/invoices", label: "Invoices", icon: FileText },
       { href: "/dashboard/ar/payments", label: "Payments", icon: CreditCard },
       { href: "/dashboard/ar/customers", label: "Customers", icon: Users },
-      {
-        href: "/dashboard/ar/vendors",
-        label: "Vendors",
-        icon: Building2,
-        roles: ["admin", "support"],
-      },
+      // Commented out until Vendors is ready for release — keep the entry so it's a one-line restore.
+      // {
+      //   href: "/dashboard/ar/vendors",
+      //   label: "Vendors",
+      //   icon: Building2,
+      //   roles: ["admin", "support"],
+      // },
       {
         href: "/dashboard/ar/transactions",
         label: "Transactions",

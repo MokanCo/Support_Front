@@ -345,6 +345,67 @@ export async function recordArPayment(body: Record<string, unknown>) {
   });
 }
 
+export type ArPaymentSubmissionStatus = "pending" | "approved" | "rejected";
+
+export type ArPaymentSubmission = {
+  id: string;
+  invoiceId: string;
+  invoiceNumber?: string;
+  locationId: string;
+  locationName?: string;
+  submittedBy: string | null;
+  submittedByName?: string;
+  amount: number;
+  paymentMethod: string;
+  paymentDate?: string;
+  transactionReference?: string;
+  notes?: string;
+  status: ArPaymentSubmissionStatus;
+  reviewedBy?: string | null;
+  reviewedAt?: string | null;
+  reviewNote?: string;
+  resultingPaymentId?: string | null;
+  createdAt?: string;
+};
+
+/** Partner reports "I sent payment" for an invoice — pending admin verification. */
+export async function submitArInvoicePayment(
+  invoiceId: string,
+  body: { amount: number; paymentMethod: string; transactionReference?: string; notes?: string },
+) {
+  const data = await arJson<{ submission: ArPaymentSubmission }>(
+    `/api/ar/invoices/${invoiceId}/payment-submissions`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+  return data.submission;
+}
+
+export async function fetchArPaymentSubmissions(status: ArPaymentSubmissionStatus | "all" = "pending") {
+  const data = await arJson<{ submissions: ArPaymentSubmission[] }>(
+    `/api/ar/payment-submissions?status=${encodeURIComponent(status)}`,
+  );
+  return data.submissions;
+}
+
+export async function reviewArPaymentSubmission(
+  id: string,
+  body: { decision: "approve" | "reject"; note?: string },
+) {
+  const data = await arJson<{ submission: ArPaymentSubmission }>(
+    `/api/ar/payment-submissions/${id}/review`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+  return data.submission;
+}
+
 export type ArCredit = {
   id: string;
   locationId: string;
@@ -354,6 +415,9 @@ export type ArCredit = {
   type?: string;
   reason?: string;
   status?: string;
+  createdAt?: string;
+  issuedAt?: string;
+  creditDate?: string;
 };
 
 export async function fetchArCredits(params?: ArListParams) {

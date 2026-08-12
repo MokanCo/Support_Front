@@ -7,14 +7,19 @@ import {
   ArrowRight,
   Building2,
   CalendarClock,
+  CreditCard,
   Hash,
   LayoutTemplate,
   Percent,
+  Plus,
+  Trash2,
 } from "lucide-react";
 import { useSession } from "@/lib/session-context";
 import { canManageAr } from "@/lib/permissions";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
+import { Textarea } from "@/components/ui/Textarea";
 import { fetchArSettings, updateArSettings } from "@/lib/queries/ar";
 import { Panel, PanelBody, PanelHeader } from "@/components/ar/ui/panel";
 import {
@@ -24,6 +29,29 @@ import {
 } from "@/components/ar/ui/primitives";
 import { useArToast } from "@/components/ar/ui/toast";
 
+type PaymentMethodType = "zelle" | "wire" | "ach" | "check" | "card" | "cash" | "other";
+
+const PAYMENT_METHOD_TYPES: { value: PaymentMethodType; label: string }[] = [
+  { value: "zelle", label: "Zelle" },
+  { value: "wire", label: "Wire Transfer" },
+  { value: "ach", label: "ACH / Bank Transfer" },
+  { value: "check", label: "Check" },
+  { value: "card", label: "Credit Card" },
+  { value: "cash", label: "Cash" },
+  { value: "other", label: "Other" },
+];
+
+type PaymentMethodForm = {
+  id?: string;
+  type: PaymentMethodType;
+  label: string;
+  details: string;
+  recipientEmail: string;
+  recipientPhone: string;
+  qrCodeUrl: string;
+  enabled: boolean;
+};
+
 type SettingsForm = {
   invoiceNumberPrefix: string;
   defaultCurrency: string;
@@ -32,6 +60,7 @@ type SettingsForm = {
   companyName: string;
   billingEmail: string;
   supportEmail: string;
+  paymentMethods: PaymentMethodForm[];
 };
 
 const emptyForm: SettingsForm = {
@@ -42,9 +71,11 @@ const emptyForm: SettingsForm = {
   companyName: "",
   billingEmail: "",
   supportEmail: "",
+  paymentMethods: [],
 };
 
 function toForm(data: Record<string, unknown>): SettingsForm {
+  const rawMethods = Array.isArray(data.paymentMethods) ? data.paymentMethods : [];
   return {
     invoiceNumberPrefix: String(data.invoiceNumberPrefix ?? ""),
     defaultCurrency: String(data.defaultCurrency ?? "USD"),
@@ -53,6 +84,19 @@ function toForm(data: Record<string, unknown>): SettingsForm {
     companyName: String(data.companyName ?? ""),
     billingEmail: String(data.billingEmail ?? ""),
     supportEmail: String(data.supportEmail ?? ""),
+    paymentMethods: rawMethods.map((m) => {
+      const raw = m as Record<string, unknown>;
+      return {
+        id: raw.id ? String(raw.id) : undefined,
+        type: (raw.type as PaymentMethodType) ?? "other",
+        label: String(raw.label ?? ""),
+        details: String(raw.details ?? ""),
+        recipientEmail: String(raw.recipientEmail ?? ""),
+        recipientPhone: String(raw.recipientPhone ?? ""),
+        qrCodeUrl: String(raw.qrCodeUrl ?? ""),
+        enabled: raw.enabled !== false,
+      };
+    }),
   };
 }
 
@@ -100,6 +144,17 @@ export default function ArSettingsPage() {
         companyName: form.companyName.trim() || undefined,
         billingEmail: form.billingEmail.trim() || undefined,
         supportEmail: form.supportEmail.trim() || undefined,
+        paymentMethods: form.paymentMethods
+          .filter((m) => m.label.trim())
+          .map((m) => ({
+            type: m.type,
+            label: m.label.trim(),
+            details: m.details.trim(),
+            recipientEmail: m.recipientEmail.trim(),
+            recipientPhone: m.recipientPhone.trim(),
+            qrCodeUrl: m.qrCodeUrl.trim(),
+            enabled: m.enabled,
+          })),
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["ar", "settings"] });
@@ -115,6 +170,38 @@ export default function ArSettingsPage() {
   function handleSave() {
     setFieldError(null);
     saveMutation.mutate();
+  }
+
+  function addPaymentMethod() {
+    setForm((f) => ({
+      ...f,
+      paymentMethods: [
+        ...f.paymentMethods,
+        {
+          type: "zelle",
+          label: "",
+          details: "",
+          recipientEmail: "",
+          recipientPhone: "",
+          qrCodeUrl: "",
+          enabled: true,
+        },
+      ],
+    }));
+  }
+
+  function updatePaymentMethod(index: number, patch: Partial<PaymentMethodForm>) {
+    setForm((f) => ({
+      ...f,
+      paymentMethods: f.paymentMethods.map((m, i) => (i === index ? { ...m, ...patch } : m)),
+    }));
+  }
+
+  function removePaymentMethod(index: number) {
+    setForm((f) => ({
+      ...f,
+      paymentMethods: f.paymentMethods.filter((_, i) => i !== index),
+    }));
   }
 
   if (!manage) {
@@ -282,6 +369,129 @@ export default function ArSettingsPage() {
                   }
                 />
               </div>
+            </PanelBody>
+          </Panel>
+
+          <Panel padded={false}>
+            <PanelHeader
+              title="Payment methods"
+              description="Shown on invoice, reminder, and overdue emails so customers know how to pay"
+              icon={
+                <SectionIcon className="bg-teal-100 text-teal-700">
+                  <CreditCard className="h-[18px] w-[18px]" />
+                </SectionIcon>
+              }
+              action={
+                <Button size="sm" variant="secondary" onClick={addPaymentMethod}>
+                  <Plus className="mr-1.5 h-3.5 w-3.5" /> Add method
+                </Button>
+              }
+            />
+            <PanelBody>
+              {form.paymentMethods.length === 0 ? (
+                <p className="text-sm text-slate-400">
+                  No payment methods configured yet. Add one so it appears on outgoing invoice emails.
+                </p>
+              ) : (
+                <div className="space-y-4">
+                  {form.paymentMethods.map((method, index) => (
+                    <div
+                      key={index}
+                      className="rounded-xl border border-slate-200 p-4"
+                    >
+                      <div className="grid gap-3 sm:grid-cols-[minmax(0,10rem)_1fr]">
+                        <Select
+                          label="Type"
+                          value={method.type}
+                          onChange={(e) =>
+                            updatePaymentMethod(index, {
+                              type: e.target.value as PaymentMethodType,
+                            })
+                          }
+                        >
+                          {PAYMENT_METHOD_TYPES.map((t) => (
+                            <option key={t.value} value={t.value}>
+                              {t.label}
+                            </option>
+                          ))}
+                        </Select>
+                        <Input
+                          label="Label shown to customers"
+                          value={method.label}
+                          onChange={(e) =>
+                            updatePaymentMethod(index, { label: e.target.value })
+                          }
+                          placeholder="e.g. Zelle"
+                        />
+                      </div>
+                      <div className="mt-3">
+                        <Textarea
+                          label="Instructions / details"
+                          value={method.details}
+                          onChange={(e) =>
+                            updatePaymentMethod(index, { details: e.target.value })
+                          }
+                          placeholder="e.g. Send to accounting@mokanco.com"
+                        />
+                      </div>
+                      {method.type === "zelle" ? (
+                        <div className="mt-3 space-y-3 rounded-lg border border-teal-100 bg-teal-50/50 p-3">
+                          <p className="text-xs font-medium text-teal-800">
+                            Zelle recipient details — shown to customers in the
+                            &ldquo;Pay with Zelle&rdquo; email section and secure payment page.
+                          </p>
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            <Input
+                              label="Recipient email"
+                              type="email"
+                              value={method.recipientEmail}
+                              onChange={(e) =>
+                                updatePaymentMethod(index, { recipientEmail: e.target.value })
+                              }
+                              placeholder="payments@mokanco.com"
+                            />
+                            <Input
+                              label="Recipient phone (optional)"
+                              value={method.recipientPhone}
+                              onChange={(e) =>
+                                updatePaymentMethod(index, { recipientPhone: e.target.value })
+                              }
+                              placeholder="(555) 123-4567"
+                            />
+                          </div>
+                          <Input
+                            label="QR code image URL (optional)"
+                            value={method.qrCodeUrl}
+                            onChange={(e) =>
+                              updatePaymentMethod(index, { qrCodeUrl: e.target.value })
+                            }
+                            placeholder="https://..."
+                          />
+                        </div>
+                      ) : null}
+                      <div className="mt-3 flex items-center justify-between">
+                        <label className="flex items-center gap-2 text-sm text-slate-700">
+                          <input
+                            type="checkbox"
+                            checked={method.enabled}
+                            onChange={(e) =>
+                              updatePaymentMethod(index, { enabled: e.target.checked })
+                            }
+                          />
+                          Enabled
+                        </label>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => removePaymentMethod(index)}
+                        >
+                          <Trash2 className="mr-1.5 h-3.5 w-3.5" /> Remove
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </PanelBody>
           </Panel>
 

@@ -6,6 +6,8 @@ import {
   Banknote,
   CircleDollarSign,
   Hash,
+  Loader2,
+  ShieldCheck,
   TrendingUp,
 } from "lucide-react";
 import { AreaTrendChart } from "@/components/ar/ui/charts";
@@ -37,7 +39,9 @@ import { ACCENTS } from "@/lib/ar/theme";
 import { canManageAr } from "@/lib/permissions";
 import {
   fetchArInvoices,
+  fetchArPaymentSubmissions,
   recordArPayment,
+  reviewArPaymentSubmission,
   type ArPayment,
 } from "@/lib/queries/ar";
 import { useSession } from "@/lib/session-context";
@@ -48,7 +52,7 @@ const PAYMENT_METHODS = [
   "wire",
   "ach",
   "cash",
-  "credit_card",
+  "card",
   "other",
 ];
 
@@ -80,6 +84,35 @@ export default function ArPaymentsPage() {
   const [paymentMethod, setPaymentMethod] = useState("zelle");
   const [transactionReference, setTransactionReference] = useState("");
   const [notes, setNotes] = useState("");
+  const [reviewingId, setReviewingId] = useState<string | null>(null);
+
+  const submissionsQuery = useQuery({
+    queryKey: ["ar", "payment-submissions", "pending"],
+    queryFn: () => fetchArPaymentSubmissions("pending"),
+    enabled: manage,
+  });
+  const submissions = submissionsQuery.data ?? [];
+
+  const reviewMutation = useMutation({
+    mutationFn: ({ id, decision }: { id: string; decision: "approve" | "reject" }) => {
+      setReviewingId(id);
+      return reviewArPaymentSubmission(id, { decision });
+    },
+    onSuccess: (_result, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["ar", "payment-submissions"] });
+      queryClient.invalidateQueries({ queryKey: arDatasetQueryKey });
+      queryClient.invalidateQueries({ queryKey: ["ar", "payments"] });
+      queryClient.invalidateQueries({ queryKey: ["ar", "invoices"] });
+      toast.success(
+        variables.decision === "approve" ? "Payment approved" : "Submission rejected",
+        variables.decision === "approve"
+          ? "The invoice has been updated with this payment."
+          : "The partner will need to resubmit if this was a mistake.",
+      );
+    },
+    onError: (e: Error) => toast.error("Could not review submission", e.message),
+    onSettled: () => setReviewingId(null),
+  });
 
   const payments = useMemo(
     () => filterPayments(data.payments, filters, data.invoices),
@@ -186,7 +219,7 @@ export default function ArPaymentsPage() {
 
   return (
     <div className="space-y-5">
-      <Panel className="sticky top-0 z-30" padded={false}>
+      <Panel className="sticky top-0 z-30" padded={false} overflowVisible>
         <div className="px-4 py-3 sm:px-5">
           <ArFilterBar showStatus={false} />
         </div>
@@ -251,6 +284,88 @@ export default function ArPaymentsPage() {
           )}
         </PanelBody>
       </Panel>
+
+      {manage ? (
+        <Panel padded={false}>
+          <PanelHeader
+            title="Pending verification"
+            description="Payments partners reported sending — review before they affect any balance"
+            icon={
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-100 text-amber-700">
+                <ShieldCheck className="h-[18px] w-[18px]" />
+              </span>
+            }
+          />
+          {submissionsQuery.isLoading ? (
+            <PanelBody className="flex items-center justify-center py-8">
+              <Loader2 className="h-5 w-5 animate-spin text-slate-400" />
+            </PanelBody>
+          ) : submissions.length === 0 ? (
+            <PanelBody>
+              <p className="text-sm text-slate-400">
+                No payment submissions awaiting review.
+              </p>
+            </PanelBody>
+          ) : (
+            <div className="divide-y divide-slate-100">
+              {submissions.map((s) => {
+                const busy = reviewingId === s.id && reviewMutation.isPending;
+                return (
+                  <div
+                    key={s.id}
+                    className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-slate-900">
+                        Invoice {s.invoiceNumber || s.invoiceId}
+                        {s.locationName ? ` · ${s.locationName}` : ""}
+                      </p>
+                      <p className="mt-0.5 text-sm text-slate-500">
+                        {money(s.amount)} via {humanize(s.paymentMethod)}
+                        {s.submittedByName ? ` · reported by ${s.submittedByName}` : ""}
+                        {s.transactionReference ? ` · ref ${s.transactionReference}` : ""}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 gap-2">
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        disabled={reviewMutation.isPending}
+                        onClick={() =>
+                          reviewMutation.mutate({ id: s.id, decision: "reject" })
+                        }
+                      >
+                        {busy && reviewMutation.variables?.decision === "reject" ? (
+                          <>
+                            <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Rejecting…
+                          </>
+                        ) : (
+                          "Reject"
+                        )}
+                      </Button>
+                      <Button
+                        size="sm"
+                        disabled={reviewMutation.isPending}
+                        onClick={() =>
+                          reviewMutation.mutate({ id: s.id, decision: "approve" })
+                        }
+                      >
+                        {busy && reviewMutation.variables?.decision === "approve" ? (
+                          <>
+                            <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Approving…
+                          </>
+                        ) : (
+                          "Approve"
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </Panel>
+      ) : null}
 
       <Panel padded={false}>
         <PanelHeader

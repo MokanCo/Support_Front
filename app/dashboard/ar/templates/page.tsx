@@ -7,6 +7,7 @@ import {
   Eye,
   FileStack,
   LayoutTemplate,
+  Loader2,
   Pencil,
   Plus,
   Star,
@@ -249,6 +250,13 @@ export default function ArTemplatesPage() {
                     defaultMutation.isPending ||
                     deleteMutation.isPending
                   }
+                  duplicating={
+                    duplicateMutation.isPending &&
+                    duplicateMutation.variables?.id === tpl.id
+                  }
+                  settingDefault={
+                    defaultMutation.isPending && defaultMutation.variables === tpl.id
+                  }
                   onPreview={() => setPreviewId(tpl.id)}
                   onEdit={() => openEdit(tpl)}
                   onDuplicate={() => duplicateMutation.mutate(tpl)}
@@ -424,6 +432,8 @@ function TemplateCard({
   template,
   manage,
   busy,
+  duplicating = false,
+  settingDefault = false,
   onPreview,
   onEdit,
   onDuplicate,
@@ -433,6 +443,8 @@ function TemplateCard({
   template: ArInvoiceTemplate;
   manage: boolean;
   busy: boolean;
+  duplicating?: boolean;
+  settingDefault?: boolean;
   onPreview: () => void;
   onEdit: () => void;
   onDuplicate: () => void;
@@ -486,9 +498,13 @@ function TemplateCard({
                 variant="ghost"
                 onClick={onDuplicate}
                 disabled={busy}
-                aria-label="Duplicate"
+                aria-label={duplicating ? "Duplicating…" : "Duplicate"}
               >
-                <Copy className="h-3.5 w-3.5" />
+                {duplicating ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Copy className="h-3.5 w-3.5" />
+                )}
               </Button>
               {!template.isDefault ? (
                 <Button
@@ -496,9 +512,13 @@ function TemplateCard({
                   variant="ghost"
                   onClick={onSetDefault}
                   disabled={busy}
-                  aria-label="Set as default"
+                  aria-label={settingDefault ? "Setting as default…" : "Set as default"}
                 >
-                  <Star className="h-3.5 w-3.5" />
+                  {settingDefault ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Star className="h-3.5 w-3.5" />
+                  )}
                 </Button>
               ) : null}
               <Button

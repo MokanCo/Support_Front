@@ -9,6 +9,7 @@ import {
   Wallet,
 } from "lucide-react";
 import { DataTable, type Column } from "@/components/ar/ui/data-table";
+import { ArFilterBar } from "@/components/ar/ui/filter-bar";
 import { KpiCard, KpiCardSkeleton } from "@/components/ar/ui/kpi-card";
 import { Panel, PanelBody, PanelHeader } from "@/components/ar/ui/panel";
 import { Chip, ErrorState, Money } from "@/components/ar/ui/primitives";
@@ -18,6 +19,8 @@ import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/modal";
 import { Select } from "@/components/ui/Select";
 import { Textarea } from "@/components/ui/Textarea";
+import { arDatasetQueryKey, filterCredits, useArDataset } from "@/lib/ar/dataset";
+import { useArFilters } from "@/lib/ar/filters";
 import {
   count,
   humanize,
@@ -30,7 +33,6 @@ import { canManageAr } from "@/lib/permissions";
 import {
   applyArCredit,
   createArCredit,
-  fetchArCredits,
   type ArCredit,
 } from "@/lib/queries/ar";
 import { fetchLocationOptions, locationOptionsQueryKey } from "@/lib/queries/locations";
@@ -67,10 +69,8 @@ export default function ArCreditsPage() {
   const [applyAmount, setApplyAmount] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
 
-  const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ["ar", "credits"],
-    queryFn: () => fetchArCredits({ pageSize: 200 }),
-  });
+  const { filters } = useArFilters();
+  const { data, isLoading, error, refetch } = useArDataset();
 
   const locationsQuery = useQuery({
     queryKey: locationOptionsQueryKey,
@@ -87,7 +87,7 @@ export default function ArCreditsPage() {
         reason: reason.trim() || undefined,
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["ar", "credits"] });
+      queryClient.invalidateQueries({ queryKey: arDatasetQueryKey });
       toast.success("Credit created");
       setCreateOpen(false);
       setLocationId("");
@@ -109,8 +109,7 @@ export default function ArCreditsPage() {
         amount: applyAmount ? Number(applyAmount) : undefined,
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["ar", "credits"] });
-      queryClient.invalidateQueries({ queryKey: ["ar", "invoices"] });
+      queryClient.invalidateQueries({ queryKey: arDatasetQueryKey });
       toast.success("Credit applied");
       setApplyCredit(null);
       setApplyInvoiceId("");
@@ -123,7 +122,10 @@ export default function ArCreditsPage() {
     },
   });
 
-  const credits = (data?.credits ?? []) as CreditRow[];
+  const credits = useMemo(
+    () => filterCredits(data.credits, filters) as CreditRow[],
+    [data.credits, filters],
+  );
 
   const kpis = useMemo(() => {
     const totalIssued = credits.reduce((s, c) => s + toNumber(c.amount), 0);
@@ -235,6 +237,12 @@ export default function ArCreditsPage() {
 
   return (
     <div className="space-y-5">
+      <Panel className="sticky top-0 z-30" padded={false} overflowVisible>
+        <div className="px-4 py-3 sm:px-5">
+          <ArFilterBar showStatus={false} showPaymentStatus={false} searchPlaceholder="Search credits, customers, reasons…" />
+        </div>
+      </Panel>
+
       {isLoading ? (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {Array.from({ length: 4 }).map((_, i) => (
@@ -299,10 +307,10 @@ export default function ArCreditsPage() {
             rows={credits}
             getRowId={(r) => r.id}
             loading={isLoading}
-            searchPlaceholder="Search credits…"
+            searchable={false}
             exportFileName="accounts-credits"
-            emptyTitle="No credits yet"
-            emptyDescription="Credits issued to partner accounts will appear here."
+            emptyTitle="No credits in this range"
+            emptyDescription="Adjust filters, or credits issued to partner accounts will appear here."
             initialSort={{ id: "date", dir: "desc" }}
           />
         </PanelBody>

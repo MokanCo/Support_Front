@@ -10,13 +10,18 @@ export function Panel({
   children,
   className = "",
   padded = true,
+  overflowVisible = false,
 }: {
   children: ReactNode;
   className?: string;
   padded?: boolean;
+  /** Set when a child needs to render outside the card's bounds, e.g. an
+   *  absolutely-positioned dropdown — the default overflow-hidden (needed
+   *  for the rounded corners elsewhere) would otherwise clip it. */
+  overflowVisible?: boolean;
 }) {
   return (
-    <section className={`${CARD} overflow-hidden ${className}`}>
+    <section className={`${CARD} ${overflowVisible ? "" : "overflow-hidden"} ${className}`}>
       {padded ? <div className="p-5 sm:p-6">{children}</div> : children}
     </section>
   );

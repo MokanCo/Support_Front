@@ -189,7 +189,7 @@ export default function ArTransactionsPage() {
 
   return (
     <div className="space-y-5">
-      <Panel className="sticky top-0 z-30" padded={false}>
+      <Panel className="sticky top-0 z-30" padded={false} overflowVisible>
         <div className="px-4 py-3 sm:px-5">
           <ArFilterBar />
         </div>

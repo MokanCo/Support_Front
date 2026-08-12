@@ -1,14 +1,20 @@
 "use client";
 
+import { Loader2 } from "lucide-react";
 import { Amount, Money, StatusBadge } from "@/components/ar/ui/primitives";
 import { Button } from "@/components/ui/Button";
 import { daysPastDue, humanize, shortDate, toNumber } from "@/lib/ar/format";
 import type { ArInvoice } from "@/lib/queries/ar";
 
+type PendingAction = "approve" | "send" | "duplicate" | "cancel" | null;
+
 type Props = {
   invoice: ArInvoice;
   canManage: boolean;
-  busy?: boolean;
+  /** Which action, if any, is currently in flight — drives per-button
+   *  spinner/text so the user can tell exactly what's processing. */
+  pendingAction?: PendingAction;
+  downloading?: boolean;
   onDownload: () => void;
   onApprove: () => void;
   onSend: () => void;
@@ -19,13 +25,15 @@ type Props = {
 export function InvoiceDetail({
   invoice,
   canManage,
-  busy,
+  pendingAction = null,
+  downloading = false,
   onDownload,
   onApprove,
   onSend,
   onDuplicate,
   onCancel,
 }: Props) {
+  const busy = Boolean(pendingAction);
   const balance = toNumber(invoice.balanceDue);
   const overdueDays =
     balance > 0 && !["draft", "cancelled", "void", "paid"].includes(invoice.status)
@@ -82,8 +90,19 @@ export function InvoiceDetail({
           </dl>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button size="sm" variant="secondary" onClick={onDownload}>
-            Download PDF
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={downloading}
+            onClick={onDownload}
+          >
+            {downloading ? (
+              <>
+                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Downloading…
+              </>
+            ) : (
+              "Download PDF"
+            )}
           </Button>
           {canManage ? (
             <>
@@ -93,10 +112,22 @@ export function InvoiceDetail({
                 disabled={busy}
                 onClick={onApprove}
               >
-                Approve
+                {pendingAction === "approve" ? (
+                  <>
+                    <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Approving…
+                  </>
+                ) : (
+                  "Approve"
+                )}
               </Button>
               <Button size="sm" variant="ghost" disabled={busy} onClick={onSend}>
-                Send
+                {pendingAction === "send" ? (
+                  <>
+                    <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Sending…
+                  </>
+                ) : (
+                  "Send"
+                )}
               </Button>
               <Button
                 size="sm"
@@ -104,7 +135,13 @@ export function InvoiceDetail({
                 disabled={busy}
                 onClick={onDuplicate}
               >
-                Duplicate
+                {pendingAction === "duplicate" ? (
+                  <>
+                    <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Duplicating…
+                  </>
+                ) : (
+                  "Duplicate"
+                )}
               </Button>
               <Button
                 size="sm"
@@ -112,7 +149,13 @@ export function InvoiceDetail({
                 disabled={busy}
                 onClick={onCancel}
               >
-                Cancel
+                {pendingAction === "cancel" ? (
+                  <>
+                    <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Cancelling…
+                  </>
+                ) : (
+                  "Cancel"
+                )}
               </Button>
             </>
           ) : null}

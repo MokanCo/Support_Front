@@ -5,10 +5,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Archive,
   BadgePercent,
+  Loader2,
   Package,
   Receipt,
 } from "lucide-react";
 import { DataTable, type Column } from "@/components/ar/ui/data-table";
+import { ArFilterBar } from "@/components/ar/ui/filter-bar";
 import { KpiCard, KpiCardSkeleton } from "@/components/ar/ui/kpi-card";
 import { Panel, PanelBody, PanelHeader } from "@/components/ar/ui/panel";
 import { Amount, Chip, ErrorState } from "@/components/ar/ui/primitives";
@@ -16,6 +18,7 @@ import { useArToast } from "@/components/ar/ui/toast";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/modal";
+import { useArFilters } from "@/lib/ar/filters";
 import { count, money, toNumber } from "@/lib/ar/format";
 import { canManageAr } from "@/lib/permissions";
 import {
@@ -51,6 +54,7 @@ export default function ArProductsPage() {
   const manage = canManageAr(user.role);
   const toast = useArToast();
   const queryClient = useQueryClient();
+  const { filters } = useArFilters();
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<ArProduct | null>(null);
   const [form, setForm] = useState<ProductForm>(emptyForm);
@@ -131,7 +135,15 @@ export default function ArProductsPage() {
     setFormError(null);
   }
 
-  const products = data?.products ?? [];
+  const allProducts = data?.products ?? [];
+  const products = useMemo(() => {
+    const term = filters.search.trim().toLowerCase();
+    if (!term) return allProducts;
+    return allProducts.filter((p) => {
+      const hay = `${p.name} ${p.category ?? ""} ${p.description ?? ""}`.toLowerCase();
+      return hay.includes(term);
+    });
+  }, [allProducts, filters.search]);
 
   const kpis = useMemo(() => {
     const active = products.filter((p) => p.isActive !== false).length;
@@ -233,7 +245,13 @@ export default function ArProductsPage() {
                     archiveMutation.mutate(r.id);
                   }}
                 >
-                  Archive
+                  {archiveMutation.isPending && archiveMutation.variables === r.id ? (
+                    <>
+                      <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Archiving…
+                    </>
+                  ) : (
+                    "Archive"
+                  )}
                 </Button>
               ) : null}
               <Button
@@ -247,13 +265,25 @@ export default function ArProductsPage() {
                   }
                 }}
               >
-                Delete
+                {deleteMutation.isPending && deleteMutation.variables === r.id ? (
+                  <>
+                    <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Deleting…
+                  </>
+                ) : (
+                  "Delete"
+                )}
               </Button>
             </div>
           ) : null,
       },
     ],
-    [manage, archiveMutation.isPending, deleteMutation.isPending],
+    [
+      manage,
+      archiveMutation.isPending,
+      archiveMutation.variables,
+      deleteMutation.isPending,
+      deleteMutation.variables,
+    ],
   );
 
   if (error) {
@@ -264,6 +294,18 @@ export default function ArProductsPage() {
 
   return (
     <div className="space-y-5">
+      <Panel className="sticky top-0 z-30" padded={false} overflowVisible>
+        <div className="px-4 py-3 sm:px-5">
+          <ArFilterBar
+            showDateRange={false}
+            showCustomer={false}
+            showStatus={false}
+            showPaymentStatus={false}
+            searchPlaceholder="Search products…"
+          />
+        </div>
+      </Panel>
+
       {isLoading ? (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {Array.from({ length: 4 }).map((_, i) => (
@@ -321,9 +363,9 @@ export default function ArProductsPage() {
             rows={products}
             getRowId={(r) => r.id}
             loading={isLoading}
-            searchPlaceholder="Search products…"
+            searchable={false}
             exportFileName="accounts-products"
-            emptyTitle="No products yet"
+            emptyTitle="No products match your search"
             emptyDescription="Add billable products and services to use on invoices."
             initialSort={{ id: "name", dir: "asc" }}
           />

@@ -277,7 +277,7 @@ export default function ReceivablePage() {
 
   return (
     <div className="space-y-5">
-      <Panel className="sticky top-0 z-30" padded={false}>
+      <Panel className="sticky top-0 z-30" padded={false} overflowVisible>
         <div className="px-4 py-3 sm:px-5">
           <ArFilterBar searchPlaceholder="Search invoices or customers…" />
         </div>
