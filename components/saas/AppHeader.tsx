@@ -60,6 +60,10 @@ function isOnboardingNotification(s: StatusNotificationRow): boolean {
   return s.kind.startsWith("onboarding");
 }
 
+function isPaymentSubmissionNotification(s: StatusNotificationRow): boolean {
+  return s.entityType === "ar_payment_submission";
+}
+
 function statusToRows(items: StatusNotificationRow[]): MergedRow[] {
   return items.map((s) => ({
     kind: "status" as const,
@@ -272,6 +276,10 @@ export function AppHeader({
         else router.push("/dashboard/onboardings");
         return;
       }
+      if (isPaymentSubmissionNotification(s)) {
+        router.push("/dashboard/ar/payments");
+        return;
+      }
       if (!s.ticketId) return;
       if (isAssignmentNotification(s) || s.kind === "ticket_completed") {
         goToTicketDetail(s.ticketId);
@@ -312,15 +320,18 @@ export function AppHeader({
       const isNewTicket = s.kind === "ticket_created";
       const isAssigned = isAssignmentNotification(s);
       const isOnboarding = isOnboardingNotification(s);
+      const isPaymentSubmission = isPaymentSubmissionNotification(s);
       const label = isAssigned
         ? "Assigned to you"
         : isOnboarding
           ? "New Onboarding"
-          : isNewTicket
-            ? "New ticket"
-            : s.kind === "ticket_completed"
-              ? "Completed"
-              : "Update";
+          : isPaymentSubmission
+            ? "Payment to verify"
+            : isNewTicket
+              ? "New ticket"
+              : s.kind === "ticket_completed"
+                ? "Completed"
+                : "Update";
       if (read) {
         return {
           muted: true,

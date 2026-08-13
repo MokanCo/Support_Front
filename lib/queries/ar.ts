@@ -84,6 +84,75 @@ export async function updateArSettings(body: Record<string, unknown>) {
   return data.settings;
 }
 
+export type ArInvoiceBlock = {
+  id: string;
+  type: string;
+  enabled: boolean;
+  label: string;
+  content?: string;
+  align?: "left" | "center" | "right";
+  fontSize?: number;
+};
+
+export type ArInvoiceTemplate = {
+  id: string;
+  name: string;
+  description?: string;
+  isDefault?: boolean;
+  isActive?: boolean;
+  blocks: ArInvoiceBlock[];
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export async function fetchArInvoiceTemplates() {
+  const data = await arJson<{ templates: ArInvoiceTemplate[] }>("/api/ar/invoice-templates");
+  return data.templates;
+}
+
+export async function fetchArInvoiceTemplatePalette() {
+  return arJson<{
+    blocks: ArInvoiceBlock[];
+    blockTypes: { type: string; label: string }[];
+  }>("/api/ar/invoice-templates/palette");
+}
+
+export async function createArInvoiceTemplate(body: {
+  name: string;
+  description?: string;
+  blocks: ArInvoiceBlock[];
+  isDefault?: boolean;
+}) {
+  const data = await arJson<{ template: ArInvoiceTemplate }>("/api/ar/invoice-templates", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return data.template;
+}
+
+export async function updateArInvoiceTemplate(
+  id: string,
+  body: Partial<{
+    name: string;
+    description: string;
+    blocks: ArInvoiceBlock[];
+    isDefault: boolean;
+    isActive: boolean;
+  }>,
+) {
+  const data = await arJson<{ template: ArInvoiceTemplate }>(`/api/ar/invoice-templates/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return data.template;
+}
+
+export async function deleteArInvoiceTemplate(id: string) {
+  return arJson(`/api/ar/invoice-templates/${id}`, { method: "DELETE" });
+}
+
 export type ArProduct = {
   id: string;
   name: string;
@@ -92,6 +161,8 @@ export type ArProduct = {
   price: number;
   taxable?: boolean;
   taxPercentage?: number;
+  /** Auto-populate on new invoices when true. */
+  isRequired?: boolean;
   isActive?: boolean;
   accountingCategory?: string;
 };
@@ -185,12 +256,21 @@ export type ArInvoice = {
   invoiceNumber: string;
   locationId: string;
   locationName?: string;
+  invoiceTemplateId?: string | null;
   status: string;
   invoiceDate?: string;
   dueDate?: string;
+  currency?: string;
+  subtotal?: number;
+  taxAmount?: number;
+  discountAmount?: number;
+  lateFeeAmount?: number;
+  creditApplied?: number;
   total: number;
   amountPaid: number;
   balanceDue: number;
+  sentAt?: string | null;
+  paidAt?: string | null;
   notes?: string;
   items?: {
     name: string;
@@ -198,6 +278,8 @@ export type ArInvoice = {
     unitPrice: number;
     lineTotal?: number;
   }[];
+  /** Secure token for the canonical public /invoice/pay page (email + partner Pay Now). */
+  publicPaymentToken?: string | null;
   timeline?: {
     eventType: string;
     title: string;
@@ -242,12 +324,14 @@ export type ArPayment = {
   id: string;
   invoiceId: string;
   invoiceNumber?: string;
+  locationId?: string;
   locationName?: string;
   amount: number;
   paymentDate?: string;
   paymentMethod?: string;
   transactionReference?: string;
   notes?: string;
+  createdAt?: string;
 };
 
 export async function fetchArPayments(params?: ArListParams) {
@@ -265,6 +349,69 @@ export async function recordArPayment(body: Record<string, unknown>) {
   });
 }
 
+export type ArPaymentSubmissionStatus = "pending" | "approved" | "rejected";
+
+export type ArPaymentSubmission = {
+  id: string;
+  invoiceId: string;
+  invoiceNumber?: string;
+  locationId: string;
+  locationName?: string;
+  submittedBy: string | null;
+  submittedByName?: string;
+  amount: number;
+  paymentMethod: string;
+  paymentDate?: string;
+  transactionReference?: string;
+  notes?: string;
+  proofUrl?: string;
+  source?: string;
+  status: ArPaymentSubmissionStatus;
+  reviewedBy?: string | null;
+  reviewedAt?: string | null;
+  reviewNote?: string;
+  resultingPaymentId?: string | null;
+  createdAt?: string;
+};
+
+/** Partner reports "I sent payment" for an invoice — pending admin verification. */
+export async function submitArInvoicePayment(
+  invoiceId: string,
+  body: { amount: number; paymentMethod: string; transactionReference?: string; notes?: string },
+) {
+  const data = await arJson<{ submission: ArPaymentSubmission }>(
+    `/api/ar/invoices/${invoiceId}/payment-submissions`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+  return data.submission;
+}
+
+export async function fetchArPaymentSubmissions(status: ArPaymentSubmissionStatus | "all" = "pending") {
+  const data = await arJson<{ submissions: ArPaymentSubmission[] }>(
+    `/api/ar/payment-submissions?status=${encodeURIComponent(status)}`,
+  );
+  return data.submissions;
+}
+
+export async function reviewArPaymentSubmission(
+  id: string,
+  body: { decision: "approve" | "reject"; note?: string },
+) {
+  const data = await arJson<{ submission: ArPaymentSubmission }>(
+    `/api/ar/payment-submissions/${id}/review`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+  return data.submission;
+}
+
 export type ArCredit = {
   id: string;
   locationId: string;
@@ -274,6 +421,9 @@ export type ArCredit = {
   type?: string;
   reason?: string;
   status?: string;
+  createdAt?: string;
+  issuedAt?: string;
+  creditDate?: string;
 };
 
 export async function fetchArCredits(params?: ArListParams) {

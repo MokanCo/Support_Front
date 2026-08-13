@@ -52,7 +52,7 @@ export const NAV_ITEMS: NavItem[] = [
   },
   {
     href: "/dashboard/ar",
-    label: "Accounts Receivable",
+    label: "Accounts",
     icon: Wallet,
     roles: ["admin", "support", "partner"],
   },
@@ -105,7 +105,7 @@ export function titleForPath(pathname: string): string {
     return "Onboardings";
   }
   if (pathname.startsWith("/dashboard/ar")) {
-    return "Accounts Receivable";
+    return "Accounts";
   }
   const map: Record<string, string> = {
     "/dashboard": "Dashboard",
@@ -118,7 +118,7 @@ export function titleForPath(pathname: string): string {
     "/dashboard/boards": "Boards",
     "/dashboard/documents": "Documents",
     "/dashboard/marketing-assets": "Marketing Assets",
-    "/dashboard/ar": "Accounts Receivable",
+    "/dashboard/ar": "Accounts",
   };
   return map[pathname] ?? "Dashboard";
 }
