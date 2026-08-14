@@ -22,6 +22,7 @@ export interface Asset {
   originalName: string;
   fileUrl: string;
   thumbnailUrl?: string;
+  hasThumbnail?: boolean;
   contentType: string;
   mimeType: string;
   fileSize: number;
@@ -57,6 +58,7 @@ function normalizeAsset(raw: Record<string, unknown>): Asset {
     originalName: originalFileName,
     fileUrl,
     thumbnailUrl: String(raw.thumbnailUrl ?? ""),
+    hasThumbnail: Boolean(raw.hasThumbnail) || isVideo,
     contentType: mimeType,
     mimeType,
     fileSize: size,
@@ -234,6 +236,20 @@ export async function removeAssetLocation(
     deleted: data.deleted,
     asset: data.asset ? normalizeAsset(data.asset) : null,
   };
+}
+
+export async function fetchAssetThumbnail(
+  id: string,
+  category: AssetCategory = "documents",
+): Promise<Blob> {
+  const res = await apiFetch(`${categoryBasePath(category)}/${id}/thumbnail`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(
+      (err as { message?: string }).message ?? "Failed to fetch thumbnail",
+    );
+  }
+  return res.blob();
 }
 
 export async function fetchAssetFile(
