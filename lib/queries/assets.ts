@@ -1,5 +1,6 @@
 import type { QueryClient } from "@tanstack/react-query";
-import { apiFetch } from "@/lib/auth-fetch";
+import { apiFetch, getBearerAuthorizationHeader } from "@/lib/auth-fetch";
+import { resolveApiUrl } from "@/lib/api-base";
 import { queryKeys } from "@/lib/query-keys";
 
 export type AssetCategory = "documents" | "marketing_assets";
@@ -121,21 +122,78 @@ export async function fetchAssetById(
 }
 
 export async function uploadAsset(formData: FormData): Promise<Asset> {
+  return uploadAssetWithProgress(formData);
+}
+
+export type AssetUploadProgress = {
+  /** 0–100 network upload progress */
+  percent: number;
+  loaded: number;
+  total: number;
+  /** True after bytes are sent; waiting on server processing (e.g. video). */
+  processing: boolean;
+};
+
+/**
+ * Upload with byte-level progress via XHR (fetch cannot report upload %).
+ */
+export function uploadAssetWithProgress(
+  formData: FormData,
+  onProgress?: (p: AssetUploadProgress) => void,
+): Promise<Asset> {
   const category = String(formData.get("category") || "documents") as AssetCategory;
-  // Dedicated routes infer category — remove so body stays clean
   formData.delete("category");
 
-  const res = await apiFetch(categoryBasePath(category), {
-    method: "POST",
-    body: formData,
+  const url = String(resolveApiUrl(categoryBasePath(category)));
+  const auth = getBearerAuthorizationHeader();
+
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", url);
+    xhr.withCredentials = false;
+    if (auth) xhr.setRequestHeader("Authorization", auth);
+
+    xhr.upload.onprogress = (event) => {
+      if (!event.lengthComputable) return;
+      const percent = Math.min(99, Math.round((event.loaded / event.total) * 100));
+      onProgress?.({
+        percent,
+        loaded: event.loaded,
+        total: event.total,
+        processing: false,
+      });
+    };
+
+    xhr.upload.onload = () => {
+      // Bytes fully sent — server may still be converting / writing to R2.
+      onProgress?.({
+        percent: 99,
+        loaded: 1,
+        total: 1,
+        processing: true,
+      });
+    };
+
+    xhr.onload = () => {
+      let data: { document?: unknown; asset?: unknown; message?: string; error?: string } = {};
+      try {
+        data = JSON.parse(xhr.responseText || "{}") as typeof data;
+      } catch {
+        /* ignore */
+      }
+      if (xhr.status < 200 || xhr.status >= 300) {
+        reject(new Error(data.message || data.error || "Upload failed"));
+        return;
+      }
+      onProgress?.({ percent: 100, loaded: 1, total: 1, processing: false });
+      const row = (data.document ?? data.asset) as Record<string, unknown>;
+      resolve(normalizeAsset({ ...row, category }));
+    };
+
+    xhr.onerror = () => reject(new Error("Network error during upload"));
+    xhr.onabort = () => reject(new Error("Upload cancelled"));
+    xhr.send(formData);
   });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error((err as { message?: string }).message ?? "Upload failed");
-  }
-  const data = (await res.json()) as { document?: unknown; asset?: unknown };
-  const row = (data.document ?? data.asset) as Record<string, unknown>;
-  return normalizeAsset({ ...row, category });
 }
 
 export async function deleteAsset(
