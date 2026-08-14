@@ -11,6 +11,7 @@ import {
   FileImage,
   File,
   ImageOff,
+  Play,
 } from "lucide-react";
 import type { Asset } from "@/lib/queries/assets";
 import { fetchAssetFile, deleteAsset, removeAssetLocation } from "@/lib/queries/assets";
@@ -74,8 +75,14 @@ export function AssetCard({ asset, role, onDeleted, locationContext, onUpdated, 
 
   const displayName = asset.name || asset.originalFileName || asset.originalName;
   const category = asset.category;
+  const isImage = asset.mimeType.startsWith("image/");
+  const isVideo = asset.mimeType.startsWith("video/");
+  /** Partners may view videos but not download them. */
+  const canDownload = role === "admin" || !isVideo;
+  const canDelete = role === "admin";
 
   async function handleDownload() {
+    if (!canDownload) return;
     setMenuOpen(false);
     setBusy(true);
     try {
@@ -111,14 +118,22 @@ export function AssetCard({ asset, role, onDeleted, locationContext, onUpdated, 
     setMenuOpen(false);
     setBusy(true);
     try {
-      if (asset.fileUrl) {
-        setViewerIsRemote(true);
-        setViewerUrl(asset.fileUrl);
+      // Videos: always proxy via API as a blob so playback works without R2 CORS.
+      // Use inline (not download) so partners can view but not download.
+      if (isVideo || !asset.fileUrl) {
+        const { blob } = await fetchAssetFile(
+          asset.id,
+          category,
+          undefined,
+          undefined,
+          { download: false },
+        );
+        setViewerIsRemote(false);
+        setViewerUrl(URL.createObjectURL(blob));
         return;
       }
-      const { blob } = await fetchAssetFile(asset.id, category);
-      setViewerIsRemote(false);
-      setViewerUrl(URL.createObjectURL(blob));
+      setViewerIsRemote(true);
+      setViewerUrl(asset.fileUrl);
     } catch (err) {
       void Swal.fire({
         icon: "error",
@@ -173,8 +188,6 @@ export function AssetCard({ asset, role, onDeleted, locationContext, onUpdated, 
       setBusy(false);
     }
   }
-
-  const isImage = asset.mimeType.startsWith("image/");
 
   useEffect(() => {
     if (!isImage) return;
@@ -244,9 +257,9 @@ export function AssetCard({ asset, role, onDeleted, locationContext, onUpdated, 
           type="button"
           disabled={busy}
           onClick={() => void handleView()}
-          className="flex h-44 w-full cursor-pointer items-center justify-center bg-slate-100 transition hover:bg-slate-200/80 disabled:cursor-wait"
-          title="View"
-          aria-label={`View ${displayName}`}
+          className="relative flex h-44 w-full cursor-pointer items-center justify-center overflow-hidden bg-slate-100 transition hover:bg-slate-200/80 disabled:cursor-wait"
+          title={isVideo ? "Play video" : "View"}
+          aria-label={`${isVideo ? "Play" : "View"} ${displayName}`}
         >
           {isImage ? (
             previewUrl ? (
@@ -265,6 +278,24 @@ export function AssetCard({ asset, role, onDeleted, locationContext, onUpdated, 
             ) : (
               <Skeleton className="h-full w-full" />
             )
+          ) : isVideo ? (
+            <>
+              {asset.thumbnailUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={asset.thumbnailUrl}
+                  alt=""
+                  className="pointer-events-none absolute inset-0 h-full w-full object-cover"
+                  onError={(e) => {
+                    e.currentTarget.style.display = "none";
+                  }}
+                />
+              ) : null}
+              <span className="pointer-events-none absolute inset-0 bg-slate-900/25" />
+              <span className="relative z-[1] flex h-14 w-14 items-center justify-center rounded-full bg-white/95 text-slate-900 shadow-md ring-1 ring-slate-200/80 transition group-hover:scale-105">
+                <Play className="ml-0.5 h-7 w-7 fill-current" aria-hidden />
+              </span>
+            </>
           ) : (
             <PreviewIcon mimeType={asset.mimeType} />
           )}
@@ -292,16 +323,18 @@ export function AssetCard({ asset, role, onDeleted, locationContext, onUpdated, 
                 onClick={handleView}
                 className="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
               >
-                <Eye className="h-4 w-4" /> View
+                <Eye className="h-4 w-4" /> {isVideo ? "Play" : "View"}
               </button>
-              <button
-                type="button"
-                onClick={handleDownload}
-                className="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
-              >
-                <Download className="h-4 w-4" /> Download
-              </button>
-              {role === "admin" && (
+              {canDownload ? (
+                <button
+                  type="button"
+                  onClick={handleDownload}
+                  className="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                >
+                  <Download className="h-4 w-4" /> Download
+                </button>
+              ) : null}
+              {canDelete ? (
                 <button
                   type="button"
                   onClick={handleDelete}
@@ -309,7 +342,7 @@ export function AssetCard({ asset, role, onDeleted, locationContext, onUpdated, 
                 >
                   <Trash2 className="h-4 w-4" /> Delete
                 </button>
-              )}
+              ) : null}
             </div>
           </>
         )}
@@ -334,7 +367,8 @@ export function AssetCard({ asset, role, onDeleted, locationContext, onUpdated, 
           mimeType={asset.mimeType}
           filename={displayName}
           onClose={closeViewer}
-          onDownload={handleDownload}
+          onDownload={canDownload ? handleDownload : undefined}
+          canDownload={canDownload}
         />
       )}
     </div>

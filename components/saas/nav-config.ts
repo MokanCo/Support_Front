@@ -9,6 +9,7 @@ import {
   ClipboardList,
   FileText,
   ImageIcon,
+  Wallet,
 } from "lucide-react";
 import type { UserRole } from "@/lib/user-roles";
 
@@ -48,6 +49,12 @@ export const NAV_ITEMS: NavItem[] = [
     icon: MessageSquare,
     roles: ["admin", "support"],
     badgeSource: "conversations",
+  },
+  {
+    href: "/dashboard/ar",
+    label: "Accounts Receivable",
+    icon: Wallet,
+    roles: ["admin", "support", "partner"],
   },
   {
     href: "/dashboard/documents",
@@ -97,6 +104,9 @@ export function titleForPath(pathname: string): string {
   if (pathname === "/dashboard/onboardings") {
     return "Onboardings";
   }
+  if (pathname.startsWith("/dashboard/ar")) {
+    return "Accounts Receivable";
+  }
   const map: Record<string, string> = {
     "/dashboard": "Dashboard",
     "/dashboard/tickets": "Tickets",
@@ -108,6 +118,7 @@ export function titleForPath(pathname: string): string {
     "/dashboard/boards": "Boards",
     "/dashboard/documents": "Documents",
     "/dashboard/marketing-assets": "Marketing Assets",
+    "/dashboard/ar": "Accounts Receivable",
   };
   return map[pathname] ?? "Dashboard";
 }

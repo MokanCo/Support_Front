@@ -128,12 +128,17 @@ export function AssetUploadModal({ category, onUploaded, onClose }: Props) {
           >
             <Upload className="mb-2 h-8 w-8 text-slate-400" />
             <p className="text-sm text-slate-500">
-              Click to select file(s) (max 50 MB each)
+              Click to select file(s) (max 100 MB each)
+            </p>
+            <p className="mt-1 text-xs text-slate-400">
+              Documents, images, and videos (MP4, MOV, WebM…). Videos are converted to
+              WebM on upload.
             </p>
             <input
               ref={fileRef}
               type="file"
               multiple
+              accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.png,.jpg,.jpeg,.gif,.webp,.svg,.zip,.mp4,.mov,.avi,.mkv,.m4v,.webm,.mpeg,.mpg,.wmv,.3gp,image/*,video/*,application/pdf"
               className="hidden"
               onChange={(e) => {
                 addFiles(e.target.files);

@@ -9,6 +9,8 @@ interface Props {
   filename: string;
   onClose: () => void;
   onDownload?: () => void | Promise<void>;
+  /** When false, hide download (e.g. partners viewing video). */
+  canDownload?: boolean;
 }
 
 export function AssetViewerModal({
@@ -17,10 +19,13 @@ export function AssetViewerModal({
   filename,
   onClose,
   onDownload,
+  canDownload = true,
 }: Props) {
   const isImage = mimeType.startsWith("image/");
   const isPdf = mimeType === "application/pdf";
+  const isVideo = mimeType.startsWith("video/");
   const [downloading, setDownloading] = useState(false);
+  const showDownload = Boolean(canDownload && onDownload);
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -46,7 +51,9 @@ export function AssetViewerModal({
       onClick={onClose}
     >
       <div
-        className="flex h-[85vh] w-full max-w-3xl flex-col rounded-2xl border border-slate-200 bg-white shadow-2xl"
+        className={`flex w-full flex-col rounded-2xl border border-slate-200 bg-white shadow-2xl ${
+          isVideo ? "h-auto max-h-[90vh] max-w-4xl" : "h-[85vh] max-w-3xl"
+        }`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-6 py-4">
@@ -57,7 +64,7 @@ export function AssetViewerModal({
             {filename}
           </p>
           <div className="flex shrink-0 items-center gap-1">
-            {onDownload && (
+            {showDownload ? (
               <button
                 type="button"
                 onClick={() => void handleDownload()}
@@ -68,7 +75,7 @@ export function AssetViewerModal({
                 <Download className="h-4 w-4" />
                 {downloading ? "Downloading…" : "Download"}
               </button>
-            )}
+            ) : null}
             <button
               type="button"
               onClick={onClose}
@@ -80,7 +87,11 @@ export function AssetViewerModal({
           </div>
         </div>
 
-        <div className="flex flex-1 items-center justify-center overflow-auto bg-slate-100 p-4">
+        <div
+          className={`flex flex-1 items-center justify-center overflow-auto bg-slate-100 p-4 ${
+            isVideo ? "min-h-0" : ""
+          }`}
+        >
           {isImage ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
@@ -94,6 +105,16 @@ export function AssetViewerModal({
               title={filename}
               className="h-full w-full rounded-lg bg-white"
             />
+          ) : isVideo ? (
+            <video
+              src={fileUrl}
+              controls
+              playsInline
+              autoPlay
+              className="max-h-[70vh] w-full rounded-lg bg-black"
+            >
+              Your browser does not support video playback.
+            </video>
           ) : (
             <p className="text-sm text-slate-500">
               Preview not available for this file type.
