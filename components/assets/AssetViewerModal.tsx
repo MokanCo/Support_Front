@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Download, X } from "lucide-react";
+import { useEffect, useRef, useState, type SyntheticEvent } from "react";
+import { Download, Maximize, Pause, Play, Volume2, VolumeX, X } from "lucide-react";
 
 interface Props {
   fileUrl: string;
@@ -11,6 +11,230 @@ interface Props {
   onDownload?: () => void | Promise<void>;
   /** When false, hide download (e.g. partners viewing video). */
   canDownload?: boolean;
+  /**
+   * Preferred for videos: play via srcObject so no blob: URL appears in the
+   * DOM that can be copied into another tab.
+   */
+  videoBlob?: Blob | null;
+}
+
+function MinimalVideoPlayer({
+  blob,
+  title,
+}: {
+  blob: Blob;
+  title: string;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [playing, setPlaying] = useState(true);
+  const [muted, setMuted] = useState(false);
+  const [volume, setVolume] = useState(1);
+  const [maximized, setMaximized] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const el = videoRef.current;
+    if (!el) return;
+
+    let objectUrl: string | null = null;
+    let revoked = false;
+    let cancelled = false;
+    let usingFallbackUrl = false;
+
+    const revokeFallbackUrl = () => {
+      if (!objectUrl || revoked) return;
+      revoked = true;
+      URL.revokeObjectURL(objectUrl);
+      objectUrl = null;
+    };
+
+    const onPlay = () => setPlaying(true);
+    const onPause = () => setPlaying(false);
+
+    const attachObjectUrlFallback = () => {
+      if (cancelled || usingFallbackUrl) return;
+      usingFallbackUrl = true;
+      el.srcObject = null;
+      objectUrl = URL.createObjectURL(blob);
+      el.src = objectUrl;
+      // Invalidate ASAP so a copied blob: URL cannot open in another tab.
+      const onReady = () => revokeFallbackUrl();
+      el.addEventListener("loadeddata", onReady, { once: true });
+      el.addEventListener("canplay", onReady, { once: true });
+      window.setTimeout(revokeFallbackUrl, 1500);
+      void el.play().catch(() => setPlaying(false));
+    };
+
+    const onError = () => {
+      if (cancelled) return;
+      // If srcObject failed, fall back once; then surface a play error.
+      if (!usingFallbackUrl) {
+        attachObjectUrlFallback();
+        return;
+      }
+      setError("Could not play this video.");
+    };
+
+    el.addEventListener("play", onPlay);
+    el.addEventListener("pause", onPause);
+    el.addEventListener("error", onError);
+
+    setError(null);
+    el.pause();
+    el.removeAttribute("src");
+    el.srcObject = null;
+    el.load();
+
+    try {
+      // Prefer srcObject: Inspect has no blob: URL to copy into another tab.
+      el.srcObject = blob;
+      void el.play().catch(() => setPlaying(false));
+    } catch {
+      attachObjectUrlFallback();
+    }
+
+    return () => {
+      cancelled = true;
+      el.removeEventListener("play", onPlay);
+      el.removeEventListener("pause", onPause);
+      el.removeEventListener("error", onError);
+      revokeFallbackUrl();
+      el.pause();
+      el.removeAttribute("src");
+      el.srcObject = null;
+      el.load();
+    };
+  }, [blob]);
+
+  useEffect(() => {
+    const onFullscreenChange = () => {
+      setMaximized(document.fullscreenElement === containerRef.current);
+    };
+    document.addEventListener("fullscreenchange", onFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
+  }, []);
+
+  function blockSaveGestures(e: SyntheticEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
+  function togglePlay() {
+    const el = videoRef.current;
+    if (!el) return;
+    if (el.paused) void el.play();
+    else el.pause();
+  }
+
+  function toggleMute() {
+    const el = videoRef.current;
+    if (!el) return;
+    el.muted = !el.muted;
+    setMuted(el.muted);
+  }
+
+  function onVolumeChange(value: number) {
+    const el = videoRef.current;
+    if (!el) return;
+    el.volume = value;
+    el.muted = value === 0;
+    setVolume(value);
+    setMuted(value === 0);
+  }
+
+  async function toggleMaximize() {
+    const container = containerRef.current;
+    const video = videoRef.current;
+    if (!container) return;
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+        return;
+      }
+      if (container.requestFullscreen) {
+        await container.requestFullscreen();
+      } else if (
+        video &&
+        "webkitEnterFullscreen" in video &&
+        typeof (video as HTMLVideoElement & { webkitEnterFullscreen: () => void })
+          .webkitEnterFullscreen === "function"
+      ) {
+        (video as HTMLVideoElement & { webkitEnterFullscreen: () => void }).webkitEnterFullscreen();
+      }
+    } catch {
+      // Fullscreen may be blocked by the browser; ignore.
+    }
+  }
+
+  return (
+    <div
+      ref={containerRef}
+      className="flex w-full flex-col overflow-hidden rounded-lg bg-black"
+      onContextMenu={blockSaveGestures}
+      onDragStart={blockSaveGestures}
+    >
+      <video
+        ref={videoRef}
+        playsInline
+        controlsList="nodownload noremoteplayback noplaybackrate"
+        disablePictureInPicture
+        disableRemotePlayback
+        draggable={false}
+        className={`w-full bg-black ${maximized ? "min-h-0 flex-1" : "max-h-[70vh]"}`}
+        onClick={togglePlay}
+        onContextMenu={blockSaveGestures}
+        onDragStart={blockSaveGestures}
+        aria-label={title}
+      >
+        Your browser does not support video playback.
+      </video>
+      {error ? (
+        <p className="bg-slate-900 px-3 py-2 text-sm text-red-300">{error}</p>
+      ) : null}
+      <div className="flex shrink-0 items-center gap-3 bg-slate-900 px-3 py-2">
+        <button
+          type="button"
+          onClick={togglePlay}
+          className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-white transition hover:bg-white/10"
+          aria-label={playing ? "Pause" : "Play"}
+        >
+          {playing ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
+        </button>
+        <button
+          type="button"
+          onClick={toggleMute}
+          className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-white transition hover:bg-white/10"
+          aria-label={muted || volume === 0 ? "Unmute" : "Mute"}
+        >
+          {muted || volume === 0 ? (
+            <VolumeX className="h-5 w-5" />
+          ) : (
+            <Volume2 className="h-5 w-5" />
+          )}
+        </button>
+        <input
+          type="range"
+          min={0}
+          max={1}
+          step={0.05}
+          value={muted ? 0 : volume}
+          onChange={(e) => onVolumeChange(Number(e.target.value))}
+          className="h-1.5 w-28 cursor-pointer accent-white"
+          aria-label="Volume"
+        />
+        <button
+          type="button"
+          onClick={() => void toggleMaximize()}
+          className="ml-auto inline-flex h-9 w-9 items-center justify-center rounded-lg text-white transition hover:bg-white/10"
+          aria-label={maximized ? "Exit fullscreen" : "Maximize"}
+          title={maximized ? "Exit fullscreen" : "Maximize"}
+        >
+          <Maximize className="h-5 w-5" />
+        </button>
+      </div>
+    </div>
+  );
 }
 
 export function AssetViewerModal({
@@ -20,6 +244,7 @@ export function AssetViewerModal({
   onClose,
   onDownload,
   canDownload = true,
+  videoBlob = null,
 }: Props) {
   const isImage = mimeType.startsWith("image/");
   const isPdf = mimeType === "application/pdf";
@@ -105,16 +330,8 @@ export function AssetViewerModal({
               title={filename}
               className="h-full w-full rounded-lg bg-white"
             />
-          ) : isVideo ? (
-            <video
-              src={fileUrl}
-              controls
-              playsInline
-              autoPlay
-              className="max-h-[70vh] w-full rounded-lg bg-black"
-            >
-              Your browser does not support video playback.
-            </video>
+          ) : isVideo && videoBlob ? (
+            <MinimalVideoPlayer blob={videoBlob} title={filename} />
           ) : (
             <p className="text-sm text-slate-500">
               Preview not available for this file type.

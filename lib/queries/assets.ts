@@ -46,12 +46,15 @@ function normalizeAsset(raw: Record<string, unknown>): Asset {
   );
   const mimeType = String(raw.contentType ?? raw.mimeType ?? "");
   const size = Number(raw.fileSize ?? raw.size ?? 0);
+  const isVideo = mimeType.startsWith("video/");
+  // Never keep a direct CDN URL for videos on the client.
+  const fileUrl = isVideo ? "" : String(raw.fileUrl ?? "");
   return {
     id: String(raw.id),
     name: String(raw.name || originalFileName),
     originalFileName,
     originalName: originalFileName,
-    fileUrl: String(raw.fileUrl ?? ""),
+    fileUrl,
     thumbnailUrl: String(raw.thumbnailUrl ?? ""),
     contentType: mimeType,
     mimeType,
