@@ -70,6 +70,7 @@ export function AssetCard({ asset, role, onDeleted, locationContext, onUpdated, 
   const [previewFailed, setPreviewFailed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [viewerUrl, setViewerUrl] = useState<string | null>(null);
+  const [viewerBlob, setViewerBlob] = useState<Blob | null>(null);
   const [viewerIsRemote, setViewerIsRemote] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -77,7 +78,7 @@ export function AssetCard({ asset, role, onDeleted, locationContext, onUpdated, 
   const category = asset.category;
   const isImage = asset.mimeType.startsWith("image/");
   const isVideo = asset.mimeType.startsWith("video/");
-  /** Partners may view videos but not download them. */
+  /** Only admins may download videos — and only via the Download control. */
   const canDownload = role === "admin" || !isVideo;
   const canDelete = role === "admin";
 
@@ -86,13 +87,12 @@ export function AssetCard({ asset, role, onDeleted, locationContext, onUpdated, 
     setMenuOpen(false);
     setBusy(true);
     try {
-      // Always fetch as blob so download works for cross-origin R2 URLs
-      // (the HTML download attribute is ignored for other origins).
       const { blob, filename } = await fetchAssetFile(
         asset.id,
         category,
-        asset.fileUrl || undefined,
+        undefined,
         asset.originalFileName || displayName,
+        { download: true },
       );
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -118,8 +118,8 @@ export function AssetCard({ asset, role, onDeleted, locationContext, onUpdated, 
     setMenuOpen(false);
     setBusy(true);
     try {
-      // Videos: always proxy via API as a blob so playback works without R2 CORS.
-      // Use inline (not download) so partners can view but not download.
+      // Videos: keep the Blob in memory and play via srcObject (no blob: URL
+      // in the DOM that can be copied into another tab).
       if (isVideo || !asset.fileUrl) {
         const { blob } = await fetchAssetFile(
           asset.id,
@@ -129,9 +129,16 @@ export function AssetCard({ asset, role, onDeleted, locationContext, onUpdated, 
           { download: false },
         );
         setViewerIsRemote(false);
-        setViewerUrl(URL.createObjectURL(blob));
+        if (isVideo) {
+          setViewerBlob(blob);
+          setViewerUrl(null);
+        } else {
+          setViewerBlob(null);
+          setViewerUrl(URL.createObjectURL(blob));
+        }
         return;
       }
+      setViewerBlob(null);
       setViewerIsRemote(true);
       setViewerUrl(asset.fileUrl);
     } catch (err) {
@@ -148,6 +155,7 @@ export function AssetCard({ asset, role, onDeleted, locationContext, onUpdated, 
   function closeViewer() {
     if (viewerUrl && !viewerIsRemote) URL.revokeObjectURL(viewerUrl);
     setViewerUrl(null);
+    setViewerBlob(null);
     setViewerIsRemote(false);
   }
 
@@ -361,9 +369,10 @@ export function AssetCard({ asset, role, onDeleted, locationContext, onUpdated, 
         </p>
       </div>
 
-      {viewerUrl && (
+      {(viewerUrl || viewerBlob) && (
         <AssetViewerModal
-          fileUrl={viewerUrl}
+          fileUrl={viewerUrl || ""}
+          videoBlob={viewerBlob}
           mimeType={asset.mimeType}
           filename={displayName}
           onClose={closeViewer}
