@@ -4,12 +4,13 @@ import { queryKeys } from "@/lib/query-keys";
 
 export type AssetCategory = "documents" | "marketing_assets";
 export type AssetVisibility = "global" | "location";
-export type MarketingAssetType = "postcard" | "banner" | "logo" | "other";
+export type MarketingAssetType = "postcard" | "banner" | "logo" | "video" | "other";
 
 export const MARKETING_ASSET_TYPES: { value: MarketingAssetType; label: string }[] = [
   { value: "postcard", label: "Post card" },
   { value: "banner", label: "Banners" },
   { value: "logo", label: "Logo" },
+  { value: "video", label: "Video" },
   { value: "other", label: "Other" },
 ];
 
@@ -19,6 +20,7 @@ export interface Asset {
   originalFileName: string;
   originalName: string;
   fileUrl: string;
+  thumbnailUrl?: string;
   contentType: string;
   mimeType: string;
   fileSize: number;
@@ -50,6 +52,7 @@ function normalizeAsset(raw: Record<string, unknown>): Asset {
     originalFileName,
     originalName: originalFileName,
     fileUrl: String(raw.fileUrl ?? ""),
+    thumbnailUrl: String(raw.thumbnailUrl ?? ""),
     contentType: mimeType,
     mimeType,
     fileSize: size,
@@ -177,13 +180,20 @@ export async function fetchAssetFile(
   category: AssetCategory = "documents",
   _fileUrl?: string,
   preferredFilename?: string,
+  options?: { download?: boolean },
 ): Promise<{ blob: Blob; filename: string }> {
   // Always go through the API so Content-Disposition/download works reliably
   // (cross-origin R2 URLs ignore the HTML download attribute).
+  const asDownload = options?.download !== false;
   const res = await apiFetch(
-    `${categoryBasePath(category)}/${id}/file?download=1`,
+    `${categoryBasePath(category)}/${id}/file${asDownload ? "?download=1" : ""}`,
   );
-  if (!res.ok) throw new Error("Failed to fetch file");
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(
+      (err as { message?: string }).message ?? "Failed to fetch file",
+    );
+  }
   const cd = res.headers.get("content-disposition") ?? "";
   const match = cd.match(/filename\*?=(?:UTF-8''|(['"]))?([^'";\n]+)\1?/i);
   const rawName = match?.[2] ? decodeURIComponent(match[2]) : "";
