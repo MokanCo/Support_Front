@@ -14,7 +14,12 @@ import {
   Play,
 } from "lucide-react";
 import type { Asset } from "@/lib/queries/assets";
-import { fetchAssetFile, deleteAsset, removeAssetLocation } from "@/lib/queries/assets";
+import {
+  fetchAssetFile,
+  fetchAssetThumbnail,
+  deleteAsset,
+  removeAssetLocation,
+} from "@/lib/queries/assets";
 import { AssetViewerModal } from "@/components/assets/AssetViewerModal";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -68,6 +73,7 @@ export function AssetCard({ asset, role, onDeleted, locationContext, onUpdated, 
   const [openBadge, setOpenBadge] = useState<number | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewFailed, setPreviewFailed] = useState(false);
+  const [videoThumbUrl, setVideoThumbUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [viewerUrl, setViewerUrl] = useState<string | null>(null);
   const [viewerBlob, setViewerBlob] = useState<Blob | null>(null);
@@ -227,6 +233,30 @@ export function AssetCard({ asset, role, onDeleted, locationContext, onUpdated, 
     };
   }, [asset.id, asset.fileUrl, category, isImage]);
 
+  // Load video thumbnails through the authenticated API (not the R2 CDN URL).
+  // Production cards on support.mokanco.com often cannot load private/CDN thumb URLs.
+  useEffect(() => {
+    if (!isVideo) return;
+    let objectUrl: string | null = null;
+    let cancelled = false;
+    setVideoThumbUrl(null);
+
+    fetchAssetThumbnail(asset.id, category)
+      .then((blob) => {
+        if (cancelled) return;
+        objectUrl = URL.createObjectURL(blob);
+        setVideoThumbUrl(objectUrl);
+      })
+      .catch(() => {
+        /* play button only */
+      });
+
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [asset.id, category, isVideo]);
+
   return (
     <div className="group relative flex flex-col overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-card transition-shadow duration-200 hover:shadow-md">
       <div className="relative">
@@ -288,15 +318,12 @@ export function AssetCard({ asset, role, onDeleted, locationContext, onUpdated, 
             )
           ) : isVideo ? (
             <>
-              {asset.thumbnailUrl ? (
+              {videoThumbUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
-                  src={asset.thumbnailUrl}
+                  src={videoThumbUrl}
                   alt=""
                   className="pointer-events-none absolute inset-0 h-full w-full object-cover"
-                  onError={(e) => {
-                    e.currentTarget.style.display = "none";
-                  }}
                 />
               ) : null}
               <span className="pointer-events-none absolute inset-0 bg-slate-900/25" />
