@@ -31,11 +31,22 @@ export interface Asset {
   visibility: AssetVisibility;
   locationIds: string[];
   type?: MarketingAssetType;
+  folderId?: string | null;
   uploadedBy: string;
   expiresAt: string;
   createdAt: string;
   updatedAt?: string;
   isDeleted?: boolean;
+}
+
+export interface AssetFolder {
+  id: string;
+  name: string;
+  parentId: string | null;
+  category: AssetCategory;
+  createdBy?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 function categoryBasePath(category: AssetCategory): string {
@@ -69,6 +80,7 @@ function normalizeAsset(raw: Record<string, unknown>): Asset {
       ? raw.locationIds.map(String)
       : [],
     type: raw.type as MarketingAssetType | undefined,
+    folderId: raw.folderId ? String(raw.folderId) : null,
     uploadedBy: String(raw.uploadedBy ?? ""),
     expiresAt: String(raw.expiresAt ?? ""),
     createdAt: String(raw.createdAt ?? ""),
@@ -77,8 +89,17 @@ function normalizeAsset(raw: Record<string, unknown>): Asset {
   };
 }
 
-export async function fetchAssets(category: AssetCategory): Promise<Asset[]> {
-  const res = await apiFetch(categoryBasePath(category));
+export async function fetchAssets(
+  category: AssetCategory,
+  opts?: { folderId?: string | null; allFolders?: boolean },
+): Promise<Asset[]> {
+  const params = new URLSearchParams();
+  if (opts?.allFolders) params.set("allFolders", "1");
+  else if (opts?.folderId) params.set("folderId", opts.folderId);
+  const qs = params.toString();
+  const res = await apiFetch(
+    `${categoryBasePath(category)}${qs ? `?${qs}` : ""}`,
+  );
   if (!res.ok) throw new Error("Failed to fetch assets");
   const data = (await res.json()) as {
     documents?: unknown[];
@@ -88,14 +109,20 @@ export async function fetchAssets(category: AssetCategory): Promise<Asset[]> {
   return rows.map((row) => normalizeAsset(row as Record<string, unknown>));
 }
 
-export function assetsListQueryKey(category: AssetCategory) {
-  return queryKeys.assets.list(category);
+export function assetsListQueryKey(
+  category: AssetCategory,
+  folderId: string | null = null,
+) {
+  return queryKeys.assets.list(category, folderId);
 }
 
-export function assetsListQueryOptions(category: AssetCategory) {
+export function assetsListQueryOptions(
+  category: AssetCategory,
+  folderId: string | null = null,
+) {
   return {
-    queryKey: assetsListQueryKey(category),
-    queryFn: () => fetchAssets(category),
+    queryKey: assetsListQueryKey(category, folderId),
+    queryFn: () => fetchAssets(category, { folderId }),
   } as const;
 }
 
@@ -103,9 +130,168 @@ export function setAssetsListCache(
   queryClient: QueryClient,
   category: AssetCategory,
   updater: (prev: Asset[]) => Asset[],
+  folderId: string | null = null,
 ) {
-  queryClient.setQueryData<Asset[]>(assetsListQueryKey(category), (prev) =>
+  queryClient.setQueryData<Asset[]>(assetsListQueryKey(category, folderId), (prev) =>
     updater(prev ?? []),
+  );
+}
+
+function normalizeFolder(raw: Record<string, unknown>): AssetFolder {
+  return {
+    id: String(raw.id),
+    name: String(raw.name ?? ""),
+    parentId: raw.parentId ? String(raw.parentId) : null,
+    category: raw.category as AssetCategory,
+    createdBy: raw.createdBy ? String(raw.createdBy) : null,
+    createdAt: raw.createdAt ? String(raw.createdAt) : undefined,
+    updatedAt: raw.updatedAt ? String(raw.updatedAt) : undefined,
+  };
+}
+
+export async function fetchFolders(
+  category: AssetCategory,
+  parentId: string | null = null,
+): Promise<AssetFolder[]> {
+  const params = new URLSearchParams();
+  if (parentId) params.set("parentId", parentId);
+  const qs = params.toString();
+  const res = await apiFetch(
+    `${categoryBasePath(category)}/folders${qs ? `?${qs}` : ""}`,
+  );
+  if (!res.ok) throw new Error("Failed to fetch folders");
+  const data = (await res.json()) as { folders: unknown[] };
+  return (data.folders ?? []).map((f) =>
+    normalizeFolder(f as Record<string, unknown>),
+  );
+}
+
+export async function fetchFolderPath(
+  category: AssetCategory,
+  folderId: string,
+): Promise<AssetFolder[]> {
+  const res = await apiFetch(
+    `${categoryBasePath(category)}/folders/${folderId}/path`,
+  );
+  if (!res.ok) throw new Error("Failed to fetch folder path");
+  const data = (await res.json()) as { path: unknown[] };
+  return (data.path ?? []).map((f) =>
+    normalizeFolder(f as Record<string, unknown>),
+  );
+}
+
+export async function createFolder(
+  category: AssetCategory,
+  body: { name: string; parentId?: string | null },
+): Promise<AssetFolder> {
+  const res = await apiFetch(`${categoryBasePath(category)}/folders`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as { message?: string }).message ?? "Could not create folder");
+  }
+  const data = (await res.json()) as { folder: Record<string, unknown> };
+  return normalizeFolder(data.folder);
+}
+
+export async function renameFolder(
+  category: AssetCategory,
+  id: string,
+  name: string,
+): Promise<AssetFolder> {
+  const res = await apiFetch(`${categoryBasePath(category)}/folders/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as { message?: string }).message ?? "Could not rename folder");
+  }
+  const data = (await res.json()) as { folder: Record<string, unknown> };
+  return normalizeFolder(data.folder);
+}
+
+export async function moveFolder(
+  category: AssetCategory,
+  id: string,
+  parentId: string | null,
+): Promise<AssetFolder> {
+  const res = await apiFetch(`${categoryBasePath(category)}/folders/${id}/move`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ parentId }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as { message?: string }).message ?? "Could not move folder");
+  }
+  const data = (await res.json()) as { folder: Record<string, unknown> };
+  return normalizeFolder(data.folder);
+}
+
+export async function deleteFolder(
+  category: AssetCategory,
+  id: string,
+  force = false,
+): Promise<{ ok: boolean; movedAssets?: number; deletedFolders?: number; code?: string; assetCount?: number; subfolderCount?: number; message?: string }> {
+  const res = await apiFetch(
+    `${categoryBasePath(category)}/folders/${id}${force ? "?force=1" : ""}`,
+    { method: "DELETE" },
+  );
+  const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!res.ok) {
+    return {
+      ok: false,
+      message: String(data.message ?? "Could not delete folder"),
+      code: data.code ? String(data.code) : undefined,
+      assetCount: Number(data.assetCount ?? 0),
+      subfolderCount: Number(data.subfolderCount ?? 0),
+    };
+  }
+  return {
+    ok: true,
+    movedAssets: Number(data.movedAssets ?? 0),
+    deletedFolders: Number(data.deletedFolders ?? 0),
+  };
+}
+
+export async function ensureFolderPath(
+  category: AssetCategory,
+  body: { parentId?: string | null; pathParts: string[] },
+): Promise<{ folderId: string | null }> {
+  const res = await apiFetch(`${categoryBasePath(category)}/folders/ensure-path`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as { message?: string }).message ?? "Could not create folder path");
+  }
+  const data = (await res.json()) as { folderId: string | null };
+  return { folderId: data.folderId };
+}
+
+export async function moveAssets(
+  category: AssetCategory,
+  body: { assetIds: string[]; folderId: string | null },
+): Promise<Asset[]> {
+  const res = await apiFetch(`${categoryBasePath(category)}/move`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as { message?: string }).message ?? "Could not move assets");
+  }
+  const data = (await res.json()) as { assets: unknown[] };
+  return (data.assets ?? []).map((a) =>
+    normalizeAsset(a as Record<string, unknown>),
   );
 }
 

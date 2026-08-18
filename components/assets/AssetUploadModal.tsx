@@ -5,9 +5,14 @@ import { Upload, X } from "lucide-react";
 import type { AssetCategory, MarketingAssetType } from "@/lib/queries/assets";
 import {
   uploadAssetWithProgress,
+  ensureFolderPath,
   MARKETING_ASSET_TYPES,
   type Asset,
 } from "@/lib/queries/assets";
+import {
+  collectFilesFromDataTransfer,
+  dataTransferHasFiles,
+} from "@/lib/fs-drop";
 import { fetchLocationOptions } from "@/lib/queries/locations";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Modal } from "@/components/ui/modal";
@@ -30,13 +35,27 @@ function isVideoFile(file: File) {
 
 interface Props {
   category: AssetCategory;
+  /** Current Drive folder; null = root. Uploaded files land here. */
+  folderId?: string | null;
+  /** When true, use webkitdirectory for folder selection. */
+  folderMode?: boolean;
+  /** Pre-filled from OS drag-and-drop. */
+  initialFiles?: File[];
   onUploaded: (asset: Asset) => void;
   onClose: () => void;
 }
 
-export function AssetUploadModal({ category, onUploaded, onClose }: Props) {
+export function AssetUploadModal({
+  category,
+  folderId = null,
+  folderMode = false,
+  initialFiles,
+  onUploaded,
+  onClose,
+}: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
-  const [files, setFiles] = useState<File[]>([]);
+  const folderRef = useRef<HTMLInputElement>(null);
+  const [files, setFiles] = useState<File[]>(() => initialFiles ?? []);
   const [visibility, setVisibility] = useState<"global" | "location">("global");
   const [locationIds, setLocationIds] = useState<string[]>([]);
   const [assetType, setAssetType] = useState<MarketingAssetType>("postcard");
@@ -59,6 +78,13 @@ export function AssetUploadModal({ category, onUploaded, onClose }: Props) {
       .catch(() => setError("Failed to load locations."))
       .finally(() => setLoadingLocations(false));
   }, [visibility, locations.length]);
+
+  useEffect(() => {
+    const el = folderRef.current;
+    if (!el) return;
+    el.setAttribute("webkitdirectory", "");
+    el.setAttribute("directory", "");
+  }, []);
 
   function toggleLocation(id: string) {
     setLocationIds((prev) => (prev.includes(id) ? prev.filter((l) => l !== id) : [...prev, id]));
@@ -111,6 +137,21 @@ export function AssetUploadModal({ category, onUploaded, onClose }: Props) {
         if (category === "marketing_assets") {
           fd.append("type", isVideoFile(file) ? "video" : assetType);
         }
+
+        // Preserve relative folder path from webkitdirectory / folder drop.
+        const relative = (file as File & { webkitRelativePath?: string }).webkitRelativePath || "";
+        const parts = relative.split("/").filter(Boolean);
+        let targetFolderId = folderId;
+        if (parts.length > 1) {
+          const dirParts = parts.slice(0, -1);
+          const ensured = await ensureFolderPath(category, {
+            parentId: folderId,
+            pathParts: dirParts,
+          });
+          targetFolderId = ensured.folderId;
+        }
+        if (targetFolderId) fd.append("folderId", targetFolderId);
+
         const asset = await uploadAssetWithProgress(fd, (p) => {
           setPercent(p.percent);
           setProcessing(p.processing);
@@ -148,12 +189,34 @@ export function AssetUploadModal({ category, onUploaded, onClose }: Props) {
     <Modal
       open
       onClose={onClose}
-      title={`Upload ${category === "documents" ? "Documents" : "Marketing Assets"}`}
+      title={
+        folderMode
+          ? "Upload folder"
+          : `Upload ${category === "documents" ? "Documents" : "Marketing Assets"}`
+      }
     >
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <div
-            onClick={() => !uploading && fileRef.current?.click()}
+            onClick={() => {
+              if (uploading) return;
+              if (folderMode) folderRef.current?.click();
+              else fileRef.current?.click();
+            }}
+            onDragOver={(e) => {
+              if (!dataTransferHasFiles(e.dataTransfer) || uploading) return;
+              e.preventDefault();
+              e.stopPropagation();
+              e.dataTransfer.dropEffect = "copy";
+            }}
+            onDrop={(e) => {
+              if (uploading) return;
+              e.preventDefault();
+              e.stopPropagation();
+              void collectFilesFromDataTransfer(e.dataTransfer).then((dropped) => {
+                if (dropped.length) setFiles((prev) => [...prev, ...dropped]);
+              });
+            }}
             className={`flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-300 p-8 transition ${
               uploading
                 ? "cursor-not-allowed opacity-60"
@@ -162,18 +225,32 @@ export function AssetUploadModal({ category, onUploaded, onClose }: Props) {
           >
             <Upload className="mb-2 h-8 w-8 text-slate-400" />
             <p className="text-sm text-slate-500">
-              Click to select file(s) (max 100 MB each)
+              {folderMode
+                ? "Drop a folder here, or click to select"
+                : "Drop files or folders here, or click to select (max 100 MB each)"}
             </p>
             <p className="mt-1 text-xs text-slate-400">
-              Documents, images, and videos (MP4, MOV, WebM…). MP4 uploads stay fast;
-              other formats are converted quickly when needed.
+              {folderMode
+                ? "Folder structure is preserved. Subfolders are created automatically."
+                : "Documents, images, and videos (MP4, MOV, WebM…). Folder drops keep their structure."}
             </p>
             <input
               ref={fileRef}
               type="file"
               multiple
-              disabled={uploading}
+              disabled={uploading || folderMode}
               accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.png,.jpg,.jpeg,.gif,.webp,.svg,.zip,.mp4,.mov,.avi,.mkv,.m4v,.webm,.mpeg,.mpg,.wmv,.3gp,image/*,video/*,application/pdf"
+              className="hidden"
+              onChange={(e) => {
+                addFiles(e.target.files);
+                e.target.value = "";
+              }}
+            />
+            <input
+              ref={folderRef}
+              type="file"
+              multiple
+              disabled={uploading || !folderMode}
               className="hidden"
               onChange={(e) => {
                 addFiles(e.target.files);

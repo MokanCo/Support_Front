@@ -128,7 +128,16 @@ export const queryKeys = {
   assets: {
     all: ["assets"] as const,
     lists: () => [...queryKeys.assets.all, "list"] as const,
-    list: (category: "documents" | "marketing_assets") =>
-      [...queryKeys.assets.lists(), category] as const,
+    list: (
+      category: "documents" | "marketing_assets",
+      folderId: string | null = null,
+    ) => [...queryKeys.assets.lists(), category, folderId ?? "root"] as const,
+    folders: (
+      category: "documents" | "marketing_assets",
+      parentId: string | null = null,
+    ) =>
+      [...queryKeys.assets.all, "folders", category, parentId ?? "root"] as const,
+    folderPath: (category: "documents" | "marketing_assets", folderId: string) =>
+      [...queryKeys.assets.all, "folder-path", category, folderId] as const,
   },
 } as const;
