@@ -2,6 +2,7 @@ import type { QueryClient } from "@tanstack/react-query";
 import { apiFetch, getBearerAuthorizationHeader } from "@/lib/auth-fetch";
 import { resolveApiUrl } from "@/lib/api-base";
 import { queryKeys } from "@/lib/query-keys";
+import { zipBlobs } from "@/lib/zip-store";
 
 export type AssetCategory = "documents" | "marketing_assets";
 export type AssetVisibility = "global" | "location";
@@ -47,6 +48,7 @@ export interface AssetFolder {
   createdBy?: string | null;
   createdAt?: string;
   updatedAt?: string;
+  containsVideo?: boolean;
 }
 
 function categoryBasePath(category: AssetCategory): string {
@@ -146,6 +148,7 @@ function normalizeFolder(raw: Record<string, unknown>): AssetFolder {
     createdBy: raw.createdBy ? String(raw.createdBy) : null,
     createdAt: raw.createdAt ? String(raw.createdAt) : undefined,
     updatedAt: raw.updatedAt ? String(raw.updatedAt) : undefined,
+    containsVideo: Boolean(raw.containsVideo),
   };
 }
 
@@ -505,6 +508,40 @@ async function readApiError(res: Response, fallback: string) {
   }
 }
 
+type ZipManifest = {
+  zipName: string;
+  files: { id: string; name: string; zipPath: string }[];
+};
+
+async function downloadManifestZip(
+  category: AssetCategory,
+  manifest: ZipManifest,
+) {
+  if (!manifest.files?.length) {
+    throw new Error("This folder has no files to download");
+  }
+  const packed: { path: string; blob: Blob }[] = [];
+  for (const file of manifest.files) {
+    try {
+      const { blob } = await fetchAssetFile(
+        file.id,
+        category,
+        undefined,
+        file.name,
+        { download: true },
+      );
+      packed.push({ path: file.zipPath || file.name, blob });
+    } catch {
+      /* skip files the user isn't allowed to download */
+    }
+  }
+  if (!packed.length) {
+    throw new Error("Could not download any files from this selection");
+  }
+  const zip = await zipBlobs(packed);
+  triggerBlobDownload(zip, manifest.zipName || "download.zip");
+}
+
 export async function downloadFolderZip(
   category: AssetCategory,
   folderId: string,
@@ -516,8 +553,8 @@ export async function downloadFolderZip(
   if (!res.ok) {
     throw new Error(await readApiError(res, "Could not download folder"));
   }
-  const blob = await res.blob();
-  triggerBlobDownload(blob, filenameFromDisposition(res, "folder.zip"));
+  const manifest = (await res.json()) as ZipManifest;
+  await downloadManifestZip(category, manifest);
 }
 
 export async function downloadAssetsZip(
@@ -532,8 +569,8 @@ export async function downloadAssetsZip(
   if (!res.ok) {
     throw new Error(await readApiError(res, "Could not download files"));
   }
-  const blob = await res.blob();
-  triggerBlobDownload(blob, filenameFromDisposition(res, "assets.zip"));
+  const manifest = (await res.json()) as ZipManifest;
+  await downloadManifestZip(category, manifest);
 }
 
 export async function bulkDeleteAssets(

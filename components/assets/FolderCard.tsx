@@ -107,17 +107,19 @@ export function FolderCard({
               >
                 <FolderOpen className="h-4 w-4" /> Open
               </button>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setMenuOpen(false);
-                  onDownload();
-                }}
-                className="flex w-full items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
-              >
-                <Download className="h-4 w-4" /> Download
-              </button>
+              {isAdmin || !folder.containsVideo ? (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setMenuOpen(false);
+                    onDownload();
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                >
+                  <Download className="h-4 w-4" /> Download
+                </button>
+              ) : null}
               {isAdmin ? (
                 <>
                   <button
