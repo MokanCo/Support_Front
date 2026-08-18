@@ -260,7 +260,14 @@ export function AssetLibrary({
 
   async function handleDeleteFolder(folder: AssetFolder) {
     const first = await deleteFolder(category, folder.id, false);
-    if (!first.ok && first.code === "FOLDER_NOT_EMPTY") {
+    const nonempty =
+      !first.ok &&
+      (first.code === "FOLDER_NOT_EMPTY" ||
+        (first.assetCount ?? 0) > 0 ||
+        (first.subfolderCount ?? 0) > 0 ||
+        /contains/i.test(first.message ?? ""));
+
+    if (nonempty) {
       const conf = await Swal.fire({
         title: "Delete this folder?",
         html: `<p>This folder contains <strong>${first.assetCount ?? 0}</strong> file(s) and <strong>${first.subfolderCount ?? 0}</strong> subfolder(s).</p><p class="mt-2 text-sm text-slate-600">The folder and every file inside it will be deleted.</p>`,
