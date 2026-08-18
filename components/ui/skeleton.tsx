@@ -589,16 +589,16 @@ export function DashboardShellSkeleton() {
   );
 }
 
-/** Mirrors AssetCard: preview tile + title + meta. */
+/** Mirrors AssetCard: name header + padded thumbnail. */
 export function AssetCardSkeleton() {
   return (
     <div className="relative flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800">
-      <div className="flex h-44 w-full items-center justify-center bg-slate-100 dark:bg-slate-700">
-        <Skeleton className="h-full w-full rounded-none" />
+      <div className="flex items-center gap-2 border-b border-slate-100 bg-slate-50 px-2.5 py-2">
+        <Skeleton className="h-4 w-4 rounded" />
+        <Skeleton className="h-4 w-3/5" />
       </div>
-      <div className="space-y-2 px-3 py-2">
-        <Skeleton className="h-4 w-4/5" />
-        <Skeleton className="h-3 w-1/2" />
+      <div className="p-2">
+        <Skeleton className="h-36 w-full rounded-lg" />
       </div>
     </div>
   );
