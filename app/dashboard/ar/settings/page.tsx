@@ -29,15 +29,24 @@ import {
 } from "@/components/ar/ui/primitives";
 import { useArToast } from "@/components/ar/ui/toast";
 
-type PaymentMethodType = "zelle" | "wire" | "ach" | "check" | "card" | "cash" | "other";
+type PaymentMethodType =
+  | "zelle"
+  | "wire"
+  | "ach"
+  | "check"
+  | "card"
+  | "cash"
+  | "stripe"
+  | "other";
 
 const PAYMENT_METHOD_TYPES: { value: PaymentMethodType; label: string }[] = [
   { value: "zelle", label: "Zelle" },
   { value: "wire", label: "Wire Transfer" },
   { value: "ach", label: "ACH / Bank Transfer" },
   { value: "check", label: "Check" },
-  { value: "card", label: "Credit Card" },
+  { value: "card", label: "Credit Card (manual)" },
   { value: "cash", label: "Cash" },
+  { value: "stripe", label: "Credit / Debit Card (Stripe)" },
   { value: "other", label: "Other" },
 ];
 
@@ -488,6 +497,22 @@ export default function ArSettingsPage() {
                               className="h-28 w-28 rounded-lg border border-teal-200 bg-white object-contain p-1"
                             />
                           ) : null}
+                        </div>
+                      ) : null}
+                      {method.type === "stripe" ? (
+                        <div className="mt-3 space-y-1.5 rounded-lg border border-indigo-100 bg-indigo-50/50 p-3">
+                          <p className="text-xs font-medium text-indigo-900">
+                            Card payments are processed by Stripe Checkout — customers are
+                            redirected to Stripe&apos;s secure hosted page, and the invoice is
+                            marked paid automatically once Stripe confirms the charge.
+                          </p>
+                          <p className="text-xs text-indigo-700">
+                            Set <code className="rounded bg-white/70 px-1">STRIPE_SECRET_KEY</code>{" "}
+                            and{" "}
+                            <code className="rounded bg-white/70 px-1">STRIPE_WEBHOOK_SECRET</code>{" "}
+                            on the server — this toggle alone won&apos;t show &ldquo;Pay with
+                            Card&rdquo; without those configured.
+                          </p>
                         </div>
                       ) : null}
                       <div className="mt-3 flex items-center justify-between">

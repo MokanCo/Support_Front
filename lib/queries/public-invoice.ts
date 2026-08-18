@@ -57,6 +57,10 @@ export type PublicInvoicePayload = {
     details?: string;
     instructions?: string;
   };
+  stripe: {
+    enabled: boolean;
+    label?: string;
+  };
 };
 
 async function publicJson<T>(path: string, init?: RequestInit): Promise<T> {
@@ -109,4 +113,14 @@ export async function submitPublicInvoicePayment(
 /** Canonical public invoice URL used by email and partner Pay Now. */
 export function publicInvoicePayHref(token: string) {
   return `/invoice/pay?token=${encodeURIComponent(token)}`;
+}
+
+/** Creates a Stripe Checkout Session for this invoice and returns its hosted
+ *  URL — the invoice is only marked paid once Stripe's webhook confirms the
+ *  charge server-side, never on this call or the client redirect alone. */
+export async function createPublicStripeCheckoutSession(token: string) {
+  return publicJson<{ url: string }>(
+    `/api/public/invoices/${encodeURIComponent(token)}/stripe-checkout-session`,
+    { method: "POST" },
+  );
 }

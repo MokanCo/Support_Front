@@ -1,17 +1,24 @@
 "use client";
 
-import { Suspense, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Loader2 } from "lucide-react";
 import { BrandLogo } from "@/components/BrandLogo";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Textarea } from "@/components/ui/Textarea";
 import {
+  createPublicStripeCheckoutSession,
   fetchPublicInvoice,
   submitPublicInvoicePayment,
 } from "@/lib/queries/public-invoice";
 import { resolveMediaUrl } from "@/lib/erp/media-url";
+
+/** How long to keep polling after a Stripe redirect before giving up and
+ *  telling the customer to check back — the webhook is normally near-instant. */
+const STRIPE_FINALIZE_TIMEOUT_MS = 20_000;
+const STRIPE_FINALIZE_POLL_MS = 2_000;
 
 function money(n: number | undefined) {
   return `$${Number(n || 0).toFixed(2)}`;
@@ -29,6 +36,7 @@ function formatDate(value?: string) {
 function PublicPayInner() {
   const sp = useSearchParams();
   const token = sp.get("token") || "";
+  const stripeStatus = sp.get("stripe"); // "success" | "cancelled" | null
   const qc = useQueryClient();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [transactionReference, setTransactionReference] = useState("");
@@ -39,13 +47,30 @@ function PublicPayInner() {
   const [proof, setProof] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  const [finalizingStripe, setFinalizingStripe] = useState(
+    stripeStatus === "success",
+  );
 
   const query = useQuery({
     queryKey: ["public-invoice", token],
     queryFn: () => fetchPublicInvoice(token),
     enabled: Boolean(token),
     retry: false,
+    refetchInterval: finalizingStripe ? STRIPE_FINALIZE_POLL_MS : false,
   });
+
+  useEffect(() => {
+    if (!finalizingStripe) return;
+    if (query.data?.invoice.isPaid) {
+      setFinalizingStripe(false);
+      return;
+    }
+    const timeout = window.setTimeout(
+      () => setFinalizingStripe(false),
+      STRIPE_FINALIZE_TIMEOUT_MS,
+    );
+    return () => window.clearTimeout(timeout);
+  }, [finalizingStripe, query.data?.invoice.isPaid]);
 
   const submit = useMutation({
     mutationFn: () =>
@@ -66,9 +91,18 @@ function PublicPayInner() {
     onError: (e: Error) => setError(e.message),
   });
 
+  const checkout = useMutation({
+    mutationFn: () => createPublicStripeCheckoutSession(token),
+    onSuccess: (res) => {
+      window.location.href = res.url;
+    },
+    onError: (e: Error) => setError(e.message),
+  });
+
   const data = query.data;
   const invoice = data?.invoice;
   const zelle = data?.zelle;
+  const stripe = data?.stripe;
   const qrSrc = useMemo(
     () => resolveMediaUrl(zelle?.qrCodeUrl || ""),
     [zelle?.qrCodeUrl],
@@ -217,153 +251,213 @@ function PublicPayInner() {
           </div>
         </Card>
 
-        <Card className="h-fit lg:sticky lg:top-6">
+        <div className="space-y-4 lg:sticky lg:top-6">
           {invoice.isPaid ? (
-            <PaidState />
+            <Card>
+              <PaidState />
+            </Card>
+          ) : finalizingStripe ? (
+            <Card>
+              <FinalizingStripeState />
+            </Card>
           ) : invoice.hasPendingSubmission || done ? (
-            <PendingState
-              amount={invoice.pendingSubmission?.amount ?? invoice.balanceDue}
-              submittedAt={invoice.pendingSubmission?.submittedAt}
-              transactionReference={
-                invoice.pendingSubmission?.transactionReference ||
-                (done ? transactionReference : undefined)
-              }
-              paymentMethod={invoice.pendingSubmission?.paymentMethod}
-              paymentDate={invoice.pendingSubmission?.paymentDate}
-            />
-          ) : (
-            <>
-              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-teal-700">
-                Pay with Zelle
+            <Card>
+              <PendingState
+                amount={invoice.pendingSubmission?.amount ?? invoice.balanceDue}
+                submittedAt={invoice.pendingSubmission?.submittedAt}
+                transactionReference={
+                  invoice.pendingSubmission?.transactionReference ||
+                  (done ? transactionReference : undefined)
+                }
+                paymentMethod={invoice.pendingSubmission?.paymentMethod}
+                paymentDate={invoice.pendingSubmission?.paymentDate}
+              />
+            </Card>
+          ) : !zelle?.enabled && !stripe?.enabled ? (
+            <Card>
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                Payment
               </p>
               <h2 className="mt-1 text-xl font-semibold text-slate-900">
-                Scan the QR code below
+                No payment method configured
               </h2>
-              <p className="mt-1 text-sm text-slate-500">
-                Use your bank&apos;s mobile app. This page shows your invoice amount and memo —
-                the QR is your business Zelle recipient code.
+              <p className="mt-2 text-sm text-slate-600">
+                Contact billing{data?.company.billingEmail ? ` at ${data.company.billingEmail}` : ""}{" "}
+                for payment instructions.
               </p>
-
-              {zelle?.enabled && qrSrc ? (
-                <div className="mt-5 flex justify-center">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={qrSrc}
-                    alt="Zelle QR code"
-                    className="h-52 w-52 rounded-2xl border border-slate-200 bg-white object-contain p-3 shadow-sm"
-                  />
-                </div>
-              ) : zelle?.enabled ? (
-                <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                  Zelle is enabled, but no QR code has been configured yet. Use the recipient details
-                  below in your banking app.
-                </p>
-              ) : (
-                <p className="mt-4 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
-                  Online Zelle payment details are not configured. Contact billing for payment
-                  instructions.
-                </p>
-              )}
-
-              <dl className="mt-5 space-y-2 text-sm">
-                {zelle?.displayName ? (
-                  <Row label="Display name" value={zelle.displayName} />
-                ) : null}
-                {recipient ? <Row label="Zelle recipient" value={recipient} /> : null}
-                <Row label="Amount" value={money(invoice.balanceDue)} bold />
-                <Row label="Memo" value={invoice.invoiceNumber} bold />
-              </dl>
-
-              <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <h3 className="text-sm font-semibold text-slate-900">How to pay with Zelle</h3>
-                <ol className="mt-2 list-decimal space-y-1.5 pl-4 text-sm text-slate-600">
-                  <li>Open your bank&apos;s mobile app.</li>
-                  <li>Open Zelle.</li>
-                  <li>Scan the Zelle QR code above (or enter the recipient).</li>
-                  <li>Confirm the recipient.</li>
-                  <li>Confirm the invoice amount ({money(invoice.balanceDue)}).</li>
-                  <li>Include {invoice.invoiceNumber} in the memo if your bank allows it.</li>
-                  <li>Send the payment.</li>
-                  <li>Return here and select &ldquo;I&apos;ve Completed Payment&rdquo;.</li>
-                </ol>
-              </div>
-
-              {!confirmOpen ? (
-                <Button className="mt-5 w-full" onClick={() => setConfirmOpen(true)}>
-                  I&apos;ve Completed Payment
-                </Button>
-              ) : (
-                <div className="mt-5 space-y-3 rounded-xl border border-slate-200 p-4">
-                  <h3 className="text-sm font-semibold text-slate-900">Confirm Zelle payment</h3>
-                  <p className="text-xs text-slate-500">
-                    Submitting does not mark the invoice paid. An administrator will verify your
-                    payment.
+            </Card>
+          ) : (
+            <>
+              {stripeStatus === "cancelled" ? (
+                <Card>
+                  <p className="text-sm text-amber-900">
+                    Your card payment was cancelled. You can try again below.
                   </p>
-                  <Input
-                    label="Invoice"
-                    value={invoice.invoiceNumber}
-                    readOnly
-                  />
-                  <Input label="Amount" value={money(invoice.balanceDue)} readOnly />
-                  <Input
-                    label="Zelle transaction ID"
-                    value={transactionReference}
-                    onChange={(e) => setTransactionReference(e.target.value)}
-                    placeholder="From your bank confirmation"
-                    required
-                  />
-                  <Input
-                    label="Payment date"
-                    type="date"
-                    value={paymentDate}
-                    onChange={(e) => setPaymentDate(e.target.value)}
-                  />
-                  <div>
-                    <label className="mb-1 block text-sm font-medium text-slate-700">
-                      Upload payment proof
-                    </label>
-                    <input
-                      type="file"
-                      accept="image/*,application/pdf"
-                      className="block w-full text-sm text-slate-600"
-                      onChange={(e) => setProof(e.target.files?.[0] || null)}
-                    />
+                </Card>
+              ) : null}
+
+              {stripe?.enabled ? (
+                <Card>
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-indigo-700">
+                    Pay with Card
+                  </p>
+                  <h2 className="mt-1 text-xl font-semibold text-slate-900">
+                    Secure card payment via Stripe
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-500">
+                    You&apos;ll be redirected to Stripe&apos;s secure checkout page. Your invoice
+                    is marked paid automatically as soon as the payment is confirmed.
+                  </p>
+                  <dl className="mt-5 space-y-2 text-sm">
+                    <Row label="Amount" value={money(invoice.balanceDue)} bold />
+                    <Row label="Invoice" value={invoice.invoiceNumber} bold />
+                  </dl>
+                  {error ? <p className="mt-3 text-sm text-rose-600">{error}</p> : null}
+                  <Button
+                    className="mt-5 w-full"
+                    disabled={checkout.isPending}
+                    onClick={() => {
+                      setError(null);
+                      checkout.mutate();
+                    }}
+                  >
+                    {checkout.isPending ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Redirecting to Stripe…
+                      </>
+                    ) : (
+                      "Pay with Card"
+                    )}
+                  </Button>
+                </Card>
+              ) : null}
+
+              {zelle?.enabled ? (
+                <Card>
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-teal-700">
+                    Pay with Zelle
+                  </p>
+                  <h2 className="mt-1 text-xl font-semibold text-slate-900">
+                    Scan the QR code below
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Use your bank&apos;s mobile app. This page shows your invoice amount and memo —
+                    the QR is your business Zelle recipient code.
+                  </p>
+
+                  {qrSrc ? (
+                    <div className="mt-5 flex justify-center">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={qrSrc}
+                        alt="Zelle QR code"
+                        className="h-52 w-52 rounded-2xl border border-slate-200 bg-white object-contain p-3 shadow-sm"
+                      />
+                    </div>
+                  ) : (
+                    <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                      Zelle is enabled, but no QR code has been configured yet. Use the recipient
+                      details below in your banking app.
+                    </p>
+                  )}
+
+                  <dl className="mt-5 space-y-2 text-sm">
+                    {zelle.displayName ? (
+                      <Row label="Display name" value={zelle.displayName} />
+                    ) : null}
+                    {recipient ? <Row label="Zelle recipient" value={recipient} /> : null}
+                    <Row label="Amount" value={money(invoice.balanceDue)} bold />
+                    <Row label="Memo" value={invoice.invoiceNumber} bold />
+                  </dl>
+
+                  <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <h3 className="text-sm font-semibold text-slate-900">How to pay with Zelle</h3>
+                    <ol className="mt-2 list-decimal space-y-1.5 pl-4 text-sm text-slate-600">
+                      <li>Open your bank&apos;s mobile app.</li>
+                      <li>Open Zelle.</li>
+                      <li>Scan the Zelle QR code above (or enter the recipient).</li>
+                      <li>Confirm the recipient.</li>
+                      <li>Confirm the invoice amount ({money(invoice.balanceDue)}).</li>
+                      <li>Include {invoice.invoiceNumber} in the memo if your bank allows it.</li>
+                      <li>Send the payment.</li>
+                      <li>Return here and select &ldquo;I&apos;ve Completed Payment&rdquo;.</li>
+                    </ol>
                   </div>
-                  <Textarea
-                    label="Notes"
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    placeholder="Optional"
-                  />
-                  {error ? <p className="text-sm text-rose-600">{error}</p> : null}
-                  <div className="flex gap-2">
-                    <Button
-                      variant="secondary"
-                      className="flex-1"
-                      onClick={() => setConfirmOpen(false)}
-                    >
-                      Cancel
+
+                  {!confirmOpen ? (
+                    <Button className="mt-5 w-full" onClick={() => setConfirmOpen(true)}>
+                      I&apos;ve Completed Payment
                     </Button>
-                    <Button
-                      className="flex-1"
-                      disabled={submit.isPending || !transactionReference.trim()}
-                      onClick={() => {
-                        if (!transactionReference.trim()) {
-                          setError("Zelle transaction ID is required");
-                          return;
-                        }
-                        setError(null);
-                        submit.mutate();
-                      }}
-                    >
-                      {submit.isPending ? "Submitting…" : "Payment submitted"}
-                    </Button>
-                  </div>
-                </div>
-              )}
+                  ) : (
+                    <div className="mt-5 space-y-3 rounded-xl border border-slate-200 p-4">
+                      <h3 className="text-sm font-semibold text-slate-900">Confirm Zelle payment</h3>
+                      <p className="text-xs text-slate-500">
+                        Submitting does not mark the invoice paid. An administrator will verify
+                        your payment.
+                      </p>
+                      <Input label="Invoice" value={invoice.invoiceNumber} readOnly />
+                      <Input label="Amount" value={money(invoice.balanceDue)} readOnly />
+                      <Input
+                        label="Zelle transaction ID"
+                        value={transactionReference}
+                        onChange={(e) => setTransactionReference(e.target.value)}
+                        placeholder="From your bank confirmation"
+                        required
+                      />
+                      <Input
+                        label="Payment date"
+                        type="date"
+                        value={paymentDate}
+                        onChange={(e) => setPaymentDate(e.target.value)}
+                      />
+                      <div>
+                        <label className="mb-1 block text-sm font-medium text-slate-700">
+                          Upload payment proof
+                        </label>
+                        <input
+                          type="file"
+                          accept="image/*,application/pdf"
+                          className="block w-full text-sm text-slate-600"
+                          onChange={(e) => setProof(e.target.files?.[0] || null)}
+                        />
+                      </div>
+                      <Textarea
+                        label="Notes"
+                        value={notes}
+                        onChange={(e) => setNotes(e.target.value)}
+                        placeholder="Optional"
+                      />
+                      {error ? <p className="text-sm text-rose-600">{error}</p> : null}
+                      <div className="flex gap-2">
+                        <Button
+                          variant="secondary"
+                          className="flex-1"
+                          onClick={() => setConfirmOpen(false)}
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          className="flex-1"
+                          disabled={submit.isPending || !transactionReference.trim()}
+                          onClick={() => {
+                            if (!transactionReference.trim()) {
+                              setError("Zelle transaction ID is required");
+                              return;
+                            }
+                            setError(null);
+                            submit.mutate();
+                          }}
+                        >
+                          {submit.isPending ? "Submitting…" : "Payment submitted"}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </Card>
+              ) : null}
             </>
           )}
-        </Card>
+        </div>
       </div>
     </Shell>
   );
@@ -477,6 +571,19 @@ function PaidState() {
       <p className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-700">Paid</p>
       <h2 className="mt-2 text-xl font-semibold text-slate-900">Thank you</h2>
       <p className="mt-2 text-sm text-slate-600">This invoice has been paid in full.</p>
+    </div>
+  );
+}
+
+function FinalizingStripeState() {
+  return (
+    <div className="text-center">
+      <Loader2 className="mx-auto h-8 w-8 animate-spin text-indigo-600" />
+      <h2 className="mt-3 text-xl font-semibold text-slate-900">Finalizing your payment</h2>
+      <p className="mt-2 text-sm text-slate-600">
+        Stripe confirmed your card payment — we&apos;re updating your invoice now. This usually
+        takes just a few seconds.
+      </p>
     </div>
   );
 }
