@@ -3,50 +3,54 @@
  * via webkitRelativePath (same shape as <input webkitdirectory>).
  */
 
-type FileSystemFileEntryLike = {
-  isFile: true;
-  isDirectory: false;
+/** Loose shape — DOM FileSystemEntry uses boolean, not literal true/false. */
+type FsEntry = {
+  isFile: boolean;
+  isDirectory: boolean;
   name: string;
-  file: (
+  file?: (
     successCallback: (file: File) => void,
     errorCallback?: (err: DOMException) => void,
   ) => void;
-};
-
-type FileSystemDirectoryEntryLike = {
-  isFile: false;
-  isDirectory: true;
-  name: string;
-  createReader: () => {
+  createReader?: () => {
     readEntries: (
-      successCallback: (entries: FileSystemEntryLike[]) => void,
+      successCallback: (entries: FsEntry[]) => void,
       errorCallback?: (err: DOMException) => void,
     ) => void;
   };
 };
 
-type FileSystemEntryLike = FileSystemFileEntryLike | FileSystemDirectoryEntryLike;
-
-function getAsEntry(item: DataTransferItem): FileSystemEntryLike | null {
+function getAsEntry(item: DataTransferItem): FsEntry | null {
   const anyItem = item as DataTransferItem & {
-    webkitGetAsEntry?: () => FileSystemEntryLike | null;
-    getAsEntry?: () => FileSystemEntryLike | null;
+    webkitGetAsEntry?: () => unknown;
+    getAsEntry?: () => unknown;
   };
-  return anyItem.webkitGetAsEntry?.() ?? anyItem.getAsEntry?.() ?? null;
+  const raw = anyItem.webkitGetAsEntry?.() ?? anyItem.getAsEntry?.() ?? null;
+  if (!raw || typeof raw !== "object") return null;
+  return raw as FsEntry;
 }
 
-function readFile(entry: FileSystemFileEntryLike): Promise<File> {
+function readFile(entry: FsEntry): Promise<File> {
   return new Promise((resolve, reject) => {
+    if (!entry.file) {
+      reject(new Error("Not a file entry"));
+      return;
+    }
     entry.file(resolve, reject);
   });
 }
 
-async function readAllDirectoryEntries(
-  reader: ReturnType<FileSystemDirectoryEntryLike["createReader"]>,
-): Promise<FileSystemEntryLike[]> {
-  const all: FileSystemEntryLike[] = [];
+type DirectoryReader = {
+  readEntries: (
+    successCallback: (entries: FsEntry[]) => void,
+    errorCallback?: (err: DOMException) => void,
+  ) => void;
+};
+
+async function readAllDirectoryEntries(reader: DirectoryReader): Promise<FsEntry[]> {
+  const all: FsEntry[] = [];
   for (;;) {
-    const batch = await new Promise<FileSystemEntryLike[]>((resolve, reject) => {
+    const batch = await new Promise<FsEntry[]>((resolve, reject) => {
       reader.readEntries(resolve, reject);
     });
     if (!batch.length) break;
@@ -67,23 +71,24 @@ function withRelativePath(file: File, relativePath: string): File {
   return file;
 }
 
-async function traverseEntry(
-  entry: FileSystemEntryLike,
-  pathPrefix: string,
-): Promise<File[]> {
+async function traverseEntry(entry: FsEntry, pathPrefix: string): Promise<File[]> {
   if (entry.isFile) {
     const file = await readFile(entry);
     const relative = pathPrefix ? `${pathPrefix}${entry.name}` : entry.name;
     return [withRelativePath(file, relative)];
   }
 
-  const children = await readAllDirectoryEntries(entry.createReader());
-  const nextPrefix = `${pathPrefix}${entry.name}/`;
-  const out: File[] = [];
-  for (const child of children) {
-    out.push(...(await traverseEntry(child, nextPrefix)));
+  if (entry.isDirectory && entry.createReader) {
+    const children = await readAllDirectoryEntries(entry.createReader());
+    const nextPrefix = `${pathPrefix}${entry.name}/`;
+    const out: File[] = [];
+    for (const child of children) {
+      out.push(...(await traverseEntry(child, nextPrefix)));
+    }
+    return out;
   }
-  return out;
+
+  return [];
 }
 
 /** True when the drag payload includes filesystem files/folders. */
@@ -106,7 +111,7 @@ export async function collectFilesFromDataTransfer(
   const entries = items
     .filter((i) => i.kind === "file")
     .map((i) => getAsEntry(i))
-    .filter((e): e is FileSystemEntryLike => Boolean(e));
+    .filter((e): e is FsEntry => Boolean(e));
   const flatFallback = Array.from(dt.files ?? []);
 
   if (entries.length > 0) {
