@@ -248,15 +248,16 @@ export async function deleteFolder(
   subfolderCount?: number;
   message?: string;
 }> {
-  const res = await apiFetch(
-    `${categoryBasePath(category)}/folders/${id}${force ? "?force=1" : ""}`,
-    { method: "DELETE" },
-  );
+  const res = await apiFetch(`${categoryBasePath(category)}/folders/${id}?force=${force ? "1" : "0"}`, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ force }),
+  });
   const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
   if (!res.ok) {
     return {
       ok: false,
-      message: String(data.message ?? "Could not delete folder"),
+      message: String(data.message ?? data.error ?? "Could not delete folder"),
       code: data.code ? String(data.code) : undefined,
       assetCount: Number(data.assetCount ?? 0),
       subfolderCount: Number(data.subfolderCount ?? 0),
@@ -494,18 +495,26 @@ export function triggerBlobDownload(blob: Blob, filename: string) {
   URL.revokeObjectURL(url);
 }
 
+async function readApiError(res: Response, fallback: string) {
+  const text = await res.text();
+  try {
+    const data = JSON.parse(text) as { message?: string; error?: string };
+    return data.message || data.error || fallback;
+  } catch {
+    return text.slice(0, 180) || fallback;
+  }
+}
+
 export async function downloadFolderZip(
   category: AssetCategory,
   folderId: string,
 ): Promise<void> {
   const res = await apiFetch(
     `${categoryBasePath(category)}/folders/${folderId}/download`,
+    { method: "POST" },
   );
   if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(
-      (err as { message?: string }).message ?? "Could not download folder",
-    );
+    throw new Error(await readApiError(res, "Could not download folder"));
   }
   const blob = await res.blob();
   triggerBlobDownload(blob, filenameFromDisposition(res, "folder.zip"));
@@ -521,10 +530,7 @@ export async function downloadAssetsZip(
     body: JSON.stringify({ assetIds }),
   });
   if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(
-      (err as { message?: string }).message ?? "Could not download files",
-    );
+    throw new Error(await readApiError(res, "Could not download files"));
   }
   const blob = await res.blob();
   triggerBlobDownload(blob, filenameFromDisposition(res, "assets.zip"));
