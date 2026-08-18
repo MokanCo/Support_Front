@@ -17,6 +17,8 @@ import {
   ChevronRight as CrumbSep,
   Home,
   Move,
+  Download,
+  Trash2,
 } from "lucide-react";
 import { useSession } from "@/lib/session-context";
 import {
@@ -29,6 +31,11 @@ import {
   renameFolder,
   deleteFolder,
   moveAssets,
+  downloadFolderZip,
+  downloadAssetsZip,
+  bulkDeleteAssets,
+  fetchAssetFile,
+  triggerBlobDownload,
   MARKETING_ASSET_TYPES,
   type Asset,
   type AssetCategory,
@@ -94,6 +101,7 @@ export function AssetLibrary({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showMove, setShowMove] = useState(false);
   const [moveTarget, setMoveTarget] = useState<string | null>(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   const [folderDropId, setFolderDropId] = useState<string | null>(null);
 
@@ -117,9 +125,14 @@ export function AssetLibrary({
   });
 
   const foldersQuery = useQuery({
-    queryKey: queryKeys.assets.folders(category, folderId),
-    queryFn: () => fetchFolders(category, folderId),
-    enabled: canAccess && !searching,
+    queryKey: searching
+      ? [...queryKeys.assets.all, "folders", category, "search"]
+      : queryKeys.assets.folders(category, folderId),
+    queryFn: () =>
+      searching
+        ? fetchFolders(category, null, { allFolders: true })
+        : fetchFolders(category, folderId),
+    enabled: canAccess,
   });
 
   const pathQuery = useQuery({
@@ -137,9 +150,9 @@ export function AssetLibrary({
   });
 
   const assets = assetsQuery.data ?? [];
-  const folders = searching ? [] : foldersQuery.data ?? [];
+  const folders = foldersQuery.data ?? [];
   const breadcrumbs = folderId ? pathQuery.data ?? [] : [];
-  const loading = assetsQuery.isLoading || (!searching && foldersQuery.isLoading);
+  const loading = assetsQuery.isLoading || foldersQuery.isLoading;
 
   const locationMap = useMemo(() => {
     const map: Record<string, string> = {};
@@ -250,10 +263,10 @@ export function AssetLibrary({
     if (!first.ok && first.code === "FOLDER_NOT_EMPTY") {
       const conf = await Swal.fire({
         title: "Delete this folder?",
-        html: `<p>This folder contains <strong>${first.assetCount ?? 0}</strong> file(s) and <strong>${first.subfolderCount ?? 0}</strong> subfolder(s).</p><p class="mt-2 text-sm text-slate-600">Files will be moved to the parent folder. Nothing is removed from storage.</p>`,
+        html: `<p>This folder contains <strong>${first.assetCount ?? 0}</strong> file(s) and <strong>${first.subfolderCount ?? 0}</strong> subfolder(s).</p><p class="mt-2 text-sm text-slate-600">The folder and every file inside it will be deleted.</p>`,
         icon: "warning",
         showCancelButton: true,
-        confirmButtonText: "Delete folder",
+        confirmButtonText: "Delete folder and files",
         confirmButtonColor: "#dc2626",
       });
       if (!conf.isConfirmed) return;
@@ -267,6 +280,75 @@ export function AssetLibrary({
       return;
     }
     invalidateLibrary();
+  }
+
+  async function handleDownloadFolder(folder: AssetFolder) {
+    try {
+      await downloadFolderZip(category, folder.id);
+    } catch (e) {
+      void Swal.fire({
+        icon: "error",
+        title: "Could not download folder",
+        text: e instanceof Error ? e.message : "Please try again.",
+      });
+    }
+  }
+
+  async function handleBulkDownload() {
+    const ids = [...selectedIds];
+    if (!ids.length) return;
+    setBulkBusy(true);
+    try {
+      if (ids.length === 1) {
+        const asset = assets.find((a) => a.id === ids[0]);
+        const { blob, filename } = await fetchAssetFile(
+          ids[0],
+          category,
+          undefined,
+          asset?.originalFileName || asset?.name,
+          { download: true },
+        );
+        triggerBlobDownload(blob, filename);
+      } else {
+        await downloadAssetsZip(category, ids);
+      }
+    } catch (e) {
+      void Swal.fire({
+        icon: "error",
+        title: "Could not download",
+        text: e instanceof Error ? e.message : "Please try again.",
+      });
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
+  async function handleBulkDelete() {
+    const ids = [...selectedIds];
+    if (!ids.length) return;
+    const conf = await Swal.fire({
+      title: ids.length === 1 ? "Delete this file?" : `Delete ${ids.length} files?`,
+      text: "This cannot be undone.",
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Delete",
+      confirmButtonColor: "#dc2626",
+    });
+    if (!conf.isConfirmed) return;
+    setBulkBusy(true);
+    try {
+      await bulkDeleteAssets(category, ids);
+      setSelectedIds(new Set());
+      invalidateLibrary();
+    } catch (e) {
+      void Swal.fire({
+        icon: "error",
+        title: "Could not delete",
+        text: e instanceof Error ? e.message : "Please try again.",
+      });
+    } finally {
+      setBulkBusy(false);
+    }
   }
 
   async function handleMoveSelected() {
@@ -565,10 +647,34 @@ export function AssetLibrary({
             )}
 
             {isAdmin && selectedIds.size > 0 ? (
-              <Button size="sm" variant="secondary" onClick={() => setShowMove(true)}>
-                <Move className="mr-1.5 h-3.5 w-3.5" />
-                Move ({selectedIds.size})
-              </Button>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={bulkBusy}
+                  onClick={() => void handleBulkDownload()}
+                >
+                  <Download className="mr-1.5 h-3.5 w-3.5" />
+                  Download ({selectedIds.size})
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => setShowMove(true)}
+                >
+                  <Move className="mr-1.5 h-3.5 w-3.5" />
+                  Move ({selectedIds.size})
+                </Button>
+                <Button
+                  size="sm"
+                  variant="danger"
+                  disabled={bulkBusy}
+                  onClick={() => void handleBulkDelete()}
+                >
+                  <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+                  Delete ({selectedIds.size})
+                </Button>
+              </div>
             ) : null}
 
             <div className="ml-auto flex items-center gap-2 text-xs text-slate-500">
@@ -586,7 +692,9 @@ export function AssetLibrary({
           </div>
 
           {searching ? (
-            <p className="mb-3 text-xs text-slate-500">Showing matches across all folders.</p>
+            <p className="mb-3 text-xs text-slate-500">
+              Showing matching folders and files across all folders.
+            </p>
           ) : null}
 
           {filteredFolders.length === 0 && filtered.length === 0 ? (
@@ -595,7 +703,7 @@ export function AssetLibrary({
               <p className="text-sm">
                 {assets.length === 0 && folders.length === 0
                   ? "This folder is empty."
-                  : "No files match your filters."}
+                  : "No files or folders match your filters."}
               </p>
             </div>
           ) : (
@@ -607,9 +715,13 @@ export function AssetLibrary({
                     folder={folder}
                     isAdmin={isAdmin}
                     dropActive={folderDropId === folder.id}
-                    onOpen={() => setFolderId(folder.id)}
+                    onOpen={() => {
+                      setSearch("");
+                      setFolderId(folder.id);
+                    }}
                     onRename={() => void handleRenameFolder(folder)}
                     onDelete={() => void handleDeleteFolder(folder)}
+                    onDownload={() => void handleDownloadFolder(folder)}
                     onDragOver={(e) => {
                       const internal = isInternalAssetDrag(e.dataTransfer);
                       const files = dataTransferHasFiles(e.dataTransfer);

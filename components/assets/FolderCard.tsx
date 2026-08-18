@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Folder, MoreVertical, Pencil, Trash2, FolderOpen } from "lucide-react";
+import { Folder, MoreVertical, Pencil, Trash2, FolderOpen, Download } from "lucide-react";
 import type { AssetFolder } from "@/lib/queries/assets";
 
 interface Props {
@@ -13,6 +13,7 @@ interface Props {
   onSelect?: () => void;
   onRename: () => void;
   onDelete: () => void;
+  onDownload: () => void;
   onDragOver?: (e: React.DragEvent) => void;
   onDragLeave?: (e: React.DragEvent) => void;
   onDrop?: (e: React.DragEvent) => void;
@@ -27,6 +28,7 @@ export function FolderCard({
   onSelect,
   onRename,
   onDelete,
+  onDownload,
   onDragOver,
   onDragLeave,
   onDrop,
@@ -80,58 +82,71 @@ export function FolderCard({
         <span title={folder.name} className="min-w-0 flex-1 truncate text-sm font-medium text-slate-800">
           {folder.name}
         </span>
-        {isAdmin ? (
-          <div className="relative shrink-0" ref={menuRef} data-menu>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setMenuOpen((v) => !v);
-              }}
-              className="flex h-7 w-7 items-center justify-center rounded-full text-slate-500 hover:bg-slate-200/80 hover:text-slate-800"
-              aria-label="Folder actions"
-            >
-              <MoreVertical className="h-4 w-4" />
-            </button>
-            {menuOpen ? (
-              <div className="absolute right-0 top-8 z-20 min-w-[148px] rounded-xl border border-slate-200 bg-white py-1 shadow-lg">
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setMenuOpen(false);
-                    onOpen();
-                  }}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
-                >
-                  <FolderOpen className="h-4 w-4" /> Open
-                </button>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setMenuOpen(false);
-                    onRename();
-                  }}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
-                >
-                  <Pencil className="h-4 w-4" /> Rename
-                </button>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setMenuOpen(false);
-                    onDelete();
-                  }}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50"
-                >
-                  <Trash2 className="h-4 w-4" /> Delete
-                </button>
-              </div>
-            ) : null}
-          </div>
-        ) : null}
+        <div className="relative shrink-0" ref={menuRef} data-menu>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setMenuOpen((v) => !v);
+            }}
+            className="flex h-7 w-7 items-center justify-center rounded-full text-slate-500 hover:bg-slate-200/80 hover:text-slate-800"
+            aria-label="Folder actions"
+          >
+            <MoreVertical className="h-4 w-4" />
+          </button>
+          {menuOpen ? (
+            <div className="absolute right-0 top-8 z-20 min-w-[148px] rounded-xl border border-slate-200 bg-white py-1 shadow-lg">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setMenuOpen(false);
+                  onOpen();
+                }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+              >
+                <FolderOpen className="h-4 w-4" /> Open
+              </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setMenuOpen(false);
+                  onDownload();
+                }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+              >
+                <Download className="h-4 w-4" /> Download
+              </button>
+              {isAdmin ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setMenuOpen(false);
+                      onRename();
+                    }}
+                    className="flex w-full items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                  >
+                    <Pencil className="h-4 w-4" /> Rename
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setMenuOpen(false);
+                      onDelete();
+                    }}
+                    className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50"
+                  >
+                    <Trash2 className="h-4 w-4" /> Delete
+                  </button>
+                </>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
       </div>
 
       <div className="p-2">
