@@ -152,9 +152,11 @@ function normalizeFolder(raw: Record<string, unknown>): AssetFolder {
 export async function fetchFolders(
   category: AssetCategory,
   parentId: string | null = null,
+  opts?: { allFolders?: boolean },
 ): Promise<AssetFolder[]> {
   const params = new URLSearchParams();
-  if (parentId) params.set("parentId", parentId);
+  if (opts?.allFolders) params.set("allFolders", "1");
+  else if (parentId) params.set("parentId", parentId);
   const qs = params.toString();
   const res = await apiFetch(
     `${categoryBasePath(category)}/folders${qs ? `?${qs}` : ""}`,
@@ -237,7 +239,15 @@ export async function deleteFolder(
   category: AssetCategory,
   id: string,
   force = false,
-): Promise<{ ok: boolean; movedAssets?: number; deletedFolders?: number; code?: string; assetCount?: number; subfolderCount?: number; message?: string }> {
+): Promise<{
+  ok: boolean;
+  deletedAssets?: number;
+  deletedFolders?: number;
+  code?: string;
+  assetCount?: number;
+  subfolderCount?: number;
+  message?: string;
+}> {
   const res = await apiFetch(
     `${categoryBasePath(category)}/folders/${id}${force ? "?force=1" : ""}`,
     { method: "DELETE" },
@@ -254,7 +264,7 @@ export async function deleteFolder(
   }
   return {
     ok: true,
-    movedAssets: Number(data.movedAssets ?? 0),
+    deletedAssets: Number(data.deletedAssets ?? 0),
     deletedFolders: Number(data.deletedFolders ?? 0),
   };
 }
@@ -463,4 +473,78 @@ export async function fetchAssetFile(
   const filename = preferredFilename?.trim() || rawName || "file";
   const blob = await res.blob();
   return { blob, filename };
+}
+
+function filenameFromDisposition(res: Response, fallback: string) {
+  const cd = res.headers.get("content-disposition") ?? "";
+  const match = cd.match(/filename\*?=(?:UTF-8''|(['"]))?([^'";\n]+)\1?/i);
+  const rawName = match?.[2] ? decodeURIComponent(match[2]) : "";
+  return rawName || fallback;
+}
+
+export function triggerBlobDownload(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.rel = "noopener";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+export async function downloadFolderZip(
+  category: AssetCategory,
+  folderId: string,
+): Promise<void> {
+  const res = await apiFetch(
+    `${categoryBasePath(category)}/folders/${folderId}/download`,
+  );
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(
+      (err as { message?: string }).message ?? "Could not download folder",
+    );
+  }
+  const blob = await res.blob();
+  triggerBlobDownload(blob, filenameFromDisposition(res, "folder.zip"));
+}
+
+export async function downloadAssetsZip(
+  category: AssetCategory,
+  assetIds: string[],
+): Promise<void> {
+  const res = await apiFetch(`${categoryBasePath(category)}/download-zip`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ assetIds }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(
+      (err as { message?: string }).message ?? "Could not download files",
+    );
+  }
+  const blob = await res.blob();
+  triggerBlobDownload(blob, filenameFromDisposition(res, "assets.zip"));
+}
+
+export async function bulkDeleteAssets(
+  category: AssetCategory,
+  assetIds: string[],
+): Promise<{ deleted: number }> {
+  const res = await apiFetch(`${categoryBasePath(category)}/bulk-delete`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ assetIds }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(
+      (err as { message?: string }).message ?? "Could not delete files",
+    );
+  }
+  const data = (await res.json()) as { deleted?: number };
+  return { deleted: Number(data.deleted ?? 0) };
 }
