@@ -296,7 +296,10 @@ export function AssetLibrary({
       void Swal.fire({
         icon: "error",
         title: "Could not download folder",
-        text: e instanceof Error ? e.message : "Please try again.",
+        text:
+          e instanceof Error
+            ? e.message
+            : "Partners cannot download a folder that contains videos. Individual non-video files can still be downloaded.",
       });
     }
   }
