@@ -1,152 +1,469 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
-import { Card, CardBody, CardHeader } from "@/components/ui/Card";
-import { fetchArDashboard, moneyFmt } from "@/lib/queries/ar";
+import { useMemo } from "react";
+import {
+  AlertTriangle,
+  Banknote,
+  CalendarClock,
+  CircleDollarSign,
+  Clock3,
+  FileCheck2,
+  Hourglass,
+  Percent,
+  Send,
+  TrendingUp,
+  Wallet,
+} from "lucide-react";
+import { PartnerAccountsHome } from "@/components/ar/partner-accounts-home";
+import {
+  AreaTrendChart,
+  BarTrendChart,
+  CollectionsHeatmap,
+  DonutChart,
+  HorizontalBarChart,
+  RadialProgressChart,
+  RevenueTreemap,
+} from "@/components/ar/ui/charts";
+import { ArFilterBar } from "@/components/ar/ui/filter-bar";
+import { KpiCard, KpiCardSkeleton } from "@/components/ar/ui/kpi-card";
+import { Panel, PanelBody, PanelHeader } from "@/components/ar/ui/panel";
+import {
+  Amount,
+  ErrorState,
+  SkeletonChart,
+} from "@/components/ar/ui/primitives";
+import {
+  agingSummary,
+  collectionsHeatmap,
+  computeMetrics,
+  computePreviousMetrics,
+  filterCredits,
+  filterInvoices,
+  filterPayments,
+  monthlySeries,
+  outstandingByCustomer,
+  revenueByCustomer,
+  statusDistribution,
+  useArDataset,
+} from "@/lib/ar/dataset";
+import { describeRange, useArFilters } from "@/lib/ar/filters";
+import { count, money, percentChange, ratio } from "@/lib/ar/format";
+import { ACCENTS, invoiceStatus } from "@/lib/ar/theme";
+import { useSession } from "@/lib/session-context";
 
-function Kpi({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-      <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
-        {label}
-      </div>
-      <div className="mt-2 text-xl font-semibold text-slate-900">{value}</div>
-    </div>
-  );
-}
+const HEATMAP_WEEKS = 14;
 
-function BarList({
-  items,
-}: {
-  items: { label: string; total: number }[];
-}) {
-  const max = Math.max(1, ...items.map((i) => i.total));
-  return (
-    <div className="space-y-2">
-      {items.length === 0 ? (
-        <p className="text-sm text-slate-500">No data yet</p>
-      ) : (
-        items.map((item) => (
-          <div key={item.label}>
-            <div className="mb-1 flex justify-between text-xs text-slate-600">
-              <span>{item.label}</span>
-              <span>{moneyFmt(item.total)}</span>
-            </div>
-            <div className="h-2 overflow-hidden rounded-full bg-slate-100">
-              <div
-                className="h-full rounded-full bg-primary-500"
-                style={{ width: `${(item.total / max) * 100}%` }}
-              />
-            </div>
-          </div>
-        ))
-      )}
-    </div>
-  );
-}
-
-export default function ArDashboardPage() {
-  const { data, isLoading, error } = useQuery({
-    queryKey: ["ar", "dashboard"],
-    queryFn: () => fetchArDashboard(),
-  });
-
-  if (isLoading) {
-    return <p className="text-sm text-slate-500">Loading AR dashboard…</p>;
+export default function AccountsInsightsPage() {
+  const { user } = useSession();
+  if (user.role === "partner") {
+    return <PartnerAccountsHome />;
   }
-  if (error || !data) {
+
+  return <StaffAccountsInsights />;
+}
+
+function StaffAccountsInsights() {
+  const { filters } = useArFilters();
+  const { data, isLoading, error, refetch } = useArDataset();
+
+  const view = useMemo(() => {
+    const now = new Date();
+    const invoices = filterInvoices(data.invoices, filters, now);
+    const payments = filterPayments(data.payments, filters, data.invoices, now);
+    const credits = filterCredits(data.credits, filters);
+    const metrics = computeMetrics(invoices, payments, credits, now, data.invoices);
+    const previous = computePreviousMetrics(data, filters, now);
+
+    return {
+      invoices,
+      payments,
+      metrics,
+      previous,
+      months: monthlySeries(invoices, payments, 12, now),
+      aging: agingSummary(invoices, now),
+      byCustomer: revenueByCustomer(invoices),
+      outstandingBy: outstandingByCustomer(invoices),
+      statuses: statusDistribution(invoices),
+      heatmap: collectionsHeatmap(payments, HEATMAP_WEEKS, now),
+    };
+  }, [data, filters]);
+
+  const { metrics, previous } = view;
+  const comparison = previous ? "vs previous period" : describeRange(filters);
+  const change = (current: number, key: keyof typeof metrics) =>
+    previous ? percentChange(current, Number(previous[key]) || 0) : null;
+
+  const cashFlow = view.months.map((m) => ({
+    ...m,
+    net: m.collected - m.revenue,
+  }));
+
+  if (error) {
     return (
-      <p className="text-sm text-red-600">
-        {(error as Error)?.message || "Failed to load dashboard"}
-      </p>
+      <ErrorState message={(error as Error).message} onRetry={() => refetch()} />
     );
   }
 
-  const { kpis, charts } = data;
-  const monthLabel = (r: { year?: number; month?: number; total: number }) => ({
-    label: r.year && r.month ? `${r.year}-${String(r.month).padStart(2, "0")}` : "—",
-    total: r.total,
-  });
-
-  const agingRaw = charts.aging as unknown;
-  const agingItems = Array.isArray(agingRaw)
-    ? (agingRaw as { bucket: string; total: number }[]).map((a) => ({
-        label: a.bucket,
-        total: Number(a.total) || 0,
-      }))
-    : agingRaw && typeof agingRaw === "object"
-      ? Object.entries(agingRaw as Record<string, number>).map(([bucket, total]) => ({
-          label: bucket,
-          total: Number(total) || 0,
-        }))
-      : [];
-
   return (
-    <div className="space-y-6">
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        <Kpi label="Outstanding" value={moneyFmt(kpis.outstandingBalance)} />
-        <Kpi label="Current" value={moneyFmt(kpis.currentBalance)} />
-        <Kpi label="Overdue" value={moneyFmt(kpis.overdueBalance)} />
-        <Kpi label="Collected (Month)" value={moneyFmt(kpis.collectedThisMonth)} />
-        <Kpi label="Collected (Year)" value={moneyFmt(kpis.collectedThisYear)} />
-      </div>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        <Kpi label="Total Invoices" value={kpis.totalInvoices} />
-        <Kpi label="Paid" value={kpis.paidInvoices} />
-        <Kpi label="Partially Paid" value={kpis.partiallyPaid} />
-        <Kpi label="Overdue Invoices" value={kpis.overdueInvoices} />
-        <Kpi label="Draft" value={kpis.draftInvoices} />
+    <div className="space-y-5">
+      {/* filters */}
+      <Panel className="sticky top-0 z-30" padded={false} overflowVisible>
+        <div className="px-4 py-3 sm:px-5">
+          <ArFilterBar />
+        </div>
+      </Panel>
+
+      {/* KPI cards */}
+      {isLoading ? (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+          {Array.from({ length: 10 }).map((_, i) => (
+            <KpiCardSkeleton key={i} />
+          ))}
+        </div>
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+          <KpiCard
+            label="Total revenue"
+            value={money(metrics.totalRevenue)}
+            icon={TrendingUp}
+            accent="blue"
+            changePct={change(metrics.totalRevenue, "totalRevenue")}
+            comparison={comparison}
+          />
+          <KpiCard
+            label="Outstanding receivables"
+            value={money(metrics.outstanding)}
+            icon={Wallet}
+            accent="purple"
+            changePct={change(metrics.outstanding, "outstanding")}
+            upIsGood={false}
+            comparison={comparison}
+          />
+          <KpiCard
+            label="Overdue amount"
+            value={money(metrics.overdue)}
+            icon={AlertTriangle}
+            accent="red"
+            changePct={change(metrics.overdue, "overdue")}
+            upIsGood={false}
+            comparison={comparison}
+          />
+          <KpiCard
+            label="Collected"
+            value={money(metrics.collected)}
+            icon={CircleDollarSign}
+            accent="green"
+            changePct={change(metrics.collected, "collected")}
+            comparison={comparison}
+          />
+          <KpiCard
+            label="Monthly cash flow"
+            value={money(
+              cashFlow.length ? cashFlow[cashFlow.length - 1].collected : 0,
+            )}
+            icon={Banknote}
+            accent="teal"
+            changePct={
+              cashFlow.length > 1
+                ? percentChange(
+                    cashFlow[cashFlow.length - 1].collected,
+                    cashFlow[cashFlow.length - 2].collected,
+                  )
+                : null
+            }
+            comparison="vs previous month"
+          />
+          <KpiCard
+            label="Invoices sent"
+            value={count(metrics.invoicesSent)}
+            icon={Send}
+            accent="indigo"
+            changePct={change(metrics.invoicesSent, "invoicesSent")}
+            comparison={comparison}
+          />
+          <KpiCard
+            label="Invoices paid"
+            value={count(metrics.invoicesPaid)}
+            icon={FileCheck2}
+            accent="green"
+            changePct={change(metrics.invoicesPaid, "invoicesPaid")}
+            comparison={comparison}
+          />
+          <KpiCard
+            label="Pending payments"
+            value={count(metrics.pendingPayments)}
+            icon={Hourglass}
+            accent="orange"
+            changePct={change(metrics.pendingPayments, "pendingPayments")}
+            upIsGood={false}
+            comparison={comparison}
+          />
+          <KpiCard
+            label="Average payment time"
+            value={
+              metrics.avgPaymentDays == null
+                ? "—"
+                : `${metrics.avgPaymentDays.toFixed(1)} days`
+            }
+            icon={Clock3}
+            accent="slate"
+            changePct={
+              previous && metrics.avgPaymentDays != null && previous.avgPaymentDays
+                ? percentChange(metrics.avgPaymentDays, previous.avgPaymentDays)
+                : null
+            }
+            upIsGood={false}
+            comparison={comparison}
+          />
+          <KpiCard
+            label="Late fees collected"
+            value={money(metrics.lateFees)}
+            icon={Percent}
+            accent="orange"
+            changePct={change(metrics.lateFees, "lateFees")}
+            comparison={comparison}
+          />
+        </div>
+      )}
+
+      {/* revenue + collections */}
+      <div className="grid gap-4 xl:grid-cols-3">
+        <Panel className="xl:col-span-2" padded={false}>
+          <PanelHeader
+            title="Monthly revenue & collections"
+            description="Invoiced value against cash actually received"
+          />
+          <PanelBody className="pt-2">
+            {isLoading ? (
+              <SkeletonChart />
+            ) : (
+              <AreaTrendChart
+                data={view.months}
+                xKey="label"
+                stacked={false}
+                series={[
+                  { key: "revenue", label: "Invoiced", color: ACCENTS.blue.hex },
+                  { key: "collected", label: "Collected", color: ACCENTS.green.hex },
+                ]}
+              />
+            )}
+          </PanelBody>
+        </Panel>
+
+        <Panel padded={false}>
+          <PanelHeader
+            title="Collection progress"
+            description="Share of invoiced value received"
+          />
+          <PanelBody>
+            {isLoading ? (
+              <SkeletonChart height={220} />
+            ) : (
+              <>
+                <RadialProgressChart
+                  value={metrics.collectionRate ?? 0}
+                  label="Collected"
+                  color={ACCENTS.green.hex}
+                />
+                <dl className="mt-3 space-y-2 border-t border-slate-100 pt-3 text-sm">
+                  <div className="flex items-center justify-between">
+                    <dt className="text-slate-500">Invoiced</dt>
+                    <dd>
+                      <Amount value={metrics.totalRevenue} />
+                    </dd>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <dt className="text-slate-500">Collected</dt>
+                    <dd className="tabular-nums font-medium text-emerald-600">
+                      {money(metrics.collected)}
+                    </dd>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <dt className="text-slate-500">Still outstanding</dt>
+                    <dd className="tabular-nums font-medium text-amber-600">
+                      {money(metrics.outstanding)}
+                    </dd>
+                  </div>
+                </dl>
+              </>
+            )}
+          </PanelBody>
+        </Panel>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
-          <CardHeader title="Monthly Revenue" />
-          <CardBody>
-            <BarList
-              items={(charts.monthlyRevenue || []).map((r) =>
-                monthLabel(r as { year?: number; month?: number; total: number }),
-              )}
-            />
-          </CardBody>
-        </Card>
-        <Card>
-          <CardHeader title="Monthly Collections" />
-          <CardBody>
-            <BarList
-              items={(charts.monthlyCollections || []).map((r) =>
-                monthLabel(r as { year?: number; month?: number; total: number }),
-              )}
-            />
-          </CardBody>
-        </Card>
-        <Card>
-          <CardHeader title="Invoice Status" />
-          <CardBody>
-            <div className="space-y-2">
-              {(charts.statusDistribution || []).map((s) => (
-                <div
-                  key={s.status}
-                  className="flex items-center justify-between text-sm"
-                >
-                  <span className="capitalize text-slate-700">
-                    {String(s.status).replace(/_/g, " ")}
-                  </span>
-                  <span className="font-medium text-slate-900">{s.count}</span>
+      {/* status + aging */}
+      <div className="grid gap-4 xl:grid-cols-3">
+        <Panel padded={false}>
+          <PanelHeader
+            title="Invoice status"
+            description="Distribution across the lifecycle"
+          />
+          <PanelBody>
+            {isLoading ? (
+              <SkeletonChart height={240} />
+            ) : (
+              <DonutChart
+                data={view.statuses.map((s) => ({
+                  name: invoiceStatus(s.name).label,
+                  value: s.count,
+                  color: invoiceStatus(s.name).hex,
+                }))}
+                centerValue={count(view.invoices.length)}
+                centerLabel="Invoices"
+                valueFormatter={(n) => `${count(n)} invoices`}
+              />
+            )}
+          </PanelBody>
+        </Panel>
+
+        <Panel className="xl:col-span-2" padded={false}>
+          <PanelHeader
+            title="Outstanding aging"
+            description="Balance still due by how far past the due date it sits"
+          />
+          <PanelBody className="pt-2">
+            {isLoading ? (
+              <SkeletonChart height={240} />
+            ) : (
+              <>
+                <BarTrendChart
+                  data={view.aging}
+                  xKey="label"
+                  height={220}
+                  series={[
+                    { key: "total", label: "Balance due", color: ACCENTS.orange.hex },
+                  ]}
+                  emptyMessage="Nothing is outstanding in this range."
+                />
+                <div className="mt-3 grid grid-cols-2 gap-2 border-t border-slate-100 pt-3 sm:grid-cols-5">
+                  {view.aging.map((bucket) => (
+                    <div key={bucket.bucket} className="rounded-xl bg-slate-50 p-2.5">
+                      <p className="truncate text-[11px] font-medium text-slate-500">
+                        {bucket.label}
+                      </p>
+                      <p className="mt-0.5 truncate text-sm font-semibold tabular-nums text-slate-900">
+                        {money(bucket.total)}
+                      </p>
+                      <p className="text-[11px] text-slate-400">
+                        {count(bucket.count)} invoice
+                        {bucket.count === 1 ? "" : "s"}
+                      </p>
+                    </div>
+                  ))}
                 </div>
-              ))}
-              {!charts.statusDistribution?.length ? (
-                <p className="text-sm text-slate-500">No invoices yet</p>
-              ) : null}
-            </div>
-          </CardBody>
-        </Card>
-        <Card>
-          <CardHeader title="Aging (30 / 60 / 90)" />
-          <CardBody>
-            <BarList items={agingItems} />
-          </CardBody>
-        </Card>
+              </>
+            )}
+          </PanelBody>
+        </Panel>
       </div>
+
+      {/* cash flow + top customers */}
+      <div className="grid gap-4 xl:grid-cols-2">
+        <Panel padded={false}>
+          <PanelHeader
+            title="Cash flow"
+            description="Invoiced versus collected, month by month"
+          />
+          <PanelBody className="pt-2">
+            {isLoading ? (
+              <SkeletonChart />
+            ) : (
+              <BarTrendChart
+                data={cashFlow}
+                xKey="label"
+                series={[
+                  { key: "revenue", label: "Invoiced", color: ACCENTS.indigo.hex },
+                  { key: "collected", label: "Collected", color: ACCENTS.teal.hex },
+                ]}
+              />
+            )}
+          </PanelBody>
+        </Panel>
+
+        <Panel padded={false}>
+          <PanelHeader
+            title="Top customers by revenue"
+            description="Highest invoiced accounts in this range"
+          />
+          <PanelBody className="pt-2">
+            {isLoading ? (
+              <SkeletonChart />
+            ) : (
+              <HorizontalBarChart
+                data={view.byCustomer.map((c) => ({ name: c.name, value: c.value }))}
+              />
+            )}
+          </PanelBody>
+        </Panel>
+      </div>
+
+      {/* treemap + outstanding by customer */}
+      <div className="grid gap-4 xl:grid-cols-2">
+        <Panel padded={false}>
+          <PanelHeader
+            title="Revenue by partner"
+            description="Relative contribution of each partner location"
+          />
+          <PanelBody className="pt-2">
+            {isLoading ? (
+              <SkeletonChart />
+            ) : (
+              <RevenueTreemap
+                data={view.byCustomer.map((c) => ({ name: c.name, value: c.value }))}
+              />
+            )}
+          </PanelBody>
+        </Panel>
+
+        <Panel padded={false}>
+          <PanelHeader
+            title="Who owes the most"
+            description="Open balance ranked by customer"
+          />
+          <PanelBody className="pt-2">
+            {isLoading ? (
+              <SkeletonChart />
+            ) : (
+              <HorizontalBarChart
+                data={view.outstandingBy.map((c) => ({
+                  name: c.name,
+                  value: c.value,
+                }))}
+                color={ACCENTS.red.hex}
+                emptyMessage="Every account is settled in this range."
+              />
+            )}
+          </PanelBody>
+        </Panel>
+      </div>
+
+      {/* collections heatmap */}
+      <Panel padded={false}>
+        <PanelHeader
+          title="Collection activity"
+          description={`Payments received over the last ${HEATMAP_WEEKS} weeks`}
+          action={
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
+              <CalendarClock className="h-3.5 w-3.5" />
+              {ratio(metrics.collectionRate, 0)} collected
+            </span>
+          }
+        />
+        <PanelBody>
+          {isLoading ? (
+            <SkeletonChart height={160} />
+          ) : (
+            <CollectionsHeatmap cells={view.heatmap} weeks={HEATMAP_WEEKS} />
+          )}
+        </PanelBody>
+      </Panel>
+
+      {data.truncated ? (
+        <p className="text-center text-xs text-slate-400">
+          Showing the most recent 2,000 records. Narrow the date range for an exact
+          view of older periods.
+        </p>
+      ) : null}
     </div>
   );
 }
