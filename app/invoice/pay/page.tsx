@@ -13,6 +13,7 @@ import {
   fetchPublicInvoice,
   submitPublicInvoicePayment,
 } from "@/lib/queries/public-invoice";
+import { payableBreakdown } from "@/lib/stripe/payable";
 import { resolveMediaUrl } from "@/lib/erp/media-url";
 
 /** How long to keep polling after a Stripe redirect before giving up and
@@ -47,6 +48,7 @@ function PublicPayInner() {
   const [proof, setProof] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  const [payMethod, setPayMethod] = useState<"stripe" | "zelle" | null>(null);
   const [finalizingStripe, setFinalizingStripe] = useState(
     stripeStatus === "success",
   );
@@ -106,6 +108,22 @@ function PublicPayInner() {
   const qrSrc = useMemo(
     () => resolveMediaUrl(zelle?.qrCodeUrl || ""),
     [zelle?.qrCodeUrl],
+  );
+  const stripeEnabled = Boolean(stripe?.enabled);
+  const zelleEnabled = Boolean(zelle?.enabled);
+  const selectedMethod: "stripe" | "zelle" | null =
+    payMethod ??
+    (zelleEnabled && stripeEnabled
+      ? "zelle"
+      : stripeEnabled
+        ? "stripe"
+        : zelleEnabled
+          ? "zelle"
+          : null);
+  const payTotals = payableBreakdown(
+    selectedMethod || "",
+    invoice?.balanceDue ?? 0,
+    stripe?.fee,
   );
 
   if (!token) {
@@ -288,7 +306,36 @@ function PublicPayInner() {
             </Card>
           ) : (
             <>
-              {stripeStatus === "cancelled" ? (
+              {stripeEnabled && zelleEnabled ? (
+                <Card>
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                    Payment method
+                  </p>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    <MethodChoice
+                      selected={selectedMethod === "stripe"}
+                      label={stripe?.label || "Card (Stripe)"}
+                      hint="Includes processing fee"
+                      onClick={() => {
+                        setPayMethod("stripe");
+                        setConfirmOpen(false);
+                        setError(null);
+                      }}
+                    />
+                    <MethodChoice
+                      selected={selectedMethod === "zelle"}
+                      label={zelle?.label || "Zelle"}
+                      hint="Invoice amount only"
+                      onClick={() => {
+                        setPayMethod("zelle");
+                        setError(null);
+                      }}
+                    />
+                  </div>
+                </Card>
+              ) : null}
+
+              {stripeStatus === "cancelled" && selectedMethod === "stripe" ? (
                 <Card>
                   <p className="text-sm text-amber-900">
                     Your card payment was cancelled. You can try again below.
@@ -296,7 +343,7 @@ function PublicPayInner() {
                 </Card>
               ) : null}
 
-              {stripe?.enabled ? (
+              {stripeEnabled && selectedMethod === "stripe" ? (
                 <Card>
                   <p className="text-xs font-semibold uppercase tracking-[0.14em] text-indigo-700">
                     Pay with Card
@@ -306,11 +353,19 @@ function PublicPayInner() {
                   </h2>
                   <p className="mt-1 text-sm text-slate-500">
                     You&apos;ll be redirected to Stripe&apos;s secure checkout page. Your invoice
-                    is marked paid automatically as soon as the payment is confirmed.
+                    is marked paid automatically as soon as the payment is confirmed. The
+                    processing fee is added so the business receives the invoice amount in full.
                   </p>
                   <dl className="mt-5 space-y-2 text-sm">
-                    <Row label="Amount" value={money(invoice.balanceDue)} bold />
-                    <Row label="Invoice" value={invoice.invoiceNumber} bold />
+                    <Row label="Invoice amount" value={money(payTotals.invoiceAmount)} />
+                    {payTotals.showFee ? (
+                      <Row
+                        label="Card processing fee"
+                        value={payTotals.percentLabel || "—"}
+                      />
+                    ) : null}
+                    <Row label="Total" value={money(payTotals.total)} bold accent />
+                    <Row label="Invoice" value={invoice.invoiceNumber} />
                   </dl>
                   {error ? <p className="mt-3 text-sm text-rose-600">{error}</p> : null}
                   <Button
@@ -326,13 +381,13 @@ function PublicPayInner() {
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Redirecting to Stripe…
                       </>
                     ) : (
-                      "Pay with Card"
+                      `Pay ${money(payTotals.total)} with Card`
                     )}
                   </Button>
                 </Card>
               ) : null}
 
-              {zelle?.enabled ? (
+              {zelleEnabled && selectedMethod === "zelle" ? (
                 <Card>
                   <p className="text-xs font-semibold uppercase tracking-[0.14em] text-teal-700">
                     Pay with Zelle
@@ -476,16 +531,17 @@ function Shell({
     <div className="min-h-dvh bg-[radial-gradient(ellipse_at_top,_#ecfdf5_0%,_#f8fafc_45%,_#f1f5f9_100%)]">
       <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-12">
         <header className="mb-8 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center">
             {logoUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={resolveMediaUrl(logoUrl)} alt="" className="h-10 w-auto" />
+              <img
+                src={resolveMediaUrl(logoUrl)}
+                alt={company || "Company logo"}
+                className="h-12 w-auto max-w-[220px] object-contain sm:h-14"
+              />
             ) : (
-              <BrandLogo className="h-9 w-auto" />
+              <BrandLogo className="h-12 w-12 sm:h-14 sm:w-14" />
             )}
-            {company ? (
-              <span className="text-sm font-semibold text-slate-700">{company}</span>
-            ) : null}
           </div>
           <p className="text-xs text-slate-500">Secure invoice payment</p>
         </header>
@@ -514,14 +570,43 @@ function Card({
   );
 }
 
+function MethodChoice({
+  selected,
+  label,
+  hint,
+  onClick,
+}: {
+  selected: boolean;
+  label: string;
+  hint: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-xl border px-3 py-3 text-left transition ${
+        selected
+          ? "border-indigo-400 bg-indigo-50 ring-1 ring-indigo-200"
+          : "border-slate-200 bg-white hover:border-slate-300"
+      }`}
+    >
+      <span className="block text-sm font-semibold text-slate-900">{label}</span>
+      <span className="mt-0.5 block text-xs text-slate-500">{hint}</span>
+    </button>
+  );
+}
+
 function Row({
   label,
   value,
+  subValue,
   bold,
   accent,
 }: {
   label: string;
   value: string;
+  subValue?: string;
   bold?: boolean;
   accent?: boolean;
 }) {
@@ -529,11 +614,14 @@ function Row({
     <div className="flex items-baseline justify-between gap-4">
       <dt className="text-slate-500">{label}</dt>
       <dd
-        className={`tabular-nums ${
+        className={`text-right tabular-nums ${
           accent ? "text-teal-800" : "text-slate-900"
         } ${bold ? "font-semibold" : ""}`}
       >
         {value}
+        {subValue ? (
+          <span className="mt-0.5 block text-xs font-normal text-slate-500">{subValue}</span>
+        ) : null}
       </dd>
     </div>
   );

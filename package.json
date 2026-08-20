@@ -9,7 +9,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "npx --yes serve@14 out",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test": "node --test lib/stripe/payable.test.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

@@ -504,7 +504,9 @@ export default function ArSettingsPage() {
                           <p className="text-xs font-medium text-indigo-900">
                             Card payments are processed by Stripe Checkout — customers are
                             redirected to Stripe&apos;s secure hosted page, and the invoice is
-                            marked paid automatically once Stripe confirms the charge.
+                            marked paid automatically once Stripe confirms the charge. Customers
+                            are charged a processing fee so you receive the original invoice
+                            amount.
                           </p>
                           <p className="text-xs text-indigo-700">
                             Set <code className="rounded bg-white/70 px-1">STRIPE_SECRET_KEY</code>{" "}

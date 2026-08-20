@@ -257,7 +257,19 @@ export default function ArPaymentsPage() {
         header: "Amount",
         accessor: (row) => toNumber(row.amount),
         align: "right",
-        cell: (row) => <Money value={row.amount} tone="positive" />,
+        cell: (row) => (
+          <div className="text-right">
+            <Money value={row.amount} tone="positive" />
+            {row.paymentMethod === "stripe" && toNumber(row.stripeChargeAmount) > 0 ? (
+              <p className="text-[11px] text-slate-500">
+                Customer paid {money(row.stripeChargeAmount)}
+                {toNumber(row.stripeProcessingFee) > 0
+                  ? ` (fee ${money(row.stripeProcessingFee)})`
+                  : ""}
+              </p>
+            ) : null}
+          </div>
+        ),
       },
     ],
     [],

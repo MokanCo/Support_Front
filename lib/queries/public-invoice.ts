@@ -60,6 +60,18 @@ export type PublicInvoicePayload = {
   stripe: {
     enabled: boolean;
     label?: string;
+    fee?: {
+      invoiceAmountCents: number;
+      stripeFeeCents: number;
+      stripeChargeAmountCents: number;
+      originalAmount: number;
+      stripeProcessingFee: number;
+      stripeChargeAmount: number;
+      currency: string;
+      paymentMethod: string;
+      percent?: number;
+      fixedFeeCents?: number;
+    };
   };
 };
 
@@ -119,8 +131,17 @@ export function publicInvoicePayHref(token: string) {
  *  URL — the invoice is only marked paid once Stripe's webhook confirms the
  *  charge server-side, never on this call or the client redirect alone. */
 export async function createPublicStripeCheckoutSession(token: string) {
-  return publicJson<{ url: string }>(
-    `/api/public/invoices/${encodeURIComponent(token)}/stripe-checkout-session`,
-    { method: "POST" },
-  );
+  return publicJson<{
+    url: string;
+    originalAmount?: number;
+    stripeProcessingFee?: number;
+    stripeChargeAmount?: number;
+    currency?: string;
+    invoiceAmountCents?: number;
+    stripeFeeCents?: number;
+    stripeChargeAmountCents?: number;
+    paymentMethod?: string;
+  }>(`/api/public/invoices/${encodeURIComponent(token)}/stripe-checkout-session`, {
+    method: "POST",
+  });
 }

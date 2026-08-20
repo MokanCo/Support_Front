@@ -327,9 +327,16 @@ export type ArPayment = {
   locationId?: string;
   locationName?: string;
   amount: number;
+  originalAmount?: number;
+  stripeProcessingFee?: number;
+  stripeChargeAmount?: number;
+  currency?: string;
   paymentDate?: string;
   paymentMethod?: string;
+  paymentStatus?: string;
   transactionReference?: string;
+  stripePaymentIntentId?: string;
+  stripeCheckoutSessionId?: string;
   notes?: string;
   createdAt?: string;
 };
