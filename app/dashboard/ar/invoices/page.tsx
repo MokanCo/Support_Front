@@ -286,6 +286,20 @@ export default function ArInvoicesPage() {
         accessor: (row) => row.locationName ?? row.locationId,
       },
       {
+        id: "description",
+        header: "Description",
+        width: "w-64",
+        accessor: (row) => row.notes ?? "",
+        cell: (row) =>
+          row.notes ? (
+            <span className="line-clamp-2 text-slate-600" title={row.notes}>
+              {row.notes}
+            </span>
+          ) : (
+            <span className="text-slate-400">—</span>
+          ),
+      },
+      {
         id: "issued",
         header: "Issued",
         accessor: (row) => row.invoiceDate ?? "",
