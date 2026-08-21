@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type SyntheticEvent } from "react";
+import { createPortal } from "react-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Download, Loader2, Maximize, Pause, Play, Volume2, VolumeX, X } from "lucide-react";
 import {
@@ -270,7 +271,12 @@ export function AssetViewerModal({
   const isPdf = mimeType === "application/pdf";
   const isVideo = mimeType.startsWith("video/");
   const [downloading, setDownloading] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const showDownload = Boolean(canDownload && onDownload);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const inlineQuery = useQuery({
     ...assetInlineFileQueryOptions(category ?? "documents", assetId ?? ""),
@@ -308,7 +314,7 @@ export function AssetViewerModal({
     }
   }
 
-  return (
+  const dialog = (
     <div
       className="fixed inset-0 z-[600] flex items-center justify-center bg-slate-900/55 p-4 backdrop-blur-sm"
       onClick={onClose}
@@ -387,4 +393,7 @@ export function AssetViewerModal({
       </div>
     </div>
   );
+
+  if (!mounted || typeof document === "undefined") return null;
+  return createPortal(dialog, document.body);
 }
