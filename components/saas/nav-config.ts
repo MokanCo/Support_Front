@@ -9,7 +9,7 @@ import {
   ClipboardList,
   FileText,
   ImageIcon,
-  Wallet,
+  // Wallet,
 } from "lucide-react";
 import type { UserRole } from "@/lib/user-roles";
 
@@ -50,12 +50,12 @@ export const NAV_ITEMS: NavItem[] = [
     roles: ["admin", "support"],
     badgeSource: "conversations",
   },
-  {
-    href: "/dashboard/ar",
-    label: "Accounts Receivable",
-    icon: Wallet,
-    roles: ["admin", "support", "partner"],
-  },
+  // {
+  //   href: "/dashboard/ar",
+  //   label: "Accounts Receivable",
+  //   icon: Wallet,
+  //   roles: ["admin", "support", "partner"],
+  // },
   {
     href: "/dashboard/documents",
     label: "Documents",

@@ -128,6 +128,47 @@ export function assetsListQueryOptions(
   } as const;
 }
 
+export function assetsFoldersQueryOptions(
+  category: AssetCategory,
+  parentId: string | null = null,
+) {
+  return {
+    queryKey: queryKeys.assets.folders(category, parentId),
+    queryFn: () => fetchFolders(category, parentId),
+  } as const;
+}
+
+/** Video card thumbs — long-lived; remounting a card must not refetch. */
+export function assetThumbnailQueryOptions(
+  category: AssetCategory,
+  id: string,
+) {
+  return {
+    queryKey: queryKeys.assets.thumbnail(category, id),
+    queryFn: () => fetchAssetThumbnail(id, category),
+    staleTime: 30 * 60 * 1000,
+    gcTime: 60 * 60 * 1000,
+  } as const;
+}
+
+/** Inline video blob for the viewer modal — cache so reopen is instant. */
+export function assetInlineFileQueryOptions(
+  category: AssetCategory,
+  id: string,
+) {
+  return {
+    queryKey: queryKeys.assets.file(category, id, "inline"),
+    queryFn: async () => {
+      const { blob } = await fetchAssetFile(id, category, undefined, undefined, {
+        download: false,
+      });
+      return blob;
+    },
+    staleTime: 10 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+  } as const;
+}
+
 export function setAssetsListCache(
   queryClient: QueryClient,
   category: AssetCategory,

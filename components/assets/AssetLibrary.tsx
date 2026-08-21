@@ -23,6 +23,7 @@ import {
 import { useSession } from "@/lib/session-context";
 import {
   assetsListQueryOptions,
+  assetsFoldersQueryOptions,
   setAssetsListCache,
   fetchAssets,
   fetchFolders,
@@ -92,6 +93,7 @@ export function AssetLibrary({
   const [newFolderName, setNewFolderName] = useState("");
   const [folderBusy, setFolderBusy] = useState(false);
 
+  const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [visibilityFilter, setVisibilityFilter] = useState<VisibilityFilter>("all");
   const [locationFilter, setLocationFilter] = useState<string>("all");
@@ -107,11 +109,26 @@ export function AssetLibrary({
 
   const canAccess = user.role === "admin" || user.role === "partner";
   const isAdmin = user.role === "admin";
+  const isPartner = user.role === "partner";
+
+  function canPartnerSelect(asset: Asset) {
+    return asset.mimeType.startsWith("image/");
+  }
+
+  function canSelectAsset(asset: Asset) {
+    return isAdmin || (isPartner && canPartnerSelect(asset));
+  }
   const searching = Boolean(search.trim());
 
   useEffect(() => {
     if (!canAccess) router.replace("/dashboard");
   }, [canAccess, router]);
+
+  // Debounce search so typing does not thrash the all-folders API.
+  useEffect(() => {
+    const t = window.setTimeout(() => setSearch(searchInput), 300);
+    return () => window.clearTimeout(t);
+  }, [searchInput]);
 
   const assetsQuery = useQuery({
     queryKey: searching
@@ -152,7 +169,10 @@ export function AssetLibrary({
   const assets = assetsQuery.data ?? [];
   const folders = foldersQuery.data ?? [];
   const breadcrumbs = folderId ? pathQuery.data ?? [] : [];
-  const loading = assetsQuery.isLoading || foldersQuery.isLoading;
+  // Match Tickets: only block UI when this key has never resolved (cached nav stays instant).
+  const loading =
+    (assetsQuery.isPending && !assetsQuery.data) ||
+    (foldersQuery.isPending && !foldersQuery.data);
 
   const locationMap = useMemo(() => {
     const map: Record<string, string> = {};
@@ -307,12 +327,27 @@ export function AssetLibrary({
   async function handleBulkDownload() {
     const ids = [...selectedIds];
     if (!ids.length) return;
+    // Partners may only bulk-download images (videos blocked; other types stay single-file).
+    const downloadIds = isPartner
+      ? ids.filter((id) => {
+          const a = assets.find((x) => x.id === id);
+          return a?.mimeType.startsWith("image/");
+        })
+      : ids;
+    if (!downloadIds.length) {
+      void Swal.fire({
+        icon: "info",
+        title: "Select images to download",
+        text: "Partners can multi-select and download images only.",
+      });
+      return;
+    }
     setBulkBusy(true);
     try {
-      if (ids.length === 1) {
-        const asset = assets.find((a) => a.id === ids[0]);
+      if (downloadIds.length === 1) {
+        const asset = assets.find((a) => a.id === downloadIds[0]);
         const { blob, filename } = await fetchAssetFile(
-          ids[0],
+          downloadIds[0],
           category,
           undefined,
           asset?.originalFileName || asset?.name,
@@ -320,8 +355,9 @@ export function AssetLibrary({
         );
         triggerBlobDownload(blob, filename);
       } else {
-        await downloadAssetsZip(category, ids);
+        await downloadAssetsZip(category, downloadIds);
       }
+      if (isPartner) setSelectedIds(new Set());
     } catch (e) {
       void Swal.fire({
         icon: "error",
@@ -503,6 +539,7 @@ export function AssetLibrary({
   const paginated = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
   function clearFilters() {
+    setSearchInput("");
     setSearch("");
     setVisibilityFilter("all");
     setLocationFilter("all");
@@ -604,8 +641,8 @@ export function AssetLibrary({
             <div className="relative min-w-[220px] flex-1">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
                 placeholder="Search all files…"
                 className="w-full rounded-2xl border border-slate-200 bg-white py-2.5 pl-10 pr-3 text-sm text-slate-900 shadow-sm outline-none ring-primary-200 placeholder:text-slate-400 focus:border-primary-300 focus:ring-4"
               />
@@ -656,7 +693,7 @@ export function AssetLibrary({
               </Select>
             )}
 
-            {isAdmin && selectedIds.size > 0 ? (
+            {selectedIds.size > 0 ? (
               <div className="flex flex-wrap items-center gap-2">
                 <Button
                   size="sm"
@@ -667,23 +704,36 @@ export function AssetLibrary({
                   <Download className="mr-1.5 h-3.5 w-3.5" />
                   Download ({selectedIds.size})
                 </Button>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={() => setShowMove(true)}
-                >
-                  <Move className="mr-1.5 h-3.5 w-3.5" />
-                  Move ({selectedIds.size})
-                </Button>
-                <Button
-                  size="sm"
-                  variant="danger"
-                  disabled={bulkBusy}
-                  onClick={() => void handleBulkDelete()}
-                >
-                  <Trash2 className="mr-1.5 h-3.5 w-3.5" />
-                  Delete ({selectedIds.size})
-                </Button>
+                {isAdmin ? (
+                  <>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => setShowMove(true)}
+                    >
+                      <Move className="mr-1.5 h-3.5 w-3.5" />
+                      Move ({selectedIds.size})
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="danger"
+                      disabled={bulkBusy}
+                      onClick={() => void handleBulkDelete()}
+                    >
+                      <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+                      Delete ({selectedIds.size})
+                    </Button>
+                  </>
+                ) : null}
+                {isPartner ? (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedIds(new Set())}
+                    className="text-xs font-medium text-slate-500 hover:text-slate-800"
+                  >
+                    Clear
+                  </button>
+                ) : null}
               </div>
             ) : null}
 
@@ -726,8 +776,17 @@ export function AssetLibrary({
                     isAdmin={isAdmin}
                     dropActive={folderDropId === folder.id}
                     onOpen={() => {
+                      setSearchInput("");
                       setSearch("");
                       setFolderId(folder.id);
+                    }}
+                    onMouseEnter={() => {
+                      void queryClient.prefetchQuery(
+                        assetsListQueryOptions(category, folder.id),
+                      );
+                      void queryClient.prefetchQuery(
+                        assetsFoldersQueryOptions(category, folder.id),
+                      );
                     }}
                     onRename={() => void handleRenameFolder(folder)}
                     onDelete={() => void handleDeleteFolder(folder)}
@@ -777,8 +836,10 @@ export function AssetLibrary({
                     onUpdated={handleAssetUpdated}
                     locationContext={locationContextFor(asset)}
                     badges={badgesFor(asset)}
-                    selected={isAdmin && selectedIds.has(asset.id)}
-                    onSelect={isAdmin ? () => toggleSelect(asset.id) : undefined}
+                    selected={canSelectAsset(asset) && selectedIds.has(asset.id)}
+                    onSelect={
+                      canSelectAsset(asset) ? () => toggleSelect(asset.id) : undefined
+                    }
                     draggable={isAdmin}
                     onDragStart={(e) => {
                       const ids = selectedIds.has(asset.id) ? [...selectedIds] : [asset.id];

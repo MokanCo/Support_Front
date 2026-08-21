@@ -25,7 +25,7 @@ import { boardsListQueryOptions } from "@/lib/queries/boards";
 import { inboxQueryOptions } from "@/lib/queries/conversations";
 import { statusNotificationsQueryOptions } from "@/lib/queries/notifications";
 import { fetchSidebarNavCounts, sidebarCountsQueryKey } from "@/lib/queries/sidebar";
-import { assetsListQueryOptions } from "@/lib/queries/assets";
+import { assetsListQueryOptions, assetsFoldersQueryOptions } from "@/lib/queries/assets";
 
 /**
  * Warm the React Query cache after login so sidebar navigation reuses data.
@@ -71,6 +71,8 @@ export async function prefetchAppData(
       }),
       queryClient.prefetchQuery(assetsListQueryOptions("documents")),
       queryClient.prefetchQuery(assetsListQueryOptions("marketing_assets")),
+      queryClient.prefetchQuery(assetsFoldersQueryOptions("documents")),
+      queryClient.prefetchQuery(assetsFoldersQueryOptions("marketing_assets")),
     );
   } else if (role === "support") {
     tasks.push(
@@ -92,6 +94,8 @@ export async function prefetchAppData(
       }),
       queryClient.prefetchQuery(assetsListQueryOptions("documents")),
       queryClient.prefetchQuery(assetsListQueryOptions("marketing_assets")),
+      queryClient.prefetchQuery(assetsFoldersQueryOptions("documents")),
+      queryClient.prefetchQuery(assetsFoldersQueryOptions("marketing_assets")),
     );
   }
 
@@ -117,6 +121,8 @@ export function prefetchAppDataQueryKeys(role: UserRole): readonly unknown[][] {
       [sidebarCountsQueryKey(role)],
       [queryKeys.assets.list("documents")],
       [queryKeys.assets.list("marketing_assets")],
+      [queryKeys.assets.folders("documents")],
+      [queryKeys.assets.folders("marketing_assets")],
     );
   } else if (role === "support") {
     keys.push(
@@ -129,6 +135,8 @@ export function prefetchAppDataQueryKeys(role: UserRole): readonly unknown[][] {
     keys.push(
       [queryKeys.assets.list("documents")],
       [queryKeys.assets.list("marketing_assets")],
+      [queryKeys.assets.folders("documents")],
+      [queryKeys.assets.folders("marketing_assets")],
     );
   }
   return keys;

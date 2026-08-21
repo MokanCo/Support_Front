@@ -1,7 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState, type SyntheticEvent } from "react";
-import { Download, Maximize, Pause, Play, Volume2, VolumeX, X } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { Download, Loader2, Maximize, Pause, Play, Volume2, VolumeX, X } from "lucide-react";
+import {
+  assetInlineFileQueryOptions,
+  type AssetCategory,
+} from "@/lib/queries/assets";
 
 interface Props {
   fileUrl: string;
@@ -16,6 +21,11 @@ interface Props {
    * DOM that can be copied into another tab.
    */
   videoBlob?: Blob | null;
+  /** When set with category, modal opens immediately and loads the video in the background. */
+  assetId?: string;
+  category?: AssetCategory;
+  videoLoading?: boolean;
+  videoError?: string | null;
 }
 
 function MinimalVideoPlayer({
@@ -58,7 +68,6 @@ function MinimalVideoPlayer({
       el.srcObject = null;
       objectUrl = URL.createObjectURL(blob);
       el.src = objectUrl;
-      // Invalidate ASAP so a copied blob: URL cannot open in another tab.
       const onReady = () => revokeFallbackUrl();
       el.addEventListener("loadeddata", onReady, { once: true });
       el.addEventListener("canplay", onReady, { once: true });
@@ -68,7 +77,6 @@ function MinimalVideoPlayer({
 
     const onError = () => {
       if (cancelled) return;
-      // If srcObject failed, fall back once; then surface a play error.
       if (!usingFallbackUrl) {
         attachObjectUrlFallback();
         return;
@@ -87,7 +95,6 @@ function MinimalVideoPlayer({
     el.load();
 
     try {
-      // Prefer srcObject: Inspect has no blob: URL to copy into another tab.
       el.srcObject = blob;
       void el.play().catch(() => setPlaying(false));
     } catch {
@@ -163,7 +170,7 @@ function MinimalVideoPlayer({
         (video as HTMLVideoElement & { webkitEnterFullscreen: () => void }).webkitEnterFullscreen();
       }
     } catch {
-      // Fullscreen may be blocked by the browser; ignore.
+      /* ignore */
     }
   }
 
@@ -237,6 +244,15 @@ function MinimalVideoPlayer({
   );
 }
 
+function VideoLoadingState() {
+  return (
+    <div className="flex min-h-[280px] w-full flex-col items-center justify-center gap-3 rounded-lg bg-slate-900 text-slate-200">
+      <Loader2 className="h-8 w-8 animate-spin text-white" aria-hidden />
+      <p className="text-sm">Loading video…</p>
+    </div>
+  );
+}
+
 export function AssetViewerModal({
   fileUrl,
   mimeType,
@@ -245,12 +261,34 @@ export function AssetViewerModal({
   onDownload,
   canDownload = true,
   videoBlob = null,
+  assetId,
+  category,
+  videoLoading = false,
+  videoError = null,
 }: Props) {
   const isImage = mimeType.startsWith("image/");
   const isPdf = mimeType === "application/pdf";
   const isVideo = mimeType.startsWith("video/");
   const [downloading, setDownloading] = useState(false);
   const showDownload = Boolean(canDownload && onDownload);
+
+  const inlineQuery = useQuery({
+    ...assetInlineFileQueryOptions(category ?? "documents", assetId ?? ""),
+    enabled: Boolean(isVideo && assetId && category && !videoBlob),
+  });
+
+  const resolvedBlob = videoBlob ?? inlineQuery.data ?? null;
+  const loadingVideo =
+    isVideo &&
+    !resolvedBlob &&
+    (videoLoading || (inlineQuery.isPending && !inlineQuery.data));
+  const loadError =
+    videoError ||
+    (isVideo && !resolvedBlob && inlineQuery.isError
+      ? inlineQuery.error instanceof Error
+        ? inlineQuery.error.message
+        : "Could not load this video."
+      : null);
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -330,8 +368,16 @@ export function AssetViewerModal({
               title={filename}
               className="h-full w-full rounded-lg bg-white"
             />
-          ) : isVideo && videoBlob ? (
-            <MinimalVideoPlayer blob={videoBlob} title={filename} />
+          ) : isVideo ? (
+            resolvedBlob ? (
+              <MinimalVideoPlayer blob={resolvedBlob} title={filename} />
+            ) : loadingVideo ? (
+              <VideoLoadingState />
+            ) : (
+              <p className="text-sm text-red-600">
+                {loadError || "Preview not available for this file type."}
+              </p>
+            )
           ) : (
             <p className="text-sm text-slate-500">
               Preview not available for this file type.
