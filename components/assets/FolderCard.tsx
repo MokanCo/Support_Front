@@ -62,7 +62,7 @@ export function FolderCard({
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
       onDrop={onDrop}
-      className={`group relative flex cursor-pointer flex-col overflow-hidden rounded-xl border bg-white transition ${
+      className={`group relative flex cursor-pointer flex-col overflow-hidden rounded-xl border bg-white contain-content transition [content-visibility:auto] [contain-intrinsic-size:auto_220px] ${
         dropActive
           ? "border-primary-500 bg-primary-50/40 ring-2 ring-primary-400/40"
           : selected

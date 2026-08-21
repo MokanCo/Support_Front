@@ -24,6 +24,7 @@ import {
 } from "@/lib/queries/assets";
 import { AssetViewerModal } from "@/components/assets/AssetViewerModal";
 import { Skeleton } from "@/components/ui/skeleton";
+import { acquireThumbSlot } from "@/lib/thumb-load-pool";
 
 function PreviewIcon({ mimeType, className = "h-14 w-14" }: { mimeType: string; className?: string }) {
   if (mimeType.startsWith("image/")) return <FileImage className={`${className} text-slate-400`} />;
@@ -124,7 +125,9 @@ function AssetCardInner({
   const [viewerUrl, setViewerUrl] = useState<string | null>(null);
   const [viewerIsRemote, setViewerIsRemote] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
-  const { ref: previewRef, inView } = useInView();
+  const { ref: previewRef, inView } = useInView("280px");
+  const [slotReady, setSlotReady] = useState(false);
+  const releaseSlotRef = useRef<(() => void) | null>(null);
 
   const displayName = asset.name || asset.originalFileName || asset.originalName;
   const category = asset.category;
@@ -133,11 +136,35 @@ function AssetCardInner({
   const canDownload = role === "admin" || !isVideo;
   const canDelete = role === "admin";
   const cdnThumbUrl = asset.thumbnailUrl?.trim() || "";
+  const needsThumb = (isImage || isVideo) && !previewFailed;
 
-  // Only proxy-fetch when there is no Cloudflare WebP CDN URL yet (legacy assets).
+  useEffect(() => {
+    if (!inView || !needsThumb) return;
+    let cancelled = false;
+    void acquireThumbSlot().then((release) => {
+      if (cancelled) {
+        release();
+        return;
+      }
+      releaseSlotRef.current = release;
+      setSlotReady(true);
+    });
+    return () => {
+      cancelled = true;
+      releaseSlotRef.current?.();
+      releaseSlotRef.current = null;
+    };
+  }, [inView, needsThumb, asset.id]);
+
+  function releaseThumbSlot() {
+    releaseSlotRef.current?.();
+    releaseSlotRef.current = null;
+  }
+
+  // Proxy-fetch a small WebP thumb only when there is no public CDN URL.
   const thumbQuery = useQuery({
     ...assetThumbnailQueryOptions(category, asset.id),
-    enabled: isVideo && inView && !cdnThumbUrl,
+    enabled: needsThumb && inView && slotReady && !cdnThumbUrl,
   });
 
   const proxiedThumbUrl = useMemo(() => {
@@ -152,8 +179,9 @@ function AssetCardInner({
   }, [proxiedThumbUrl]);
 
   const videoThumbUrl = cdnThumbUrl || proxiedThumbUrl;
-  const imagePreviewUrl =
-    (isImage && (cdnThumbUrl || asset.fileUrl)) || null;
+  // Never use the full fileUrl on the grid — that decodes large originals and freezes scroll.
+  const imagePreviewUrl = (isImage && (cdnThumbUrl || proxiedThumbUrl)) || null;
+  const canShowPreview = inView && slotReady;
 
   async function handleDownload() {
     if (!canDownload) return;
@@ -281,7 +309,7 @@ function AssetCardInner({
         e.preventDefault();
         handleView();
       }}
-      className={`group relative flex cursor-pointer flex-col overflow-hidden rounded-xl border bg-white transition ${
+      className={`group relative flex cursor-pointer flex-col overflow-hidden rounded-xl border bg-white contain-content transition [content-visibility:auto] [contain-intrinsic-size:auto_220px] ${
         selected
           ? "border-blue-500 ring-2 ring-blue-500/30 shadow-md"
           : "border-slate-200 hover:border-slate-300 hover:shadow-sm"
@@ -401,36 +429,52 @@ function AssetCardInner({
           )}
 
           {isImage ? (
-            imagePreviewUrl && !previewFailed ? (
+            canShowPreview && imagePreviewUrl && !previewFailed ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={imagePreviewUrl}
                 alt=""
+                width={320}
+                height={144}
                 loading="lazy"
                 decoding="async"
+                fetchPriority="low"
+                sizes="(max-width: 640px) 50vw, 200px"
                 className="pointer-events-none h-full w-full object-cover"
-                onError={() => setPreviewFailed(true)}
+                onLoad={releaseThumbSlot}
+                onError={() => {
+                  releaseThumbSlot();
+                  setPreviewFailed(true);
+                }}
               />
-            ) : previewFailed || (!cdnThumbUrl && !asset.fileUrl) ? (
+            ) : previewFailed ? (
               <div className="flex flex-col items-center gap-1 text-slate-400">
-                {previewFailed ? <ImageOff className="h-8 w-8" /> : <PreviewIcon mimeType={asset.mimeType} />}
-                {previewFailed ? <span className="text-xs">Unavailable</span> : null}
+                <ImageOff className="h-8 w-8" />
+                <span className="text-xs">Unavailable</span>
               </div>
             ) : (
               <Skeleton className="h-full w-full rounded-none" />
             )
           ) : isVideo ? (
             <>
-              {videoThumbUrl ? (
+              {canShowPreview && videoThumbUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={videoThumbUrl}
                   alt=""
+                  width={320}
+                  height={144}
                   loading="lazy"
                   decoding="async"
+                  fetchPriority="low"
+                  sizes="(max-width: 640px) 50vw, 200px"
                   className="pointer-events-none absolute inset-0 h-full w-full object-cover"
+                  onLoad={releaseThumbSlot}
+                  onError={releaseThumbSlot}
                 />
-              ) : inView && !cdnThumbUrl && thumbQuery.isPending ? (
+              ) : inView && slotReady && !cdnThumbUrl && thumbQuery.isPending ? (
+                <Skeleton className="absolute inset-0 h-full w-full rounded-none" />
+              ) : !videoThumbUrl ? (
                 <Skeleton className="absolute inset-0 h-full w-full rounded-none" />
               ) : null}
               <span className="pointer-events-none absolute inset-0 bg-slate-900/20" />
