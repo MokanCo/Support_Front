@@ -612,6 +612,7 @@ export function OnboardingDetailClient({
                     label="Location name"
                     value={req.location.locationName}
                   />
+                  <InfoRow label="Phone" value={req.location.locationPhone} />
                   <InfoRow label="Address" value={req.location.address} />
                   <InfoRow label="City" value={req.location.city} />
                   <InfoRow label="State" value={req.location.state} />
