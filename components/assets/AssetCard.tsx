@@ -309,7 +309,7 @@ function AssetCardInner({
         e.preventDefault();
         handleView();
       }}
-      className={`group relative flex cursor-pointer flex-col overflow-hidden rounded-xl border bg-white contain-content transition [content-visibility:auto] [contain-intrinsic-size:auto_220px] ${
+      className={`group relative flex cursor-pointer flex-col overflow-hidden rounded-xl border bg-white transition ${
         selected
           ? "border-blue-500 ring-2 ring-blue-500/30 shadow-md"
           : "border-slate-200 hover:border-slate-300 hover:shadow-sm"
@@ -394,7 +394,7 @@ function AssetCardInner({
       </div>
 
       <div className="p-2" ref={previewRef}>
-        <div className="relative flex h-36 w-full items-center justify-center overflow-hidden rounded-lg bg-slate-100">
+        <div className="relative flex h-36 w-full items-center justify-center overflow-hidden rounded-lg bg-slate-100 contain-content">
           {badges && badges.length > 0 && (
             <div className="absolute left-2 top-2 z-10 flex max-w-[calc(100%-1rem)] flex-wrap gap-1">
               {badges.map((b, i) => {
