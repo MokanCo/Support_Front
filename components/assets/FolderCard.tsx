@@ -14,6 +14,7 @@ interface Props {
   onRename: () => void;
   onDelete: () => void;
   onDownload: () => void;
+  onMouseEnter?: () => void;
   onDragOver?: (e: React.DragEvent) => void;
   onDragLeave?: (e: React.DragEvent) => void;
   onDrop?: (e: React.DragEvent) => void;
@@ -29,6 +30,7 @@ export function FolderCard({
   onRename,
   onDelete,
   onDownload,
+  onMouseEnter,
   onDragOver,
   onDragLeave,
   onDrop,
@@ -47,6 +49,7 @@ export function FolderCard({
 
   return (
     <div
+      onMouseEnter={onMouseEnter}
       onClick={(e) => {
         if ((e.target as HTMLElement).closest("[data-menu]")) return;
         if (onSelect) onSelect();
