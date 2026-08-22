@@ -6,6 +6,8 @@ import { useQuery } from "@tanstack/react-query";
 import { Download, Loader2, Maximize, Pause, Play, Volume2, VolumeX, X } from "lucide-react";
 import {
   assetInlineFileQueryOptions,
+  assetPreviewUrlQueryOptions,
+  isPdfAsset,
   type AssetCategory,
 } from "@/lib/queries/assets";
 
@@ -267,8 +269,8 @@ export function AssetViewerModal({
   videoLoading = false,
   videoError = null,
 }: Props) {
-  const isImage = mimeType.startsWith("image/");
-  const isPdf = mimeType === "application/pdf";
+  const isImage = mimeType.startsWith("image/") && !isPdfAsset(mimeType, filename);
+  const isPdf = isPdfAsset(mimeType, filename);
   const isVideo = mimeType.startsWith("video/");
   const [downloading, setDownloading] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -283,8 +285,13 @@ export function AssetViewerModal({
     enabled: Boolean(isVideo && assetId && category && !videoBlob),
   });
 
+  const previewQuery = useQuery({
+    ...assetPreviewUrlQueryOptions(category ?? "documents", assetId ?? ""),
+    enabled: Boolean(isPdf && assetId && category),
+  });
+
   const resolvedBlob = videoBlob ?? inlineQuery.data ?? null;
-  const loadingVideo =
+  const loadingFile =
     isVideo &&
     !resolvedBlob &&
     (videoLoading || (inlineQuery.isPending && !inlineQuery.data));
@@ -293,8 +300,32 @@ export function AssetViewerModal({
     (isVideo && !resolvedBlob && inlineQuery.isError
       ? inlineQuery.error instanceof Error
         ? inlineQuery.error.message
-        : "Could not load this video."
+        : "Could not load this file."
       : null);
+
+  const waitingForSignedPdf = Boolean(
+    isPdf && assetId && category && previewQuery.isLoading,
+  );
+  const pdfSrc = isPdf
+    ? previewQuery.data || (waitingForSignedPdf ? "" : fileUrl) || ""
+    : "";
+  const [pdfFrameReady, setPdfFrameReady] = useState(false);
+  useEffect(() => {
+    setPdfFrameReady(false);
+    if (!pdfSrc) return;
+    const t = window.setTimeout(() => setPdfFrameReady(true), 8000);
+    return () => window.clearTimeout(t);
+  }, [pdfSrc]);
+
+  const loadingPdf = Boolean(isPdf && !pdfSrc && waitingForSignedPdf);
+  const pdfError =
+    isPdf && !pdfSrc && !waitingForSignedPdf
+      ? previewQuery.isError
+        ? previewQuery.error instanceof Error
+          ? previewQuery.error.message
+          : "Could not load this PDF."
+        : "Could not open this PDF."
+      : null;
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -321,7 +352,11 @@ export function AssetViewerModal({
     >
       <div
         className={`flex w-full flex-col rounded-2xl border border-slate-200 bg-white shadow-2xl ${
-          isVideo ? "h-auto max-h-[90vh] max-w-4xl" : "h-[85vh] max-w-3xl"
+          isVideo
+            ? "h-auto max-h-[90vh] max-w-4xl"
+            : isPdf
+              ? "h-[90vh] max-w-6xl"
+              : "h-[85vh] max-w-3xl"
         }`}
         onClick={(e) => e.stopPropagation()}
       >
@@ -357,8 +392,8 @@ export function AssetViewerModal({
         </div>
 
         <div
-          className={`flex flex-1 items-center justify-center overflow-auto bg-slate-100 p-4 ${
-            isVideo ? "min-h-0" : ""
+          className={`flex min-h-0 flex-1 items-center justify-center overflow-auto bg-slate-100 p-4 ${
+            isVideo ? "" : ""
           }`}
         >
           {isImage ? (
@@ -369,15 +404,35 @@ export function AssetViewerModal({
               className="max-h-full max-w-full object-contain"
             />
           ) : isPdf ? (
-            <iframe
-              src={fileUrl}
-              title={filename}
-              className="h-full w-full rounded-lg bg-white"
-            />
+            loadingPdf ? (
+              <div className="flex min-h-[280px] w-full flex-col items-center justify-center gap-3 text-slate-500">
+                <Loader2 className="h-8 w-8 animate-spin text-slate-700" aria-hidden />
+                <p className="text-sm">Opening PDF…</p>
+              </div>
+            ) : pdfSrc ? (
+              <div className="relative h-full min-h-[70vh] w-full">
+                {!pdfFrameReady ? (
+                  <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 rounded-lg bg-white text-slate-500">
+                    <Loader2 className="h-8 w-8 animate-spin text-slate-700" aria-hidden />
+                    <p className="text-sm">Loading first pages…</p>
+                  </div>
+                ) : null}
+                <iframe
+                  src={`${pdfSrc}#toolbar=1&navpanes=0`}
+                  title={filename}
+                  className="h-full min-h-[70vh] w-full rounded-lg bg-white"
+                  onLoad={() => setPdfFrameReady(true)}
+                />
+              </div>
+            ) : (
+              <p className="text-sm text-red-600">
+                {pdfError || "Could not open this PDF."}
+              </p>
+            )
           ) : isVideo ? (
             resolvedBlob ? (
               <MinimalVideoPlayer blob={resolvedBlob} title={filename} />
-            ) : loadingVideo ? (
+            ) : loadingFile ? (
               <VideoLoadingState />
             ) : (
               <p className="text-sm text-red-600">

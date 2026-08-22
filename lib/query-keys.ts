@@ -148,5 +148,9 @@ export const queryKeys = {
       id: string,
       mode: "inline" | "download" = "inline",
     ) => [...queryKeys.assets.all, "file", category, id, mode] as const,
+    previewUrl: (
+      category: "documents" | "marketing_assets",
+      id: string,
+    ) => [...queryKeys.assets.all, "preview-url", category, id] as const,
   },
 } as const;

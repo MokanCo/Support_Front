@@ -21,14 +21,25 @@ import {
   deleteAsset,
   removeAssetLocation,
   assetThumbnailQueryOptions,
+  isPdfAsset,
 } from "@/lib/queries/assets";
 import { AssetViewerModal } from "@/components/assets/AssetViewerModal";
 import { Skeleton } from "@/components/ui/skeleton";
 import { acquireThumbSlot } from "@/lib/thumb-load-pool";
 
-function PreviewIcon({ mimeType, className = "h-14 w-14" }: { mimeType: string; className?: string }) {
-  if (mimeType.startsWith("image/")) return <FileImage className={`${className} text-slate-400`} />;
-  if (mimeType === "application/pdf") return <FileText className={`${className} text-red-400`} />;
+function PreviewIcon({
+  mimeType,
+  filename = "",
+  className = "h-14 w-14",
+}: {
+  mimeType: string;
+  filename?: string;
+  className?: string;
+}) {
+  if (mimeType.startsWith("image/") && !isPdfAsset(mimeType, filename)) {
+    return <FileImage className={`${className} text-slate-400`} />;
+  }
+  if (isPdfAsset(mimeType, filename)) return <FileText className={`${className} text-red-400`} />;
   if (
     mimeType.includes("zip") ||
     mimeType.includes("compressed") ||
@@ -39,9 +50,9 @@ function PreviewIcon({ mimeType, className = "h-14 w-14" }: { mimeType: string; 
   return <File className={`${className} text-slate-400`} />;
 }
 
-function HeaderIcon({ mimeType }: { mimeType: string }) {
+function HeaderIcon({ mimeType, filename = "" }: { mimeType: string; filename?: string }) {
   if (mimeType.startsWith("image/")) return <FileImage className="h-4 w-4 shrink-0 text-slate-500" />;
-  if (mimeType === "application/pdf") return <FileText className="h-4 w-4 shrink-0 text-red-500" />;
+  if (isPdfAsset(mimeType, filename)) return <FileText className="h-4 w-4 shrink-0 text-red-500" />;
   if (mimeType.includes("zip") || mimeType.includes("compressed")) {
     return <Archive className="h-4 w-4 shrink-0 text-slate-500" />;
   }
@@ -133,6 +144,7 @@ function AssetCardInner({
   const category = asset.category;
   const isImage = asset.mimeType.startsWith("image/");
   const isVideo = asset.mimeType.startsWith("video/");
+  const isPdf = isPdfAsset(asset.mimeType, displayName);
   const canDownload = role === "admin" || !isVideo;
   const canDelete = role === "admin";
   const cdnThumbUrl = asset.thumbnailUrl?.trim() || "";
@@ -217,8 +229,8 @@ function AssetCardInner({
 
   function handleView() {
     setMenuOpen(false);
-    if (isVideo) {
-      // Open modal immediately; video loads inside the modal (cached via RQ).
+    if (isVideo || isPdf) {
+      // Open immediately; PDFs stream from R2 (first pages in a few seconds).
       setViewerOpen(true);
       return;
     }
@@ -326,7 +338,7 @@ function AssetCardInner({
       aria-selected={selected}
     >
       <div className="flex items-center gap-2 border-b border-slate-100 bg-slate-50 px-2.5 py-2">
-        <HeaderIcon mimeType={asset.mimeType} />
+        <HeaderIcon mimeType={asset.mimeType} filename={displayName} />
         <span title={displayName} className="min-w-0 flex-1 truncate text-sm font-medium text-slate-800">
           {displayName}
         </span>
@@ -483,21 +495,21 @@ function AssetCardInner({
               </span>
             </>
           ) : (
-            <PreviewIcon mimeType={asset.mimeType} />
+            <PreviewIcon mimeType={asset.mimeType} filename={displayName} />
           )}
         </div>
       </div>
 
       {viewerOpen && (
         <AssetViewerModal
-          fileUrl={viewerUrl || ""}
-          mimeType={asset.mimeType}
+          fileUrl={isVideo ? "" : isPdf ? asset.fileUrl || "" : viewerUrl || ""}
+          mimeType={isPdf ? "application/pdf" : asset.mimeType}
           filename={displayName}
           onClose={closeViewer}
           onDownload={canDownload ? handleDownload : undefined}
           canDownload={canDownload}
-          assetId={isVideo ? asset.id : undefined}
-          category={isVideo ? category : undefined}
+          assetId={isVideo || isPdf ? asset.id : undefined}
+          category={isVideo || isPdf ? category : undefined}
         />
       )}
     </div>
