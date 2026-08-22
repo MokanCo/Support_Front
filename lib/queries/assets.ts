@@ -8,7 +8,16 @@ export type AssetCategory = "documents" | "marketing_assets";
 export type AssetVisibility = "global" | "location";
 export type MarketingAssetType = "postcard" | "banner" | "logo" | "video" | "other";
 
-export const MARKETING_ASSET_TYPES: { value: MarketingAssetType; label: string }[] = [
+export function isPdfAsset(mimeType: string, filename = "") {
+  const mime = String(mimeType || "").toLowerCase();
+  const name = String(filename || "").toLowerCase();
+  return mime.includes("pdf") || name.endsWith(".pdf");
+}
+
+export const MARKETING_ASSET_TYPES: {
+  value: MarketingAssetType;
+  label: string;
+}[] = [
   { value: "postcard", label: "Post card" },
   { value: "banner", label: "Banners" },
   { value: "logo", label: "Logo" },
@@ -166,6 +175,19 @@ export function assetInlineFileQueryOptions(
     },
     staleTime: 10 * 60 * 1000,
     gcTime: 30 * 60 * 1000,
+  } as const;
+}
+
+/** Short-lived R2 URL so the browser can stream a PDF (range requests). */
+export function assetPreviewUrlQueryOptions(
+  category: AssetCategory,
+  id: string,
+) {
+  return {
+    queryKey: queryKeys.assets.previewUrl(category, id),
+    queryFn: () => fetchAssetPreviewUrl(id, category),
+    staleTime: 2 * 60 * 1000,
+    gcTime: 5 * 60 * 1000,
   } as const;
 }
 
@@ -491,6 +513,22 @@ export async function fetchAssetThumbnail(
     );
   }
   return res.blob();
+}
+
+export async function fetchAssetPreviewUrl(
+  id: string,
+  category: AssetCategory = "documents",
+): Promise<string> {
+  const res = await apiFetch(`${categoryBasePath(category)}/${id}/preview-url`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(
+      (err as { message?: string }).message ?? "Could not open this file.",
+    );
+  }
+  const data = (await res.json()) as { url?: string };
+  if (!data.url) throw new Error("Could not open this file.");
+  return data.url;
 }
 
 export async function fetchAssetFile(
