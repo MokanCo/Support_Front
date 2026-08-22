@@ -9,6 +9,11 @@ const nextConfig = {
   reactStrictMode: true,
   /** Static HTML/JS for CDNs (e.g. Render Static Site). Requires `NEXT_PUBLIC_API_URL` at build time. */
   output: "export",
+  transpilePackages: ["pdfjs-dist"],
+  webpack: (config) => {
+    config.resolve.alias = { ...config.resolve.alias, canvas: false };
+    return config;
+  },
   images: {
     unoptimized: true,
     remotePatterns: [

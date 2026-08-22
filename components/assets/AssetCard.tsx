@@ -510,6 +510,7 @@ function AssetCardInner({
           canDownload={canDownload}
           assetId={isVideo || isPdf ? asset.id : undefined}
           category={isVideo || isPdf ? category : undefined}
+          fileSize={asset.size || asset.fileSize || 0}
         />
       )}
     </div>
