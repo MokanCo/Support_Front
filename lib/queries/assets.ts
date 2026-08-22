@@ -64,6 +64,10 @@ function categoryBasePath(category: AssetCategory): string {
   return category === "documents" ? "/api/documents" : "/api/marketing-assets";
 }
 
+export function assetFileApiPath(category: AssetCategory, id: string): string {
+  return `${categoryBasePath(category)}/${id}/file`;
+}
+
 function normalizeAsset(raw: Record<string, unknown>): Asset {
   const originalFileName = String(
     raw.originalFileName ?? raw.originalName ?? "",
@@ -160,7 +164,7 @@ export function assetThumbnailQueryOptions(
   } as const;
 }
 
-/** Inline video blob for the viewer modal — cache so reopen is instant. */
+/** Inline file blob for the viewer modal (videos + PDFs) — cache so reopen is instant. */
 export function assetInlineFileQueryOptions(
   category: AssetCategory,
   id: string,

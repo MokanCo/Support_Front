@@ -6,5 +6,8 @@ node_modules/
 /.next/
 /out/
 
+# Copied from pdfjs-dist on dev/build
+/public/pdf.worker.min.mjs
+
 # VS Code specific settings
 /.vscode/
