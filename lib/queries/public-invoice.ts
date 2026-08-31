@@ -25,6 +25,13 @@ export type PublicInvoicePayload = {
     notes?: string;
     isPaid: boolean;
     hasPendingSubmission: boolean;
+    pendingStripePayment?: {
+      paymentMethod?: string;
+      stripePaymentMethodType?: string;
+      paymentStatus: string;
+      amount?: number;
+      createdAt?: string;
+    } | null;
     pendingSubmission: {
       amount: number;
       submittedAt?: string;
@@ -72,6 +79,10 @@ export type PublicInvoicePayload = {
       percent?: number;
       fixedFeeCents?: number;
     };
+  };
+  ach?: {
+    enabled: boolean;
+    label?: string;
   };
 };
 
@@ -130,7 +141,10 @@ export function publicInvoicePayHref(token: string) {
 /** Creates a Stripe Checkout Session for this invoice and returns its hosted
  *  URL — the invoice is only marked paid once Stripe's webhook confirms the
  *  charge server-side, never on this call or the client redirect alone. */
-export async function createPublicStripeCheckoutSession(token: string) {
+export async function createPublicStripeCheckoutSession(
+  token: string,
+  paymentMethodType: "card" | "ach" = "card",
+) {
   return publicJson<{
     url: string;
     originalAmount?: number;
@@ -141,7 +155,10 @@ export async function createPublicStripeCheckoutSession(token: string) {
     stripeFeeCents?: number;
     stripeChargeAmountCents?: number;
     paymentMethod?: string;
+    paymentMethodType?: string;
   }>(`/api/public/invoices/${encodeURIComponent(token)}/stripe-checkout-session`, {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ paymentMethodType }),
   });
 }

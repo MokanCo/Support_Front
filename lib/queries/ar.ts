@@ -333,7 +333,9 @@ export type ArPayment = {
   currency?: string;
   paymentDate?: string;
   paymentMethod?: string;
+  stripePaymentMethodType?: string;
   paymentStatus?: string;
+  failureReason?: string;
   transactionReference?: string;
   stripePaymentIntentId?: string;
   stripeCheckoutSessionId?: string;

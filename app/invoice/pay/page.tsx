@@ -48,17 +48,19 @@ function PublicPayInner() {
   const [proof, setProof] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
-  const [payMethod, setPayMethod] = useState<"stripe" | "zelle" | null>(null);
+  const [payMethod, setPayMethod] = useState<"stripe" | "zelle" | "ach" | null>(null);
   const [finalizingStripe, setFinalizingStripe] = useState(
     stripeStatus === "success",
   );
+  const awaitingAch = stripeStatus === "ach_processing";
 
   const query = useQuery({
     queryKey: ["public-invoice", token],
     queryFn: () => fetchPublicInvoice(token),
     enabled: Boolean(token),
     retry: false,
-    refetchInterval: finalizingStripe ? STRIPE_FINALIZE_POLL_MS : false,
+    refetchInterval:
+      finalizingStripe || awaitingAch ? STRIPE_FINALIZE_POLL_MS : false,
   });
 
   useEffect(() => {
@@ -94,7 +96,8 @@ function PublicPayInner() {
   });
 
   const checkout = useMutation({
-    mutationFn: () => createPublicStripeCheckoutSession(token),
+    mutationFn: (paymentMethodType: "card" | "ach") =>
+      createPublicStripeCheckoutSession(token, paymentMethodType),
     onSuccess: (res) => {
       window.location.href = res.url;
     },
@@ -105,20 +108,23 @@ function PublicPayInner() {
   const invoice = data?.invoice;
   const zelle = data?.zelle;
   const stripe = data?.stripe;
+  const ach = data?.ach;
   const qrSrc = useMemo(
     () => resolveMediaUrl(zelle?.qrCodeUrl || ""),
     [zelle?.qrCodeUrl],
   );
   const stripeEnabled = Boolean(stripe?.enabled);
+  const achEnabled = Boolean(ach?.enabled);
   const zelleEnabled = Boolean(zelle?.enabled);
-  const selectedMethod: "stripe" | "zelle" | null =
+  const methodCount = [stripeEnabled, achEnabled, zelleEnabled].filter(Boolean).length;
+  const selectedMethod: "stripe" | "zelle" | "ach" | null =
     payMethod ??
-    (zelleEnabled && stripeEnabled
+    (zelleEnabled
       ? "zelle"
       : stripeEnabled
         ? "stripe"
-        : zelleEnabled
-          ? "zelle"
+        : achEnabled
+          ? "ach"
           : null);
   const payTotals = payableBreakdown(
     selectedMethod || "",
@@ -181,7 +187,13 @@ function PublicPayInner() {
                 #{invoice.invoiceNumber}
               </h1>
             </div>
-            <StatusPill status={invoice.status} isPaid={invoice.isPaid} pending={invoice.hasPendingSubmission} />
+            <StatusPill
+              status={invoice.status}
+              isPaid={invoice.isPaid}
+              pending={
+                invoice.hasPendingSubmission || Boolean(invoice.pendingStripePayment)
+              }
+            />
           </div>
 
           <div className="mt-5 grid gap-4 sm:grid-cols-2">
@@ -278,6 +290,12 @@ function PublicPayInner() {
             <Card>
               <FinalizingStripeState />
             </Card>
+          ) : awaitingAch || invoice.pendingStripePayment ? (
+            <Card>
+              <AchProcessingState
+                amount={invoice.pendingStripePayment?.amount ?? invoice.balanceDue}
+              />
+            </Card>
           ) : invoice.hasPendingSubmission || done ? (
             <Card>
               <PendingState
@@ -306,39 +324,62 @@ function PublicPayInner() {
             </Card>
           ) : (
             <>
-              {stripeEnabled && zelleEnabled ? (
+              {methodCount > 1 ? (
                 <Card>
                   <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
                     Payment method
                   </p>
-                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                    <MethodChoice
-                      selected={selectedMethod === "stripe"}
-                      label={stripe?.label || "Card (Stripe)"}
-                      hint="Includes processing fee"
-                      onClick={() => {
-                        setPayMethod("stripe");
-                        setConfirmOpen(false);
-                        setError(null);
-                      }}
-                    />
-                    <MethodChoice
-                      selected={selectedMethod === "zelle"}
-                      label={zelle?.label || "Zelle"}
-                      hint="Invoice amount only"
-                      onClick={() => {
-                        setPayMethod("zelle");
-                        setError(null);
-                      }}
-                    />
+                  <div
+                    className={`mt-3 grid gap-2 ${
+                      methodCount > 2 ? "sm:grid-cols-3" : "sm:grid-cols-2"
+                    }`}
+                  >
+                    {stripeEnabled ? (
+                      <MethodChoice
+                        selected={selectedMethod === "stripe"}
+                        label={stripe?.label || "Card (Stripe)"}
+                        hint="Includes processing fee"
+                        onClick={() => {
+                          setPayMethod("stripe");
+                          setConfirmOpen(false);
+                          setError(null);
+                        }}
+                      />
+                    ) : null}
+                    {achEnabled ? (
+                      <MethodChoice
+                        selected={selectedMethod === "ach"}
+                        label={ach?.label || "ACH Direct Debit"}
+                        hint="Bank account · not instant"
+                        onClick={() => {
+                          setPayMethod("ach");
+                          setConfirmOpen(false);
+                          setError(null);
+                        }}
+                      />
+                    ) : null}
+                    {zelleEnabled ? (
+                      <MethodChoice
+                        selected={selectedMethod === "zelle"}
+                        label={zelle?.label || "Zelle"}
+                        hint="Invoice amount only"
+                        onClick={() => {
+                          setPayMethod("zelle");
+                          setError(null);
+                        }}
+                      />
+                    ) : null}
                   </div>
                 </Card>
               ) : null}
 
-              {stripeStatus === "cancelled" && selectedMethod === "stripe" ? (
+              {stripeStatus === "cancelled" &&
+              (selectedMethod === "stripe" || selectedMethod === "ach") ? (
                 <Card>
                   <p className="text-sm text-amber-900">
-                    Your card payment was cancelled. You can try again below.
+                    {selectedMethod === "ach"
+                      ? "Your bank payment was cancelled. You can try again below."
+                      : "Your card payment was cancelled. You can try again below."}
                   </p>
                 </Card>
               ) : null}
@@ -373,7 +414,7 @@ function PublicPayInner() {
                     disabled={checkout.isPending}
                     onClick={() => {
                       setError(null);
-                      checkout.mutate();
+                      checkout.mutate("card");
                     }}
                   >
                     {checkout.isPending ? (
@@ -382,6 +423,44 @@ function PublicPayInner() {
                       </>
                     ) : (
                       `Pay ${money(payTotals.total)} with Card`
+                    )}
+                  </Button>
+                </Card>
+              ) : null}
+
+              {achEnabled && selectedMethod === "ach" ? (
+                <Card>
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-sky-700">
+                    Pay with ACH
+                  </p>
+                  <h2 className="mt-1 text-xl font-semibold text-slate-900">
+                    Bank account debit via Stripe
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-500">
+                    You&apos;ll be redirected to Stripe to securely link a US bank account and
+                    authorize the debit. ACH is not instant — it usually takes 3–5 business days
+                    to settle. This invoice stays unpaid until the bank payment succeeds.
+                  </p>
+                  <dl className="mt-5 space-y-2 text-sm">
+                    <Row label="Invoice amount" value={money(payTotals.invoiceAmount)} />
+                    <Row label="Total" value={money(payTotals.total)} bold accent />
+                    <Row label="Invoice" value={invoice.invoiceNumber} />
+                  </dl>
+                  {error ? <p className="mt-3 text-sm text-rose-600">{error}</p> : null}
+                  <Button
+                    className="mt-5 w-full"
+                    disabled={checkout.isPending}
+                    onClick={() => {
+                      setError(null);
+                      checkout.mutate("ach");
+                    }}
+                  >
+                    {checkout.isPending ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Redirecting to Stripe…
+                      </>
+                    ) : (
+                      `Pay ${money(payTotals.total)} with ACH`
                     )}
                   </Button>
                 </Card>
@@ -639,7 +718,7 @@ function StatusPill({
   const label = isPaid
     ? "Paid"
     : pending
-      ? "Payment pending verification"
+      ? "Payment pending"
       : status.replace(/_/g, " ");
   const tone = isPaid
     ? "bg-emerald-50 text-emerald-800 ring-emerald-200"
@@ -671,6 +750,22 @@ function FinalizingStripeState() {
       <p className="mt-2 text-sm text-slate-600">
         Stripe confirmed your card payment — we&apos;re updating your invoice now. This usually
         takes just a few seconds.
+      </p>
+    </div>
+  );
+}
+
+function AchProcessingState({ amount }: { amount: number }) {
+  return (
+    <div className="text-center">
+      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-sky-700">
+        ACH processing
+      </p>
+      <h2 className="mt-2 text-xl font-semibold text-slate-900">Bank debit in progress</h2>
+      <p className="mt-2 text-sm text-slate-600">
+        Your bank account was authorized for {money(amount)}. ACH payments are not instant and
+        typically settle in 3–5 business days. This page will update to Paid when Stripe confirms
+        the debit — you can close it and come back later.
       </p>
     </div>
   );
