@@ -6,6 +6,7 @@ import {
   Copy,
   Download,
   Eye,
+  Landmark,
   Loader2,
   MoreHorizontal,
   Send,
@@ -17,23 +18,29 @@ type Props = {
   /** True while an action for THIS row is in flight — shows a spinner on the
    *  trigger so the user has feedback even after the dropdown menu closes. */
   busy?: boolean;
+  /** Customer has an active saved ACH bank account and this invoice still
+   *  has a balance — shows the "Charge saved ACH" item when set. */
+  achAvailable?: boolean;
   onView: () => void;
   onSend: () => void;
   onApprove: () => void;
   onDuplicate: () => void;
   onDownload: () => void;
   onCancel: () => void;
+  onChargeAch?: () => void;
 };
 
 export function InvoiceRowActions({
   canManage,
   busy,
+  achAvailable,
   onView,
   onSend,
   onApprove,
   onDuplicate,
   onDownload,
   onCancel,
+  onChargeAch,
 }: Props) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -90,6 +97,13 @@ export function InvoiceRowActions({
                 label="Duplicate"
                 onClick={() => run(onDuplicate)}
               />
+              {achAvailable && onChargeAch ? (
+                <MenuItem
+                  icon={Landmark}
+                  label="Charge saved ACH"
+                  onClick={() => run(onChargeAch)}
+                />
+              ) : null}
             </>
           ) : null}
           <MenuItem

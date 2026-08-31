@@ -162,3 +162,25 @@ export async function createPublicStripeCheckoutSession(
     body: JSON.stringify({ paymentMethodType }),
   });
 }
+
+/** Creates a Stripe PaymentIntent for an embedded ACH (bank debit) payment —
+ *  the QuickBooks-style flow: the customer links/enters their bank and
+ *  authorizes the debit right here on our page, with no redirect to a
+ *  Stripe-hosted checkout page. When `saveForFutureUse` is set, the resulting
+ *  bank account + mandate is saved server-side for later off-session
+ *  "auto-pay" charges without sending another invoice link. */
+export async function createPublicAchPaymentIntent(
+  token: string,
+  body: { saveForFutureUse: boolean },
+) {
+  return publicJson<{
+    clientSecret: string;
+    publishableKey: string;
+    invoiceAmount: number;
+    currency?: string;
+  }>(`/api/public/invoices/${encodeURIComponent(token)}/ach-payment-intent`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}

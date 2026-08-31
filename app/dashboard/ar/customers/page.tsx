@@ -24,6 +24,7 @@ import { count, money, toNumber } from "@/lib/ar/format";
 import { canManageAr } from "@/lib/permissions";
 import {
   fetchArBillingProfiles,
+  sendArAchSetupLink,
   upsertArBillingProfile,
   type ArBillingProfile,
 } from "@/lib/queries/ar";
@@ -106,6 +107,14 @@ export default function ArCustomersPage() {
       setError(e.message);
       toast.error("Could not save profile", e.message);
     },
+  });
+
+  const sendAchSetupMutation = useMutation({
+    mutationFn: sendArAchSetupLink,
+    onSuccess: (res) => {
+      toast.success("ACH setup link sent", `Emailed to ${res.emailedTo}`);
+    },
+    onError: (e: Error) => toast.error("Could not send setup link", e.message),
   });
 
   function openEdit(profile: ArBillingProfile) {
@@ -198,6 +207,29 @@ export default function ArCustomersPage() {
             {r.profile.locationName ?? r.profile.locationId}
           </span>
         ),
+      },
+      {
+        id: "ach",
+        header: "ACH",
+        accessor: (r) => r.profile.achPaymentMethod?.status ?? "",
+        cell: (r) => {
+          const ach = r.profile.achPaymentMethod;
+          if (!ach) return <span className="text-slate-300">—</span>;
+          if (ach.status === "active") {
+            return (
+              <Chip tone="positive">
+                Bank on file{ach.last4 ? ` · ****${ach.last4}` : ""}
+              </Chip>
+            );
+          }
+          if (ach.status === "pending_verification") {
+            return <Chip tone="pending">Verifying bank</Chip>;
+          }
+          if (ach.status === "failed") {
+            return <Chip tone="negative">ACH setup failed</Chip>;
+          }
+          return <Chip>ACH revoked</Chip>;
+        },
       },
       {
         id: "email",
@@ -384,6 +416,37 @@ export default function ArCustomersPage() {
       >
         {form ? (
           <div className="space-y-4">
+            <div className="flex items-start justify-between gap-3 rounded-xl border border-sky-100 bg-sky-50/60 p-3">
+              <div className="min-w-0 text-sm">
+                <p className="font-medium text-slate-900">Automatic ACH billing</p>
+                {selected?.achPaymentMethod?.status === "active" ? (
+                  <p className="mt-0.5 text-slate-600">
+                    Bank on file
+                    {selected.achPaymentMethod.bankName
+                      ? ` · ${selected.achPaymentMethod.bankName}`
+                      : ""}
+                    {selected.achPaymentMethod.last4
+                      ? ` · ****${selected.achPaymentMethod.last4}`
+                      : ""}
+                  </p>
+                ) : selected?.achPaymentMethod?.status === "pending_verification" ? (
+                  <p className="mt-0.5 text-slate-600">Bank linked, awaiting verification</p>
+                ) : (
+                  <p className="mt-0.5 text-slate-600">
+                    No bank account linked yet — send a one-time setup link so future
+                    invoices can be charged directly.
+                  </p>
+                )}
+              </div>
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={sendAchSetupMutation.isPending}
+                onClick={() => selected && sendAchSetupMutation.mutate(selected.locationId)}
+              >
+                {sendAchSetupMutation.isPending ? "Sending…" : "Email ACH setup link"}
+              </Button>
+            </div>
             <Input
               label="Billing email"
               type="email"

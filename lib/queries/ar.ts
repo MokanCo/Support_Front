@@ -198,6 +198,17 @@ export async function deleteArProduct(id: string) {
   return arJson(`/api/ar/products/${id}`, { method: "DELETE" });
 }
 
+/** A bank account the customer has authorized us to debit via Stripe ACH
+ *  Direct Debit — saved once, then reused for off-session charges without
+ *  sending the customer another invoice/checkout link. */
+export type ArAchPaymentMethod = {
+  status: "active" | "pending_verification" | "failed" | "revoked";
+  bankName?: string;
+  last4?: string;
+  mandateId?: string;
+  authorizedAt?: string;
+};
+
 export type ArBillingProfile = {
   id?: string;
   locationId: string;
@@ -217,6 +228,7 @@ export type ArBillingProfile = {
   lateFeeType?: string;
   lateFeeAmount?: number;
   internalNotes?: string;
+  achPaymentMethod?: ArAchPaymentMethod | null;
 };
 
 export async function fetchArBillingProfiles(params?: ArListParams) {
@@ -227,6 +239,18 @@ export async function fetchArBillingProfiles(params?: ArListParams) {
     page: number;
     pageSize: number;
   }>(`/api/ar/billing-profiles${q ? `?${q}` : ""}`);
+}
+
+/** Creates a one-time link for the customer to link/authorize a bank account
+ *  for automatic ACH billing — separate from any specific invoice — and
+ *  emails it directly to their billing address. Once completed, every future
+ *  invoice for this customer can be charged directly (see chargeArInvoiceAch)
+ *  with no further customer action. */
+export async function sendArAchSetupLink(locationId: string) {
+  return arJson<{ emailedTo: string }>(
+    `/api/ar/billing-profiles/${locationId}/ach-setup-link`,
+    { method: "POST" },
+  );
 }
 
 export async function fetchArBillingProfile(locationId: string) {
@@ -287,6 +311,15 @@ export type ArInvoice = {
     userName?: string;
     createdAt?: string;
   }[];
+  /** Set once an admin triggers an off-session ACH debit against the
+   *  customer's saved bank account — "processing" until Stripe's webhook
+   *  confirms or rejects the pull, typically 3-5 business days later. */
+  achCharge?: {
+    status: "processing" | "succeeded" | "failed";
+    amount?: number;
+    initiatedAt?: string;
+    failureReason?: string;
+  } | null;
 };
 
 export async function fetchArInvoices(params?: ArListParams) {
@@ -312,6 +345,18 @@ export async function createArInvoice(body: Record<string, unknown>) {
 
 export async function invoiceAction(id: string, action: string) {
   return arJson(`/api/ar/invoices/${id}/${action}`, { method: "POST" });
+}
+
+/** Charges the customer's saved ACH bank account for this invoice's balance
+ *  directly — no checkout link is sent, no customer action is required. The
+ *  debit is still asynchronous: the invoice moves to an "ACH processing"
+ *  state until Stripe's webhook confirms the pull succeeded or failed. */
+export async function chargeArInvoiceAch(id: string) {
+  const data = await arJson<{ invoice: ArInvoice }>(
+    `/api/ar/invoices/${id}/charge-saved-ach`,
+    { method: "POST" },
+  );
+  return data.invoice;
 }
 
 export async function downloadArInvoicePdf(id: string) {

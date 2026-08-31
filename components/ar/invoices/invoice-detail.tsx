@@ -1,11 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { Loader2 } from "lucide-react";
-import { Amount, Money, StatusBadge } from "@/components/ar/ui/primitives";
+import { Landmark, Loader2 } from "lucide-react";
+import { Amount, Chip, Money, StatusBadge } from "@/components/ar/ui/primitives";
 import { Button } from "@/components/ui/Button";
 import { daysPastDue, humanize, shortDate, toNumber } from "@/lib/ar/format";
-import type { ArInvoice } from "@/lib/queries/ar";
+import type { ArAchPaymentMethod, ArInvoice } from "@/lib/queries/ar";
 import { publicInvoicePayHref } from "@/lib/queries/public-invoice";
 
 type PendingAction = "approve" | "send" | "duplicate" | "cancel" | null;
@@ -17,11 +17,16 @@ type Props = {
    *  spinner/text so the user can tell exactly what's processing. */
   pendingAction?: PendingAction;
   downloading?: boolean;
+  /** Customer's saved ACH bank account, if any — drives the "Charge saved
+   *  ACH" button and its confirmation copy. */
+  achMethod?: ArAchPaymentMethod | null;
+  chargingAch?: boolean;
   onDownload: () => void;
   onApprove: () => void;
   onSend: () => void;
   onDuplicate: () => void;
   onCancel: () => void;
+  onChargeAch?: () => void;
 };
 
 export function InvoiceDetail({
@@ -29,11 +34,14 @@ export function InvoiceDetail({
   canManage,
   pendingAction = null,
   downloading = false,
+  achMethod = null,
+  chargingAch = false,
   onDownload,
   onApprove,
   onSend,
   onDuplicate,
   onCancel,
+  onChargeAch,
 }: Props) {
   const busy = Boolean(pendingAction);
   const balance = toNumber(invoice.balanceDue);
@@ -47,6 +55,11 @@ export function InvoiceDetail({
   const showPayNow =
     Boolean(publicHref) &&
     balance > 0 &&
+    !["draft", "cancelled", "void", "paid"].includes(invoice.status);
+  const achAvailable =
+    achMethod?.status === "active" &&
+    balance > 0 &&
+    invoice.achCharge?.status !== "processing" &&
     !["draft", "cancelled", "void", "paid"].includes(invoice.status);
 
   const summaryRows: { label: string; value: number | undefined; tone?: "pending" | "positive" }[] =
@@ -75,6 +88,15 @@ export function InvoiceDetail({
               <span className="text-xs font-medium text-rose-600">
                 {overdueDays} day{overdueDays === 1 ? "" : "s"} overdue
               </span>
+            ) : null}
+            {invoice.achCharge?.status === "processing" ? (
+              <Chip tone="pending">ACH processing</Chip>
+            ) : invoice.achCharge?.status === "failed" ? (
+              <Chip tone="negative">
+                {invoice.achCharge.failureReason
+                  ? `ACH failed · ${invoice.achCharge.failureReason}`
+                  : "ACH failed"}
+              </Chip>
             ) : null}
           </div>
           <dl className="grid gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
@@ -125,6 +147,24 @@ export function InvoiceDetail({
               "Download PDF"
             )}
           </Button>
+          {canManage && achAvailable && onChargeAch ? (
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={busy || chargingAch}
+              onClick={onChargeAch}
+            >
+              {chargingAch ? (
+                <>
+                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Charging…
+                </>
+              ) : (
+                <>
+                  <Landmark className="mr-1.5 h-3.5 w-3.5" /> Charge saved ACH
+                </>
+              )}
+            </Button>
+          ) : null}
           {canManage ? (
             <>
               <Button

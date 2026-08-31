@@ -437,16 +437,18 @@ export default function ArSettingsPage() {
                           placeholder="e.g. Zelle"
                         />
                       </div>
-                      <div className="mt-3">
-                        <Textarea
-                          label="Instructions / details"
-                          value={method.details}
-                          onChange={(e) =>
-                            updatePaymentMethod(index, { details: e.target.value })
-                          }
-                          placeholder="e.g. Send to accounting@mokanco.com"
-                        />
-                      </div>
+                      {method.type !== "stripe" && method.type !== "ach" ? (
+                        <div className="mt-3">
+                          <Textarea
+                            label="Instructions / details"
+                            value={method.details}
+                            onChange={(e) =>
+                              updatePaymentMethod(index, { details: e.target.value })
+                            }
+                            placeholder="e.g. Send to accounting@mokanco.com"
+                          />
+                        </div>
+                      ) : null}
                       {method.type === "zelle" ? (
                         <div className="mt-3 space-y-3 rounded-lg border border-teal-100 bg-teal-50/50 p-3">
                           <p className="text-xs font-medium text-teal-800">
@@ -514,6 +516,24 @@ export default function ArSettingsPage() {
                             <code className="rounded bg-white/70 px-1">STRIPE_WEBHOOK_SECRET</code>{" "}
                             on the server — this toggle alone won&apos;t show &ldquo;Pay with
                             Card&rdquo; without those configured.
+                          </p>
+                        </div>
+                      ) : null}
+                      {method.type === "ach" ? (
+                        <div className="mt-3 space-y-1.5 rounded-lg border border-sky-100 bg-sky-50/50 p-3">
+                          <p className="text-xs font-medium text-sky-900">
+                            This is Stripe ACH Direct Debit, not a manual bank-transfer form —
+                            customers are redirected to Stripe Checkout to securely link a US bank
+                            account and authorize the debit. ACH is not instant; it typically takes
+                            3–5 business days to settle, and the invoice stays unpaid until Stripe
+                            confirms the debit via webhook.
+                          </p>
+                          <p className="text-xs text-sky-700">
+                            Requires the same{" "}
+                            <code className="rounded bg-white/70 px-1">STRIPE_SECRET_KEY</code> /{" "}
+                            <code className="rounded bg-white/70 px-1">STRIPE_WEBHOOK_SECRET</code>{" "}
+                            server config as card payments, plus the &ldquo;ACH Direct Debit&rdquo;
+                            payment method enabled for your account in the Stripe Dashboard.
                           </p>
                         </div>
                       ) : null}
