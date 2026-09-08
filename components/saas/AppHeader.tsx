@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { Bell, ChevronDown, LogOut, Menu, X } from "lucide-react";
+import { Bell, ChevronDown, /* CircleHelp, */ LogOut, Menu, X } from "lucide-react";
+// import { HelpDirectoryModal } from "@/components/saas/help-directory-modal";
 import { titleForPath } from "@/components/saas/nav-config";
 import type { UserRole } from "@/lib/user-roles";
 import {
@@ -129,6 +130,7 @@ export function AppHeader({
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
 
+  // const [helpOpen, setHelpOpen] = useState(false);
   const [bellOpen, setBellOpen] = useState(false);
   const [bellTab, setBellTab] = useState<BellTab>(() =>
     role === "support" ? "assigned" : "all",
@@ -365,6 +367,7 @@ export function AppHeader({
   }
 
   return (
+    <>
     <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-4 border-b border-slate-200/80 bg-white/90 px-4 backdrop-blur-md lg:px-8">
       <div className="flex min-w-0 items-center gap-3">
         <button
@@ -386,6 +389,19 @@ export function AppHeader({
       </div>
 
       <div className="flex items-center gap-2 sm:gap-3">
+        {/* <button
+          type="button"
+          onClick={() => {
+            setBellOpen(false);
+            setUserMenuOpen(false);
+            setHelpOpen(true);
+          }}
+          className="relative inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
+          aria-label="Help directory"
+          aria-expanded={helpOpen}
+        >
+          <CircleHelp className="h-[18px] w-[18px]" />
+        </button> */}
         <div className="relative" ref={bellRef}>
           <button
             type="button"
@@ -597,6 +613,8 @@ export function AppHeader({
         </div>
       </div>
     </header>
+    {/* <HelpDirectoryModal open={helpOpen} onClose={() => setHelpOpen(false)} /> */}
+    </>
   );
 }
 

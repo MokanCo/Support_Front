@@ -13,7 +13,10 @@ import {
   collectFilesFromDataTransfer,
   dataTransferHasFiles,
 } from "@/lib/fs-drop";
-import { fetchLocationOptions } from "@/lib/queries/locations";
+import {
+  fetchLocationOptions,
+  type LocationOption,
+} from "@/lib/queries/locations";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/Button";
@@ -24,6 +27,10 @@ const MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024;
 function formatFileSize(bytes: number): string {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function locationSubtitle(l: LocationOption) {
+  return [l.address, l.city, l.state].filter(Boolean).join(", ");
 }
 
 function isVideoFile(file: File) {
@@ -59,7 +66,7 @@ export function AssetUploadModal({
   const [visibility, setVisibility] = useState<"global" | "location">("global");
   const [locationIds, setLocationIds] = useState<string[]>([]);
   const [assetType, setAssetType] = useState<MarketingAssetType>("postcard");
-  const [locations, setLocations] = useState<{ id: string; name: string }[]>([]);
+  const [locations, setLocations] = useState<LocationOption[]>([]);
   const [loadingLocations, setLoadingLocations] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [fileIndex, setFileIndex] = useState(0);
@@ -319,22 +326,32 @@ export function AssetUploadModal({
             ) : locations.length === 0 ? (
               <p className="text-sm text-slate-400">No locations found.</p>
             ) : (
-              <div className="max-h-40 space-y-1 overflow-y-auto rounded-xl border border-slate-200 p-2">
-                {locations.map((l) => (
-                  <label
-                    key={l.id}
-                    className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-sm text-slate-700 hover:bg-slate-50"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={locationIds.includes(l.id)}
-                      onChange={() => toggleLocation(l.id)}
-                      disabled={uploading}
-                      className="h-4 w-4 rounded border-slate-300 text-primary-600 focus:ring-primary-500"
-                    />
-                    {l.name}
-                  </label>
-                ))}
+              <div className="max-h-56 space-y-1 overflow-y-auto rounded-xl border border-slate-200 p-2">
+                {locations.map((l) => {
+                  const subtitle = locationSubtitle(l);
+                  return (
+                    <label
+                      key={l.id}
+                      className="flex cursor-pointer items-start gap-2 rounded px-1.5 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={locationIds.includes(l.id)}
+                        onChange={() => toggleLocation(l.id)}
+                        disabled={uploading}
+                        className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 text-primary-600 focus:ring-primary-500"
+                      />
+                      <span className="min-w-0">
+                        <span className="block leading-snug">{l.name}</span>
+                        {subtitle ? (
+                          <span className="mt-0.5 block text-[11px] leading-snug text-slate-500">
+                            {subtitle}
+                          </span>
+                        ) : null}
+                      </span>
+                    </label>
+                  );
+                })}
               </div>
             )}
           </div>
