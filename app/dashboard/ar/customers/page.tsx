@@ -5,6 +5,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   Clock3,
+  CreditCard,
+  Landmark,
   Users,
   Wallet,
 } from "lucide-react";
@@ -25,6 +27,8 @@ import { canManageAr } from "@/lib/permissions";
 import {
   fetchArBillingProfiles,
   sendArAchSetupLink,
+  unlinkArAchAccount,
+  unlinkArCardAccount,
   upsertArBillingProfile,
   type ArBillingProfile,
 } from "@/lib/queries/ar";
@@ -115,6 +119,26 @@ export default function ArCustomersPage() {
       toast.success("ACH setup link sent", `Emailed to ${res.emailedTo}`);
     },
     onError: (e: Error) => toast.error("Could not send setup link", e.message),
+  });
+
+  const unlinkAchMutation = useMutation({
+    mutationFn: unlinkArAchAccount,
+    onSuccess: (updatedProfile) => {
+      queryClient.invalidateQueries({ queryKey: ["ar", "billing-profiles"] });
+      setSelected(updatedProfile);
+      toast.success("Bank account unlinked");
+    },
+    onError: (e: Error) => toast.error("Could not unlink bank account", e.message),
+  });
+
+  const unlinkCardMutation = useMutation({
+    mutationFn: unlinkArCardAccount,
+    onSuccess: (updatedProfile) => {
+      queryClient.invalidateQueries({ queryKey: ["ar", "billing-profiles"] });
+      setSelected(updatedProfile);
+      toast.success("Card unlinked");
+    },
+    onError: (e: Error) => toast.error("Could not unlink card", e.message),
   });
 
   function openEdit(profile: ArBillingProfile) {
@@ -211,6 +235,7 @@ export default function ArCustomersPage() {
       {
         id: "ach",
         header: "ACH",
+        width: "w-28",
         accessor: (r) => r.profile.achPaymentMethod?.status ?? "",
         cell: (r) => {
           const ach = r.profile.achPaymentMethod;
@@ -218,17 +243,38 @@ export default function ArCustomersPage() {
           if (ach.status === "active") {
             return (
               <Chip tone="positive">
-                Bank on file{ach.last4 ? ` · ****${ach.last4}` : ""}
+                <Landmark className="h-3 w-3 shrink-0" />
+                {ach.last4 ? `••${ach.last4}` : "Linked"}
               </Chip>
             );
           }
           if (ach.status === "pending_verification") {
-            return <Chip tone="pending">Verifying bank</Chip>;
+            return <Chip tone="pending">Verifying</Chip>;
           }
           if (ach.status === "failed") {
-            return <Chip tone="negative">ACH setup failed</Chip>;
+            return <Chip tone="negative">Failed</Chip>;
           }
-          return <Chip>ACH revoked</Chip>;
+          return <Chip>Revoked</Chip>;
+        },
+      },
+      {
+        id: "card",
+        header: "Backup card",
+        width: "w-32",
+        accessor: (r) => r.profile.cardPaymentMethod?.status ?? "",
+        cell: (r) => {
+          const card = r.profile.cardPaymentMethod;
+          if (!card) return <span className="text-slate-300">—</span>;
+          if (card.status === "active") {
+            return (
+              <Chip tone="positive">
+                <CreditCard className="h-3 w-3 shrink-0" />
+                {card.brand ? `${card.brand} ` : ""}
+                {card.last4 ? `••${card.last4}` : "Linked"}
+              </Chip>
+            );
+          }
+          return <Chip>Revoked</Chip>;
         },
       },
       {
@@ -431,6 +477,14 @@ export default function ArCustomersPage() {
                   </p>
                 ) : selected?.achPaymentMethod?.status === "pending_verification" ? (
                   <p className="mt-0.5 text-slate-600">Bank linked, awaiting verification</p>
+                ) : selected?.achPaymentMethod?.status === "revoked" ? (
+                  <p className="mt-0.5 text-slate-600">
+                    Bank account unlinked — send a new setup link to link one again.
+                  </p>
+                ) : selected?.achPaymentMethod?.status === "failed" ? (
+                  <p className="mt-0.5 text-slate-600">
+                    Bank linking failed — send a new setup link to try again.
+                  </p>
                 ) : (
                   <p className="mt-0.5 text-slate-600">
                     No bank account linked yet — send a one-time setup link so future
@@ -438,14 +492,68 @@ export default function ArCustomersPage() {
                   </p>
                 )}
               </div>
-              <Button
-                size="sm"
-                variant="secondary"
-                disabled={sendAchSetupMutation.isPending}
-                onClick={() => selected && sendAchSetupMutation.mutate(selected.locationId)}
-              >
-                {sendAchSetupMutation.isPending ? "Sending…" : "Email ACH setup link"}
-              </Button>
+              {selected?.achPaymentMethod?.status === "active" ? (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={unlinkAchMutation.isPending}
+                  onClick={() => {
+                    if (
+                      selected &&
+                      confirm(
+                        "Unlink this bank account? Future invoices will no longer be chargeable automatically until a new bank account is linked.",
+                      )
+                    ) {
+                      unlinkAchMutation.mutate(selected.locationId);
+                    }
+                  }}
+                >
+                  {unlinkAchMutation.isPending ? "Unlinking…" : "Unlink"}
+                </Button>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={sendAchSetupMutation.isPending}
+                  onClick={() => selected && sendAchSetupMutation.mutate(selected.locationId)}
+                >
+                  {sendAchSetupMutation.isPending ? "Sending…" : "Email ACH setup link"}
+                </Button>
+              )}
+            </div>
+
+            <div className="flex items-start justify-between gap-3 rounded-xl border border-violet-100 bg-violet-50/60 p-3">
+              <div className="min-w-0 text-sm">
+                <p className="font-medium text-slate-900">Backup credit card</p>
+                {selected?.cardPaymentMethod?.status === "active" ? (
+                  <p className="mt-0.5 text-slate-600">
+                    {selected.cardPaymentMethod.brand || "Card"} on file
+                    {selected.cardPaymentMethod.last4
+                      ? ` · ····${selected.cardPaymentMethod.last4}`
+                      : ""}
+                  </p>
+                ) : (
+                  <p className="mt-0.5 text-slate-600">
+                    No backup card yet — the customer can add one as an optional
+                    step on the same ACH setup link. Only ever charged manually,
+                    never automatically.
+                  </p>
+                )}
+              </div>
+              {selected?.cardPaymentMethod?.status === "active" ? (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={unlinkCardMutation.isPending}
+                  onClick={() => {
+                    if (selected && confirm("Unlink this backup card?")) {
+                      unlinkCardMutation.mutate(selected.locationId);
+                    }
+                  }}
+                >
+                  {unlinkCardMutation.isPending ? "Unlinking…" : "Unlink"}
+                </Button>
+              ) : null}
             </div>
             <Input
               label="Billing email"

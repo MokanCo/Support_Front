@@ -8,7 +8,7 @@ import {
   FileText,
   Wallet,
 } from "lucide-react";
-import { ChargeAchModal } from "@/components/ar/invoices/charge-ach-modal";
+import { ChargePaymentModal } from "@/components/ar/invoices/charge-payment-modal";
 import { InvoiceDetail } from "@/components/ar/invoices/invoice-detail";
 import { InvoiceRowActions } from "@/components/ar/invoices/row-actions";
 import { DataTable, type Column } from "@/components/ar/ui/data-table";
@@ -33,6 +33,7 @@ import {
   filterInvoices,
   paymentStateOf,
   useArDataset,
+  type ArDataset,
 } from "@/lib/ar/dataset";
 import { useArFilters } from "@/lib/ar/filters";
 import {
@@ -45,6 +46,7 @@ import {
 import { canManageAr } from "@/lib/permissions";
 import {
   chargeArInvoiceAch,
+  chargeArInvoiceCard,
   createArInvoice,
   downloadArInvoicePdf,
   fetchArBillingProfiles,
@@ -53,12 +55,12 @@ import {
   fetchArProducts,
   invoiceAction,
   type ArAchPaymentMethod,
+  type ArCardPaymentMethod,
   type ArInvoice,
   type ArProduct,
 } from "@/lib/queries/ar";
 import { fetchLocationOptions, locationOptionsQueryKey } from "@/lib/queries/locations";
 import { useSession } from "@/lib/session-context";
-import { payableBreakdown } from "@/lib/stripe/payable";
 
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
@@ -124,12 +126,11 @@ export default function ArInvoicesPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
-  const [achTarget, setAchTarget] = useState<ArInvoice | null>(null);
+  const [chargeTarget, setChargeTarget] = useState<ArInvoice | null>(null);
   const [locationId, setLocationId] = useState("");
   const [invoiceTemplateId, setInvoiceTemplateId] = useState("");
   const [items, setItems] = useState<LineItem[]>([emptyLine()]);
   const [addProductId, setAddProductId] = useState("");
-  const [chargeAchOnCreate, setChargeAchOnCreate] = useState(false);
   const linesSeededRef = useRef(false);
 
   const invoices = useMemo(
@@ -146,6 +147,13 @@ export default function ArInvoicesPage() {
     const map = new Map<string, ArAchPaymentMethod>();
     for (const profile of billingProfilesQuery.data?.profiles ?? []) {
       if (profile.achPaymentMethod) map.set(profile.locationId, profile.achPaymentMethod);
+    }
+    return map;
+  }, [billingProfilesQuery.data]);
+  const cardByLocation = useMemo(() => {
+    const map = new Map<string, ArCardPaymentMethod>();
+    for (const profile of billingProfilesQuery.data?.profiles ?? []) {
+      if (profile.cardPaymentMethod) map.set(profile.locationId, profile.cardPaymentMethod);
     }
     return map;
   }, [billingProfilesQuery.data]);
@@ -178,19 +186,6 @@ export default function ArInvoicesPage() {
     return activeProducts.filter((p) => !p.isRequired && !used.has(p.id));
   }, [activeProducts, items]);
 
-  /** Rough pre-tax estimate from the line items being drafted — the actual
-   *  ACH fee is computed server-side against the final invoice total once
-   *  tax/discounts are applied. */
-  const estimatedInvoiceTotal = useMemo(
-    () =>
-      items.reduce((s, i) => s + (Number(i.quantity) || 0) * (Number(i.unitPrice) || 0), 0),
-    [items],
-  );
-  const achFeeEstimate = useMemo(
-    () => payableBreakdown("ach", estimatedInvoiceTotal),
-    [estimatedInvoiceTotal],
-  );
-
   useEffect(() => {
     if (!createOpen) {
       linesSeededRef.current = false;
@@ -210,6 +205,11 @@ export default function ArInvoicesPage() {
     queryKey: ["ar", "invoice", detailId],
     queryFn: () => fetchArInvoice(detailId!),
     enabled: Boolean(detailId),
+    // ACH settles asynchronously via webhook — while this invoice shows
+    // "processing", keep polling so the modal flips to paid/failed on its
+    // own instead of needing a manual close/reopen.
+    refetchInterval: (query) =>
+      query.state.data?.directCharge?.status === "processing" ? 3000 : false,
   });
 
   function invalidateAr() {
@@ -222,7 +222,6 @@ export default function ArInvoicesPage() {
     setInvoiceTemplateId("");
     setItems([emptyLine()]);
     setAddProductId("");
-    setChargeAchOnCreate(false);
     linesSeededRef.current = false;
   }
 
@@ -256,17 +255,11 @@ export default function ArInvoicesPage() {
             taxPercentage: Number(i.taxPercentage) || 0,
           })),
       }),
-    onSuccess: (invoice) => {
+    onSuccess: () => {
       invalidateAr();
       setCreateOpen(false);
-      const shouldChargeAch = chargeAchOnCreate;
       resetCreateForm();
-      if (shouldChargeAch) {
-        toast.success("Invoice created", "Charging the saved ACH bank account now…");
-        chargeAchMutation.mutate(invoice.id);
-      } else {
-        toast.success("Invoice created");
-      }
+      toast.success("Invoice created");
     },
     onError: (e: Error) => toast.error("Could not create invoice", e.message),
   });
@@ -288,14 +281,33 @@ export default function ArInvoicesPage() {
     onError: (e: Error) => toast.error("Action failed", e.message),
   });
 
-  const chargeAchMutation = useMutation({
-    mutationFn: chargeArInvoiceAch,
-    onSuccess: () => {
+  const chargePaymentMutation = useMutation({
+    mutationFn: ({ id, method }: { id: string; method: "ach" | "card" }) =>
+      method === "ach" ? chargeArInvoiceAch(id) : chargeArInvoiceCard(id),
+    onSuccess: (invoice, { id, method }) => {
+      // The charge endpoints already return the freshly updated invoice —
+      // write it straight into both caches instead of just invalidating and
+      // waiting on a refetch, so the open detail modal AND the table row
+      // update immediately with no round-trip.
+      queryClient.setQueryData(["ar", "invoice", id], invoice);
+      queryClient.setQueryData<ArDataset>(arDatasetQueryKey, (old) =>
+        old
+          ? { ...old, invoices: old.invoices.map((inv) => (inv.id === id ? invoice : inv)) }
+          : old,
+      );
       invalidateAr();
-      toast.success("ACH charge initiated", "The invoice will update once Stripe confirms the debit.");
-      setAchTarget(null);
+      if (method === "ach") {
+        toast.success(
+          "ACH charge initiated",
+          "The invoice will update once Stripe confirms the debit.",
+        );
+      } else {
+        toast.success("Card charged");
+      }
+      setChargeTarget(null);
     },
-    onError: (e: Error) => toast.error("Could not charge ACH", e.message),
+    onError: (e: Error, { method }) =>
+      toast.error(method === "ach" ? "Could not charge ACH" : "Could not charge card", e.message),
   });
 
   async function handleDownload(invoice: ArInvoice) {
@@ -384,11 +396,14 @@ export default function ArInvoicesPage() {
         cell: (row) => (
           <div className="flex flex-wrap items-center gap-1.5">
             <StatusBadge status={row.status} />
-            {row.achCharge?.status === "processing" ? (
-              <Chip tone="pending">ACH processing</Chip>
-            ) : row.achCharge?.status === "failed" ? (
+            {row.directCharge?.status === "processing" ? (
+              <Chip tone="pending">
+                {row.directCharge.method === "card" ? "Card processing" : "ACH processing"}
+              </Chip>
+            ) : row.directCharge?.status === "failed" ? (
               <Chip tone="negative">
-                {row.achCharge.failureReason ? `ACH failed · ${row.achCharge.failureReason}` : "ACH failed"}
+                {row.directCharge.method === "card" ? "Card failed" : "ACH failed"}
+                {row.directCharge.failureReason ? ` · ${row.directCharge.failureReason}` : ""}
               </Chip>
             ) : null}
           </div>
@@ -429,20 +444,26 @@ export default function ArInvoicesPage() {
         align: "right",
         cell: (row) => {
           const achMethod = achByLocation.get(row.locationId);
-          const achAvailable =
-            achMethod?.status === "active" &&
+          const cardMethod = cardByLocation.get(row.locationId);
+          // A draft is still chargeable — see ensureChargeableInvoiceStatus
+          // on the backend, which promotes it to a real numbered invoice at
+          // the moment it's actually charged.
+          const chargeableStatus = !["cancelled", "void", "paid"].includes(row.status);
+          const chargeAvailable =
+            (achMethod?.status === "active" || cardMethod?.status === "active") &&
             toNumber(row.balanceDue) > 0 &&
-            row.achCharge?.status !== "processing" &&
-            !["draft", "cancelled", "void", "paid"].includes(row.status);
+            row.directCharge?.status !== "processing" &&
+            chargeableStatus;
           return (
             <InvoiceRowActions
               canManage={manage}
               busy={
                 (actionMutation.isPending && actionMutation.variables?.id === row.id) ||
-                (chargeAchMutation.isPending && chargeAchMutation.variables === row.id) ||
+                (chargePaymentMutation.isPending &&
+                  chargePaymentMutation.variables?.id === row.id) ||
                 downloadingId === row.id
               }
-              achAvailable={achAvailable}
+              chargeAvailable={chargeAvailable}
               onView={() => setDetailId(row.id)}
               onSend={() => actionMutation.mutate({ id: row.id, action: "send" })}
               onApprove={() =>
@@ -453,7 +474,7 @@ export default function ArInvoicesPage() {
               }
               onDownload={() => handleDownload(row)}
               onCancel={() => runCancel(row.id)}
-              onChargeAch={() => setAchTarget(row)}
+              onChargePayment={() => setChargeTarget(row)}
             />
           );
         },
@@ -463,10 +484,11 @@ export default function ArInvoicesPage() {
       manage,
       actionMutation.isPending,
       actionMutation.variables,
-      chargeAchMutation.isPending,
-      chargeAchMutation.variables,
+      chargePaymentMutation.isPending,
+      chargePaymentMutation.variables,
       downloadingId,
       achByLocation,
+      cardByLocation,
     ],
   );
 
@@ -580,59 +602,19 @@ export default function ArInvoicesPage() {
               </option>
             ))}
           </Select>
-          {locationId && achByLocation.get(locationId)?.status === "active" ? (
-            <label className="flex items-start gap-2.5 rounded-xl border border-sky-100 bg-sky-50/60 p-3 text-sm text-slate-700">
-              <input
-                type="checkbox"
-                className="mt-0.5"
-                checked={chargeAchOnCreate}
-                onChange={(e) => {
-                  setChargeAchOnCreate(e.target.checked);
-                  if (e.target.checked) setInvoiceTemplateId("");
-                }}
-              />
-              <span>
-                <span className="font-medium text-slate-900">
-                  Charge saved ACH bank account immediately
-                </span>
-                {achByLocation.get(locationId)?.last4 ? (
-                  <>
-                    {" "}
-                    (account ending in {achByLocation.get(locationId)?.last4})
-                  </>
-                ) : null}
-                <br />
-                No invoice email is sent — the customer&apos;s bank account is
-                debited directly as soon as this invoice is created, and the
-                payment is recorded against it once Stripe confirms the debit
-                (3–5 business days).
-                {achFeeEstimate.showFee ? (
-                  <>
-                    {" "}
-                    A processing fee ({achFeeEstimate.percentLabel}, ~
-                    {money(achFeeEstimate.processingFee)} on the current line
-                    items) is added on top so the business receives the full
-                    invoice amount.
-                  </>
-                ) : null}
-              </span>
-            </label>
-          ) : null}
-          {!chargeAchOnCreate ? (
-            <Select
-              label="Invoice PDF template"
-              value={invoiceTemplateId}
-              onChange={(e) => setInvoiceTemplateId(e.target.value)}
-            >
-              <option value="">Default template</option>
-              {(templatesQuery.data ?? []).map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                  {t.isDefault ? " (default)" : ""}
-                </option>
-              ))}
-            </Select>
-          ) : null}
+          <Select
+            label="Invoice PDF template"
+            value={invoiceTemplateId}
+            onChange={(e) => setInvoiceTemplateId(e.target.value)}
+          >
+            <option value="">Default template</option>
+            {(templatesQuery.data ?? []).map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+                {t.isDefault ? " (default)" : ""}
+              </option>
+            ))}
+          </Select>
           <div className="space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-sm font-medium text-slate-700">Line items</p>
@@ -769,11 +751,7 @@ export default function ArInvoicesPage() {
               }
               onClick={() => createMutation.mutate()}
             >
-              {createMutation.isPending
-                ? "Creating…"
-                : chargeAchOnCreate
-                  ? "Create & charge ACH"
-                  : "Create invoice"}
+              {createMutation.isPending ? "Creating…" : "Create invoice"}
             </Button>
           </div>
         </div>
@@ -802,8 +780,10 @@ export default function ArInvoicesPage() {
             }
             downloading={downloadingId === detail.id}
             achMethod={achByLocation.get(detail.locationId) ?? null}
-            chargingAch={
-              chargeAchMutation.isPending && chargeAchMutation.variables === detail.id
+            cardMethod={cardByLocation.get(detail.locationId) ?? null}
+            chargingPayment={
+              chargePaymentMutation.isPending &&
+              chargePaymentMutation.variables?.id === detail.id
             }
             onDownload={() => handleDownload(detail)}
             onApprove={() =>
@@ -816,19 +796,22 @@ export default function ArInvoicesPage() {
               actionMutation.mutate({ id: detail.id, action: "duplicate" })
             }
             onCancel={() => runCancel(detail.id)}
-            onChargeAch={() => setAchTarget(detail)}
+            onChargePayment={() => setChargeTarget(detail)}
           />
         ) : (
           <ErrorState message="Failed to load invoice." />
         )}
       </Modal>
 
-      <ChargeAchModal
-        invoice={achTarget}
-        achMethod={achTarget ? achByLocation.get(achTarget.locationId) : null}
-        pending={chargeAchMutation.isPending}
-        onConfirm={() => achTarget && chargeAchMutation.mutate(achTarget.id)}
-        onClose={() => setAchTarget(null)}
+      <ChargePaymentModal
+        invoice={chargeTarget}
+        achMethod={chargeTarget ? achByLocation.get(chargeTarget.locationId) : null}
+        cardMethod={chargeTarget ? cardByLocation.get(chargeTarget.locationId) : null}
+        pending={chargePaymentMutation.isPending}
+        onConfirm={(method) =>
+          chargeTarget && chargePaymentMutation.mutate({ id: chargeTarget.id, method })
+        }
+        onClose={() => setChargeTarget(null)}
       />
     </div>
   );

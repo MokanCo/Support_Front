@@ -8,6 +8,8 @@ export type PublicAchSetupPayload = {
   customerName?: string;
   /** Already linked and verified — nothing left to do. */
   alreadyLinked?: boolean;
+  /** A backup card is already on file — the optional second step is done too. */
+  cardAlreadyLinked?: boolean;
 };
 
 async function publicJson<T>(path: string, init?: RequestInit): Promise<T> {
@@ -44,6 +46,15 @@ export async function fetchPublicAchSetup(token: string) {
 export async function createPublicAchSetupIntent(token: string) {
   return publicJson<{ clientSecret: string; publishableKey: string }>(
     `/api/public/ach-setup/${encodeURIComponent(token)}/setup-intent`,
+    { method: "POST" },
+  );
+}
+
+/** Creates a Stripe SetupIntent to save a backup credit card on the same
+ *  customer — an optional second step, offered after bank linking. */
+export async function createPublicCardSetupIntent(token: string) {
+  return publicJson<{ clientSecret: string; publishableKey: string }>(
+    `/api/public/ach-setup/${encodeURIComponent(token)}/card-setup-intent`,
     { method: "POST" },
   );
 }

@@ -5,7 +5,7 @@ import { Landmark, Loader2 } from "lucide-react";
 import { Amount, Chip, Money, StatusBadge } from "@/components/ar/ui/primitives";
 import { Button } from "@/components/ui/Button";
 import { daysPastDue, humanize, shortDate, toNumber } from "@/lib/ar/format";
-import type { ArAchPaymentMethod, ArInvoice } from "@/lib/queries/ar";
+import type { ArAchPaymentMethod, ArCardPaymentMethod, ArInvoice } from "@/lib/queries/ar";
 import { publicInvoicePayHref } from "@/lib/queries/public-invoice";
 
 type PendingAction = "approve" | "send" | "duplicate" | "cancel" | null;
@@ -17,16 +17,19 @@ type Props = {
    *  spinner/text so the user can tell exactly what's processing. */
   pendingAction?: PendingAction;
   downloading?: boolean;
-  /** Customer's saved ACH bank account, if any — drives the "Charge saved
-   *  ACH" button and its confirmation copy. */
+  /** Customer's saved ACH bank account, if any — combined with cardMethod to
+   *  decide whether "Charge Payment" shows at all (the modal itself offers
+   *  whichever of the two is actually on file). */
   achMethod?: ArAchPaymentMethod | null;
-  chargingAch?: boolean;
+  /** Customer's saved backup card, if any. */
+  cardMethod?: ArCardPaymentMethod | null;
+  chargingPayment?: boolean;
   onDownload: () => void;
   onApprove: () => void;
   onSend: () => void;
   onDuplicate: () => void;
   onCancel: () => void;
-  onChargeAch?: () => void;
+  onChargePayment?: () => void;
 };
 
 export function InvoiceDetail({
@@ -35,13 +38,14 @@ export function InvoiceDetail({
   pendingAction = null,
   downloading = false,
   achMethod = null,
-  chargingAch = false,
+  cardMethod = null,
+  chargingPayment = false,
   onDownload,
   onApprove,
   onSend,
   onDuplicate,
   onCancel,
-  onChargeAch,
+  onChargePayment,
 }: Props) {
   const busy = Boolean(pendingAction);
   const balance = toNumber(invoice.balanceDue);
@@ -56,11 +60,15 @@ export function InvoiceDetail({
     Boolean(publicHref) &&
     balance > 0 &&
     !["draft", "cancelled", "void", "paid"].includes(invoice.status);
-  const achAvailable =
-    achMethod?.status === "active" &&
+  // A draft is still chargeable — charging it directly promotes it to a real,
+  // numbered invoice at that moment (see chargeSavedAch/chargeSavedCard),
+  // there's no need to approve/send it first just to charge it.
+  const chargeableStatus = !["cancelled", "void", "paid"].includes(invoice.status);
+  const chargeAvailable =
+    (achMethod?.status === "active" || cardMethod?.status === "active") &&
     balance > 0 &&
-    invoice.achCharge?.status !== "processing" &&
-    !["draft", "cancelled", "void", "paid"].includes(invoice.status);
+    invoice.directCharge?.status !== "processing" &&
+    chargeableStatus;
 
   const summaryRows: { label: string; value: number | undefined; tone?: "pending" | "positive" }[] =
     [
@@ -89,13 +97,14 @@ export function InvoiceDetail({
                 {overdueDays} day{overdueDays === 1 ? "" : "s"} overdue
               </span>
             ) : null}
-            {invoice.achCharge?.status === "processing" ? (
-              <Chip tone="pending">ACH processing</Chip>
-            ) : invoice.achCharge?.status === "failed" ? (
+            {invoice.directCharge?.status === "processing" ? (
+              <Chip tone="pending">
+                {invoice.directCharge.method === "card" ? "Card processing" : "ACH processing"}
+              </Chip>
+            ) : invoice.directCharge?.status === "failed" ? (
               <Chip tone="negative">
-                {invoice.achCharge.failureReason
-                  ? `ACH failed · ${invoice.achCharge.failureReason}`
-                  : "ACH failed"}
+                {invoice.directCharge.method === "card" ? "Card failed" : "ACH failed"}
+                {invoice.directCharge.failureReason ? ` · ${invoice.directCharge.failureReason}` : ""}
               </Chip>
             ) : null}
           </div>
@@ -147,20 +156,20 @@ export function InvoiceDetail({
               "Download PDF"
             )}
           </Button>
-          {canManage && achAvailable && onChargeAch ? (
+          {canManage && chargeAvailable && onChargePayment ? (
             <Button
               size="sm"
               variant="secondary"
-              disabled={busy || chargingAch}
-              onClick={onChargeAch}
+              disabled={busy || chargingPayment}
+              onClick={onChargePayment}
             >
-              {chargingAch ? (
+              {chargingPayment ? (
                 <>
                   <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Charging…
                 </>
               ) : (
                 <>
-                  <Landmark className="mr-1.5 h-3.5 w-3.5" /> Charge saved ACH
+                  <Landmark className="mr-1.5 h-3.5 w-3.5" /> Charge Payment
                 </>
               )}
             </Button>

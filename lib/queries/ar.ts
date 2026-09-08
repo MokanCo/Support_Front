@@ -209,6 +209,16 @@ export type ArAchPaymentMethod = {
   authorizedAt?: string;
 };
 
+/** A backup credit card the customer added (same one-time setup link, second
+ *  step) — used as a manual fallback an admin chooses per invoice when a
+ *  scheduled ACH debit bounces. Never charged automatically. */
+export type ArCardPaymentMethod = {
+  status: "active" | "revoked";
+  brand?: string;
+  last4?: string;
+  authorizedAt?: string;
+};
+
 export type ArBillingProfile = {
   id?: string;
   locationId: string;
@@ -229,6 +239,7 @@ export type ArBillingProfile = {
   lateFeeAmount?: number;
   internalNotes?: string;
   achPaymentMethod?: ArAchPaymentMethod | null;
+  cardPaymentMethod?: ArCardPaymentMethod | null;
 };
 
 export async function fetchArBillingProfiles(params?: ArListParams) {
@@ -251,6 +262,27 @@ export async function sendArAchSetupLink(locationId: string) {
     `/api/ar/billing-profiles/${locationId}/ach-setup-link`,
     { method: "POST" },
   );
+}
+
+/** Revokes a customer's saved ACH bank account — the only way back to a
+ *  linkable state once active, since a fresh setup link is refused while one
+ *  is already linked. */
+export async function unlinkArAchAccount(locationId: string) {
+  const data = await arJson<{ profile: ArBillingProfile }>(
+    `/api/ar/billing-profiles/${locationId}/ach-unlink`,
+    { method: "POST" },
+  );
+  return data.profile;
+}
+
+/** Revokes a customer's saved backup card — the ACH bank account (if any) is
+ *  untouched. */
+export async function unlinkArCardAccount(locationId: string) {
+  const data = await arJson<{ profile: ArBillingProfile }>(
+    `/api/ar/billing-profiles/${locationId}/card-unlink`,
+    { method: "POST" },
+  );
+  return data.profile;
 }
 
 export async function fetchArBillingProfile(locationId: string) {
@@ -311,11 +343,13 @@ export type ArInvoice = {
     userName?: string;
     createdAt?: string;
   }[];
-  /** Set once an admin triggers an off-session ACH debit against the
-   *  customer's saved bank account — "processing" until Stripe's webhook
-   *  confirms or rejects the pull, typically 3-5 business days later. */
-  achCharge?: {
-    status: "processing" | "succeeded" | "failed";
+  /** Set once an admin triggers a direct off-session charge (ACH or saved
+   *  card) — ACH stays "processing" until Stripe's webhook confirms or
+   *  rejects the pull (typically 3-5 business days); a card charge resolves
+   *  almost immediately, so "processing" is rare for it. */
+  directCharge?: {
+    method: "ach" | "card";
+    status: "processing" | "failed";
     amount?: number;
     initiatedAt?: string;
     failureReason?: string;
@@ -354,6 +388,18 @@ export async function invoiceAction(id: string, action: string) {
 export async function chargeArInvoiceAch(id: string) {
   const data = await arJson<{ invoice: ArInvoice }>(
     `/api/ar/invoices/${id}/charge-saved-ach`,
+    { method: "POST" },
+  );
+  return data.invoice;
+}
+
+/** Charges the customer's saved backup card for this invoice's balance
+ *  directly — the manual fallback for when a linked ACH debit bounces.
+ *  Unlike ACH this typically resolves immediately (paid or failed), not a
+ *  multi-day "processing" state. */
+export async function chargeArInvoiceCard(id: string) {
+  const data = await arJson<{ invoice: ArInvoice }>(
+    `/api/ar/invoices/${id}/charge-saved-card`,
     { method: "POST" },
   );
   return data.invoice;

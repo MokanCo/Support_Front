@@ -18,29 +18,31 @@ type Props = {
   /** True while an action for THIS row is in flight — shows a spinner on the
    *  trigger so the user has feedback even after the dropdown menu closes. */
   busy?: boolean;
-  /** Customer has an active saved ACH bank account and this invoice still
-   *  has a balance — shows the "Charge saved ACH" item when set. */
-  achAvailable?: boolean;
+  /** Customer has an active saved ACH bank account and/or backup card, and
+   *  this invoice still has a balance — shows the "Charge Payment" item
+   *  when set. Which methods are actually offered is decided inside the
+   *  charge modal itself (it may be one or both). */
+  chargeAvailable?: boolean;
   onView: () => void;
   onSend: () => void;
   onApprove: () => void;
   onDuplicate: () => void;
   onDownload: () => void;
   onCancel: () => void;
-  onChargeAch?: () => void;
+  onChargePayment?: () => void;
 };
 
 export function InvoiceRowActions({
   canManage,
   busy,
-  achAvailable,
+  chargeAvailable,
   onView,
   onSend,
   onApprove,
   onDuplicate,
   onDownload,
   onCancel,
-  onChargeAch,
+  onChargePayment,
 }: Props) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -97,11 +99,11 @@ export function InvoiceRowActions({
                 label="Duplicate"
                 onClick={() => run(onDuplicate)}
               />
-              {achAvailable && onChargeAch ? (
+              {chargeAvailable && onChargePayment ? (
                 <MenuItem
                   icon={Landmark}
-                  label="Charge saved ACH"
-                  onClick={() => run(onChargeAch)}
+                  label="Charge Payment"
+                  onClick={() => run(onChargePayment)}
                 />
               ) : null}
             </>

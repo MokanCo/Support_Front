@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { BrandLogo } from "@/components/BrandLogo";
 import { AchSetupForm } from "@/components/invoice/AchSetupForm";
+import { CardSetupForm } from "@/components/invoice/CardSetupForm";
 import { fetchPublicAchSetup } from "@/lib/queries/public-ach-setup";
 import { resolveMediaUrl } from "@/lib/erp/media-url";
 
@@ -53,7 +54,9 @@ function AchSetupInner() {
   const sp = useSearchParams();
   const token = sp.get("token") || "";
   const [error, setError] = useState<string | null>(null);
-  const [linked, setLinked] = useState(false);
+  const [bankLinked, setBankLinked] = useState(false);
+  const [cardLinked, setCardLinked] = useState(false);
+  const [cardSkipped, setCardSkipped] = useState(false);
 
   const query = useQuery({
     queryKey: ["public-ach-setup", token],
@@ -100,24 +103,14 @@ function AchSetupInner() {
   }
 
   const data = query.data;
+  const bankDone = bankLinked || Boolean(data.alreadyLinked);
+  const cardStepDone = cardLinked || cardSkipped || Boolean(data.cardAlreadyLinked);
+  const hasCard = cardLinked || Boolean(data.cardAlreadyLinked);
 
   return (
     <Shell company={data.company.name} logoUrl={data.company.logoUrl}>
       <Card>
-        {linked || data.alreadyLinked ? (
-          <div className="text-center">
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-700">
-              Bank account linked
-            </p>
-            <h1 className="mt-2 text-xl font-semibold text-slate-900">You&apos;re all set</h1>
-            <p className="mt-2 text-sm text-slate-600">
-              Future invoices from {data.company.name} will be automatically
-              debited from this account — you won&apos;t need to do anything
-              further. You can withdraw this authorization anytime by contacting{" "}
-              {data.company.name}.
-            </p>
-          </div>
-        ) : (
+        {!bankDone ? (
           <>
             <p className="text-xs font-semibold uppercase tracking-[0.14em] text-sky-700">
               Automatic bank payments
@@ -135,11 +128,46 @@ function AchSetupInner() {
             <div className="mt-5">
               <AchSetupForm
                 token={token}
-                onLinked={() => setLinked(true)}
+                onLinked={() => setBankLinked(true)}
                 onError={(message) => setError(message || null)}
               />
             </div>
           </>
+        ) : !cardStepDone ? (
+          <>
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-700">
+              Bank account linked
+            </p>
+            <h1 className="mt-1 text-xl font-semibold text-slate-900">
+              Add a backup card? (optional)
+            </h1>
+            {error ? <p className="mt-3 text-sm text-rose-600">{error}</p> : null}
+            <div className="mt-5">
+              <CardSetupForm
+                token={token}
+                onLinked={() => setCardLinked(true)}
+                onSkip={() => setCardSkipped(true)}
+                onError={(message) => setError(message || null)}
+              />
+            </div>
+          </>
+        ) : (
+          <div className="text-center">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-700">
+              {hasCard ? "Bank account and card linked" : "Bank account linked"}
+            </p>
+            <h1 className="mt-2 text-xl font-semibold text-slate-900">You&apos;re all set</h1>
+            <p className="mt-2 text-sm text-slate-600">
+              Future invoices from {data.company.name} will be automatically
+              debited from your bank account — you won&apos;t need to do anything
+              further.
+              {hasCard
+                ? " Your backup card is on file too, in case a bank debit ever doesn't go through."
+                : ""}{" "}
+              You can withdraw this authorization anytime by contacting{" "}
+              {data.company.name}.
+            </p>
+          </div>
         )}
       </Card>
     </Shell>
