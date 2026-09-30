@@ -35,6 +35,7 @@ export type TicketSnapshot = {
 const STATUS_LABEL: Record<TicketStatus, string> = {
   in_queue: "In queue",
   in_progress: "In progress",
+  on_hold: "On hold",
   completed: "Completed",
   cancelled: "Cancelled",
 };

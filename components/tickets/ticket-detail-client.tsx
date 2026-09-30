@@ -669,6 +669,7 @@ export function TicketDetailClient({ ticketId }: { ticketId: string }) {
                   >
                     <option value="in_queue">In queue</option>
                     <option value="in_progress">In progress</option>
+                    <option value="on_hold">On hold</option>
                     <option value="completed">Completed</option>
                     <option value="cancelled">Cancelled</option>
                   </Select>

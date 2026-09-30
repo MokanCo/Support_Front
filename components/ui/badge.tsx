@@ -3,6 +3,7 @@ import type { TicketPriority, TicketStatus } from "@/lib/ticket-types";
 const statusClass: Record<TicketStatus, string> = {
   in_queue: "bg-slate-100 text-slate-700 ring-slate-200/80",
   in_progress: "bg-amber-50 text-amber-800 ring-amber-200/80",
+  on_hold: "bg-violet-50 text-violet-800 ring-violet-200/80",
   completed: "bg-emerald-50 text-emerald-800 ring-emerald-200/80",
   cancelled: "bg-red-50 text-red-800 ring-red-200/80",
 };
@@ -10,6 +11,7 @@ const statusClass: Record<TicketStatus, string> = {
 const statusLabel: Record<TicketStatus, string> = {
   in_queue: "In queue",
   in_progress: "In progress",
+  on_hold: "On hold",
   completed: "Completed",
   cancelled: "Cancelled",
 };

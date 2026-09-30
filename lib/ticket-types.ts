@@ -3,6 +3,7 @@
 export const TICKET_STATUSES = [
   "in_queue",
   "in_progress",
+  "on_hold",
   "completed",
   "cancelled",
 ] as const;

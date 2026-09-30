@@ -523,6 +523,7 @@ export function TicketsTable({ role }: { role: UserRole }) {
                 <option value="">All statuses</option>
                 <option value="in_queue">In queue</option>
                 <option value="in_progress">In progress</option>
+                <option value="on_hold">On hold</option>
                 <option value="completed">Completed</option>
                 <option value="cancelled">Cancelled</option>
               </Select>
@@ -606,6 +607,7 @@ export function TicketsTable({ role }: { role: UserRole }) {
                 <option value="">Set status…</option>
                 <option value="in_queue">In queue</option>
                 <option value="in_progress">In progress</option>
+                <option value="on_hold">On hold</option>
                 <option value="completed">Completed</option>
                 <option value="cancelled">Cancelled</option>
               </Select>
