@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { Download, Trash2, Smile, Paperclip } from "lucide-react";
+import { Download, Trash2, Smile, Paperclip, Loader2 } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/Button";
 import { Select } from "@/components/ui/Select";
@@ -99,6 +99,7 @@ export function TaskDetailDrawer({
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [downloadingAttachmentId, setDownloadingAttachmentId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const commentRef = useRef<HTMLTextAreaElement>(null);
 
@@ -221,23 +222,28 @@ export function TaskDetailDrawer({
   }
 
   async function downloadAttachment(att: TaskAttachmentRow) {
-    const url = resolveApiUrl(`/api/tasks/attachments/${encodeURIComponent(att.id)}/download`);
-    const token = getAccessToken();
-    const res = await fetch(url, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-      credentials: "omit",
-    });
-    if (!res.ok) {
-      setError("Download failed");
-      return;
+    setDownloadingAttachmentId(att.id);
+    try {
+      const url = resolveApiUrl(`/api/tasks/attachments/${encodeURIComponent(att.id)}/download`);
+      const token = getAccessToken();
+      const res = await fetch(url, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        credentials: "omit",
+      });
+      if (!res.ok) {
+        setError("Download failed");
+        return;
+      }
+      const blob = await res.blob();
+      const u = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = u;
+      a.download = att.originalName;
+      a.click();
+      URL.revokeObjectURL(u);
+    } finally {
+      setDownloadingAttachmentId(null);
     }
-    const blob = await res.blob();
-    const u = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = u;
-    a.download = att.originalName;
-    a.click();
-    URL.revokeObjectURL(u);
   }
 
   async function openAttachmentView(att: TaskAttachmentRow) {
@@ -553,14 +559,19 @@ export function TaskDetailDrawer({
                     </button>
                     <button
                       type="button"
-                      className="shrink-0 rounded p-1 text-slate-500 hover:bg-white hover:text-primary-600"
+                      className="shrink-0 rounded p-1 text-slate-500 hover:bg-white hover:text-primary-600 disabled:opacity-50"
                       title="Download"
+                      disabled={downloadingAttachmentId === a.id}
                       onClick={(e) => {
                         e.stopPropagation();
                         void downloadAttachment(a);
                       }}
                     >
-                      <Download className="h-4 w-4" />
+                      {downloadingAttachmentId === a.id ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Download className="h-4 w-4" />
+                      )}
                     </button>
                     {canEdit ? (
                       <button

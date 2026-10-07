@@ -56,6 +56,7 @@ export default function ArInvoicesPage() {
   ]);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   const listQuery = useQuery({
     queryKey: ["ar", "invoices", search, status],
@@ -110,11 +111,14 @@ export default function ArInvoicesPage() {
   });
 
   async function handleDownload(invoice: ArInvoice) {
+    setDownloadingId(invoice.id);
     try {
       const blob = await downloadArInvoicePdf(invoice.id);
       downloadBlob(blob, `${invoice.invoiceNumber || invoice.id}.pdf`);
     } catch (e) {
       setActionError((e as Error).message);
+    } finally {
+      setDownloadingId(null);
     }
   }
 
@@ -197,8 +201,13 @@ export default function ArInvoicesPage() {
                           <Button size="sm" variant="ghost" onClick={() => setDetailId(inv.id)}>
                             View
                           </Button>
-                          <Button size="sm" variant="secondary" onClick={() => handleDownload(inv)}>
-                            PDF
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            disabled={downloadingId === inv.id}
+                            onClick={() => void handleDownload(inv)}
+                          >
+                            {downloadingId === inv.id ? "Downloading…" : "PDF"}
                           </Button>
                           {manage ? (
                             <>
@@ -417,8 +426,12 @@ export default function ArInvoicesPage() {
             </div>
 
             <div className="flex flex-wrap gap-2">
-              <Button variant="secondary" onClick={() => handleDownload(detail)}>
-                Download PDF
+              <Button
+                variant="secondary"
+                disabled={downloadingId === detail.id}
+                onClick={() => void handleDownload(detail)}
+              >
+                {downloadingId === detail.id ? "Downloading…" : "Download PDF"}
               </Button>
               {manage ? (
                 <>
