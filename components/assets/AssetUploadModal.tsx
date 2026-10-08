@@ -246,7 +246,7 @@ export function AssetUploadModal({
               type="file"
               multiple
               disabled={uploading || folderMode}
-              accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.png,.jpg,.jpeg,.gif,.webp,.svg,.zip,.mp4,.mov,.avi,.mkv,.m4v,.webm,.mpeg,.mpg,.wmv,.3gp,image/*,video/*,application/pdf"
+              accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.png,.jpg,.jpeg,.gif,.webp,.svg,.zip,.psd,.psb,.mp4,.mov,.avi,.mkv,.m4v,.webm,.mpeg,.mpg,.wmv,.3gp,image/*,video/*,application/pdf"
               className="hidden"
               onChange={(e) => {
                 addFiles(e.target.files);

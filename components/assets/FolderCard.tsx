@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Folder, MoreVertical, Pencil, Trash2, FolderOpen, Download } from "lucide-react";
+import { Folder, MoreVertical, Pencil, Trash2, FolderOpen, Download, Loader2 } from "lucide-react";
 import type { AssetFolder } from "@/lib/queries/assets";
 
 interface Props {
@@ -9,6 +9,7 @@ interface Props {
   isAdmin: boolean;
   selected?: boolean;
   dropActive?: boolean;
+  downloading?: boolean;
   onOpen: () => void;
   onSelect?: () => void;
   onRename: () => void;
@@ -25,6 +26,7 @@ export function FolderCard({
   isAdmin,
   selected = false,
   dropActive = false,
+  downloading = false,
   onOpen,
   onSelect,
   onRename,
@@ -88,14 +90,19 @@ export function FolderCard({
         <div className="relative shrink-0" ref={menuRef} data-menu>
           <button
             type="button"
+            disabled={downloading}
             onClick={(e) => {
               e.stopPropagation();
               setMenuOpen((v) => !v);
             }}
             className="flex h-7 w-7 items-center justify-center rounded-full text-slate-500 hover:bg-slate-200/80 hover:text-slate-800"
-            aria-label="Folder actions"
+            aria-label={downloading ? "Downloading…" : "Folder actions"}
           >
-            <MoreVertical className="h-4 w-4" />
+            {downloading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <MoreVertical className="h-4 w-4" />
+            )}
           </button>
           {menuOpen ? (
             <div className="absolute right-0 top-8 z-20 min-w-[148px] rounded-xl border border-slate-200 bg-white py-1 shadow-lg">
