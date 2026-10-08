@@ -14,6 +14,7 @@ import {
   ImageOff,
   Play,
   Archive,
+  Loader2,
 } from "lucide-react";
 import type { Asset } from "@/lib/queries/assets";
 import {
@@ -22,8 +23,10 @@ import {
   removeAssetLocation,
   assetThumbnailQueryOptions,
   isPdfAsset,
+  isPsdAsset,
 } from "@/lib/queries/assets";
 import { AssetViewerModal } from "@/components/assets/AssetViewerModal";
+import { PhotoshopLogo } from "@/components/assets/PhotoshopLogo";
 import { Skeleton } from "@/components/ui/skeleton";
 import { acquireThumbSlot } from "@/lib/thumb-load-pool";
 
@@ -51,6 +54,7 @@ function PreviewIcon({
 }
 
 function HeaderIcon({ mimeType, filename = "" }: { mimeType: string; filename?: string }) {
+  if (isPsdAsset(mimeType, filename)) return <PhotoshopLogo className="h-4 w-4 rounded-[3px]" textClassName="text-[6px]" />;
   if (mimeType.startsWith("image/")) return <FileImage className="h-4 w-4 shrink-0 text-slate-500" />;
   if (isPdfAsset(mimeType, filename)) return <FileText className="h-4 w-4 shrink-0 text-red-500" />;
   if (mimeType.includes("zip") || mimeType.includes("compressed")) {
@@ -142,12 +146,16 @@ function AssetCardInner({
 
   const displayName = asset.name || asset.originalFileName || asset.originalName;
   const category = asset.category;
-  const isImage = asset.mimeType.startsWith("image/");
+  const isPsd = isPsdAsset(asset.mimeType, displayName);
+  // PSD reports an image/* mimeType but browsers can't render it — treat it like
+  // any other non-previewable document (generic icon, no inline thumb/viewer).
+  const isImage = asset.mimeType.startsWith("image/") && !isPsd;
   const isVideo = asset.mimeType.startsWith("video/");
   const isPdf = isPdfAsset(asset.mimeType, displayName);
   const canDownload = role === "admin" || !isVideo;
   const canDelete = role === "admin";
   const cdnThumbUrl = asset.thumbnailUrl?.trim() || "";
+  // PSD always shows the Photoshop logo — no thumbnail fetch needed.
   const needsThumb = (isImage || isVideo) && !previewFailed;
 
   useEffect(() => {
@@ -351,9 +359,13 @@ function AssetCardInner({
               setMenuOpen((v) => !v);
             }}
             className="flex h-7 w-7 items-center justify-center rounded-full text-slate-500 hover:bg-slate-200/80 hover:text-slate-800"
-            aria-label="More actions"
+            aria-label={busy ? "Working…" : "More actions"}
           >
-            <MoreVertical className="h-4 w-4" />
+            {busy ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <MoreVertical className="h-4 w-4" />
+            )}
           </button>
           {menuOpen && (
             <>
@@ -440,7 +452,9 @@ function AssetCardInner({
             </div>
           )}
 
-          {isImage ? (
+          {isPsd ? (
+            <PhotoshopLogo className="h-20 w-20" textClassName="text-3xl" />
+          ) : isImage ? (
             canShowPreview && imagePreviewUrl && !previewFailed ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img

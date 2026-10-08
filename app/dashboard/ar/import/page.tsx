@@ -35,6 +35,7 @@ export default function ArImportPage() {
   const [validationResult, setValidationResult] = useState<Record<string, unknown> | null>(null);
   const [executeResult, setExecuteResult] = useState<Record<string, unknown> | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [downloadingTemplate, setDownloadingTemplate] = useState<string | null>(null);
 
   const createMutation = useMutation({
     mutationFn: () =>
@@ -83,11 +84,14 @@ export default function ArImportPage() {
   }
 
   async function handleDownloadTemplate(type: string) {
+    setDownloadingTemplate(type);
     try {
       const blob = await downloadImportTemplate(type);
       downloadBlob(blob, `${type}-template.csv`);
     } catch (e) {
       setError((e as Error).message);
+    } finally {
+      setDownloadingTemplate(null);
     }
   }
 
@@ -122,8 +126,14 @@ export default function ArImportPage() {
 
           <div className="flex flex-wrap gap-2">
             {IMPORT_TYPES.map((t) => (
-              <Button key={t} size="sm" variant="secondary" onClick={() => handleDownloadTemplate(t)}>
-                {t.replace(/_/g, " ")} template
+              <Button
+                key={t}
+                size="sm"
+                variant="secondary"
+                disabled={downloadingTemplate === t}
+                onClick={() => void handleDownloadTemplate(t)}
+              >
+                {downloadingTemplate === t ? "Downloading…" : `${t.replace(/_/g, " ")} template`}
               </Button>
             ))}
           </div>

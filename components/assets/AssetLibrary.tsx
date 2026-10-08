@@ -19,6 +19,7 @@ import {
   Move,
   Download,
   Trash2,
+  Loader2,
 } from "lucide-react";
 import { useSession } from "@/lib/session-context";
 import {
@@ -104,6 +105,7 @@ export function AssetLibrary({
   const [showMove, setShowMove] = useState(false);
   const [moveTarget, setMoveTarget] = useState<string | null>(null);
   const [bulkBusy, setBulkBusy] = useState(false);
+  const [downloadingFolderId, setDownloadingFolderId] = useState<string | null>(null);
 
   const [folderDropId, setFolderDropId] = useState<string | null>(null);
 
@@ -310,6 +312,7 @@ export function AssetLibrary({
   }
 
   async function handleDownloadFolder(folder: AssetFolder) {
+    setDownloadingFolderId(folder.id);
     try {
       await downloadFolderZip(category, folder.id);
     } catch (e) {
@@ -321,6 +324,8 @@ export function AssetLibrary({
             ? e.message
             : "Partners cannot download a folder that contains videos. Individual non-video files can still be downloaded.",
       });
+    } finally {
+      setDownloadingFolderId(null);
     }
   }
 
@@ -701,8 +706,12 @@ export function AssetLibrary({
                   disabled={bulkBusy}
                   onClick={() => void handleBulkDownload()}
                 >
-                  <Download className="mr-1.5 h-3.5 w-3.5" />
-                  Download ({selectedIds.size})
+                  {bulkBusy ? (
+                    <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Download className="mr-1.5 h-3.5 w-3.5" />
+                  )}
+                  {bulkBusy ? "Downloading…" : `Download (${selectedIds.size})`}
                 </Button>
                 {isAdmin ? (
                   <>
@@ -775,6 +784,7 @@ export function AssetLibrary({
                     folder={folder}
                     isAdmin={isAdmin}
                     dropActive={folderDropId === folder.id}
+                    downloading={downloadingFolderId === folder.id}
                     onOpen={() => {
                       setSearchInput("");
                       setSearch("");
