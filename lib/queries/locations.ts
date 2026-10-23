@@ -81,14 +81,28 @@ export async function fetchLocationsList(
   return data;
 }
 
-export async function fetchLocationOptions(): Promise<{ id: string; name: string }[]> {
+export type LocationOption = {
+  id: string;
+  name: string;
+  address?: string;
+  city?: string;
+  state?: string;
+};
+
+export async function fetchLocationOptions(): Promise<LocationOption[]> {
   const data = await fetchLocationsList({
     page: 1,
     pageSize: 200,
     sort: "name",
     order: "asc",
   });
-  return data.locations.map((l) => ({ id: l.id, name: l.name }));
+  return data.locations.map((l) => ({
+    id: l.id,
+    name: l.name,
+    address: l.address,
+    city: l.city,
+    state: l.state,
+  }));
 }
 
 export async function fetchLocationDetail(

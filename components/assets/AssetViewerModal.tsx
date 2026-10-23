@@ -1,7 +1,17 @@
 "use client";
 
 import { useEffect, useRef, useState, type SyntheticEvent } from "react";
-import { Download, Maximize, Pause, Play, Volume2, VolumeX, X } from "lucide-react";
+import { createPortal } from "react-dom";
+import { useQuery } from "@tanstack/react-query";
+import { Download, Loader2, Maximize, Pause, Play, Volume2, VolumeX, X } from "lucide-react";
+import {
+  assetInlineFileQueryOptions,
+  isPdfAsset,
+  isPsdAsset,
+  type AssetCategory,
+} from "@/lib/queries/assets";
+import { PdfPageViewer } from "@/components/assets/PdfPageViewer";
+import { PhotoshopLogo } from "@/components/assets/PhotoshopLogo";
 
 interface Props {
   fileUrl: string;
@@ -16,6 +26,12 @@ interface Props {
    * DOM that can be copied into another tab.
    */
   videoBlob?: Blob | null;
+  /** When set with category, modal opens immediately and loads the video in the background. */
+  assetId?: string;
+  category?: AssetCategory;
+  fileSize?: number;
+  videoLoading?: boolean;
+  videoError?: string | null;
 }
 
 function MinimalVideoPlayer({
@@ -58,7 +74,6 @@ function MinimalVideoPlayer({
       el.srcObject = null;
       objectUrl = URL.createObjectURL(blob);
       el.src = objectUrl;
-      // Invalidate ASAP so a copied blob: URL cannot open in another tab.
       const onReady = () => revokeFallbackUrl();
       el.addEventListener("loadeddata", onReady, { once: true });
       el.addEventListener("canplay", onReady, { once: true });
@@ -68,7 +83,6 @@ function MinimalVideoPlayer({
 
     const onError = () => {
       if (cancelled) return;
-      // If srcObject failed, fall back once; then surface a play error.
       if (!usingFallbackUrl) {
         attachObjectUrlFallback();
         return;
@@ -87,7 +101,6 @@ function MinimalVideoPlayer({
     el.load();
 
     try {
-      // Prefer srcObject: Inspect has no blob: URL to copy into another tab.
       el.srcObject = blob;
       void el.play().catch(() => setPlaying(false));
     } catch {
@@ -163,7 +176,7 @@ function MinimalVideoPlayer({
         (video as HTMLVideoElement & { webkitEnterFullscreen: () => void }).webkitEnterFullscreen();
       }
     } catch {
-      // Fullscreen may be blocked by the browser; ignore.
+      /* ignore */
     }
   }
 
@@ -237,6 +250,15 @@ function MinimalVideoPlayer({
   );
 }
 
+function VideoLoadingState() {
+  return (
+    <div className="flex min-h-[280px] w-full flex-col items-center justify-center gap-3 rounded-lg bg-slate-900 text-slate-200">
+      <Loader2 className="h-8 w-8 animate-spin text-white" aria-hidden />
+      <p className="text-sm">Loading video…</p>
+    </div>
+  );
+}
+
 export function AssetViewerModal({
   fileUrl,
   mimeType,
@@ -245,12 +267,42 @@ export function AssetViewerModal({
   onDownload,
   canDownload = true,
   videoBlob = null,
+  assetId,
+  category,
+  fileSize = 0,
+  videoLoading = false,
+  videoError = null,
 }: Props) {
-  const isImage = mimeType.startsWith("image/");
-  const isPdf = mimeType === "application/pdf";
+  const isPsd = isPsdAsset(mimeType, filename);
+  const isImage =
+    mimeType.startsWith("image/") && !isPdfAsset(mimeType, filename) && !isPsd;
+  const isPdf = isPdfAsset(mimeType, filename);
   const isVideo = mimeType.startsWith("video/");
   const [downloading, setDownloading] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const showDownload = Boolean(canDownload && onDownload);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const inlineQuery = useQuery({
+    ...assetInlineFileQueryOptions(category ?? "documents", assetId ?? ""),
+    enabled: Boolean((isVideo || isPdf) && assetId && category && !videoBlob),
+  });
+
+  const resolvedBlob = videoBlob ?? inlineQuery.data ?? null;
+  const loadingFile =
+    (isVideo || isPdf) &&
+    !resolvedBlob &&
+    (videoLoading || (inlineQuery.isPending && !inlineQuery.data));
+  const loadError =
+    videoError ||
+    ((isVideo || isPdf) && !resolvedBlob && inlineQuery.isError
+      ? inlineQuery.error instanceof Error
+        ? inlineQuery.error.message
+        : "Could not load this file."
+      : null);
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -270,14 +322,18 @@ export function AssetViewerModal({
     }
   }
 
-  return (
+  const dialog = (
     <div
       className="fixed inset-0 z-[600] flex items-center justify-center bg-slate-900/55 p-4 backdrop-blur-sm"
       onClick={onClose}
     >
       <div
         className={`flex w-full flex-col rounded-2xl border border-slate-200 bg-white shadow-2xl ${
-          isVideo ? "h-auto max-h-[90vh] max-w-4xl" : "h-[85vh] max-w-3xl"
+          isVideo
+            ? "h-auto max-h-[90vh] max-w-4xl"
+            : isPdf
+              ? "h-[90vh] max-w-6xl"
+              : "h-[85vh] max-w-3xl"
         }`}
         onClick={(e) => e.stopPropagation()}
       >
@@ -297,7 +353,11 @@ export function AssetViewerModal({
                 className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 disabled:opacity-50"
                 title="Download"
               >
-                <Download className="h-4 w-4" />
+                {downloading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Download className="h-4 w-4" />
+                )}
                 {downloading ? "Downloading…" : "Download"}
               </button>
             ) : null}
@@ -313,8 +373,8 @@ export function AssetViewerModal({
         </div>
 
         <div
-          className={`flex flex-1 items-center justify-center overflow-auto bg-slate-100 p-4 ${
-            isVideo ? "min-h-0" : ""
+          className={`flex min-h-0 flex-1 items-center justify-center overflow-auto bg-slate-100 p-4 ${
+            isVideo ? "" : ""
           }`}
         >
           {isImage ? (
@@ -325,13 +385,37 @@ export function AssetViewerModal({
               className="max-h-full max-w-full object-contain"
             />
           ) : isPdf ? (
-            <iframe
-              src={fileUrl}
-              title={filename}
-              className="h-full w-full rounded-lg bg-white"
-            />
-          ) : isVideo && videoBlob ? (
-            <MinimalVideoPlayer blob={videoBlob} title={filename} />
+            resolvedBlob ? (
+              <PdfPageViewer
+                blob={resolvedBlob}
+                filename={filename}
+                fileSize={fileSize}
+              />
+            ) : loadingFile ? (
+              <div className="flex min-h-[280px] w-full flex-col items-center justify-center gap-3 text-slate-500">
+                <Loader2 className="h-8 w-8 animate-spin text-slate-700" aria-hidden />
+                <p className="text-sm">Loading PDF…</p>
+              </div>
+            ) : (
+              <p className="text-sm text-red-600">
+                {loadError || "Could not open this PDF."}
+              </p>
+            )
+          ) : isVideo ? (
+            resolvedBlob ? (
+              <MinimalVideoPlayer blob={resolvedBlob} title={filename} />
+            ) : loadingFile ? (
+              <VideoLoadingState />
+            ) : (
+              <p className="text-sm text-red-600">
+                {loadError || "Preview not available for this file type."}
+              </p>
+            )
+          ) : isPsd ? (
+            <div className="flex flex-col items-center gap-3">
+              <PhotoshopLogo className="h-28 w-28" textClassName="text-4xl" />
+              <p className="text-sm text-slate-500">Photoshop file — download to view.</p>
+            </div>
           ) : (
             <p className="text-sm text-slate-500">
               Preview not available for this file type.
@@ -341,4 +425,7 @@ export function AssetViewerModal({
       </div>
     </div>
   );
+
+  if (!mounted || typeof document === "undefined") return null;
+  return createPortal(dialog, document.body);
 }

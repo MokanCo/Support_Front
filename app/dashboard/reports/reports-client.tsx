@@ -1,11 +1,14 @@
 "use client";
 
-import { Download } from "lucide-react";
+import { useState } from "react";
+import { Download, Loader2 } from "lucide-react";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { apiFetch } from "@/lib/auth-fetch";
 
-async function download(period: "daily" | "monthly" | "yearly") {
+type Period = "daily" | "monthly" | "yearly";
+
+async function download(period: Period) {
   const res = await apiFetch(`/api/reports/tickets?period=${period}`);
   if (!res.ok) return;
   const blob = await res.blob();
@@ -20,7 +23,24 @@ async function download(period: "daily" | "monthly" | "yearly") {
   URL.revokeObjectURL(url);
 }
 
+const REPORTS: { period: Period; label: string }[] = [
+  { period: "daily", label: "Daily report" },
+  { period: "monthly", label: "Monthly report" },
+  { period: "yearly", label: "Yearly report" },
+];
+
 export function ReportsClient() {
+  const [downloadingPeriod, setDownloadingPeriod] = useState<Period | null>(null);
+
+  async function handleDownload(period: Period) {
+    setDownloadingPeriod(period);
+    try {
+      await download(period);
+    } finally {
+      setDownloadingPeriod(null);
+    }
+  }
+
   return (
     <div className="mx-auto max-w-3xl space-y-8">
       <div>
@@ -37,33 +57,26 @@ export function ReportsClient() {
         />
         <CardBody className="space-y-4">
           <div className="grid gap-3 sm:grid-cols-3">
-            <Button
-              type="button"
-              variant="secondary"
-              className="gap-2"
-              onClick={() => download("daily")}
-            >
-              <Download className="h-4 w-4" />
-              Daily report
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              className="gap-2"
-              onClick={() => download("monthly")}
-            >
-              <Download className="h-4 w-4" />
-              Monthly report
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              className="gap-2"
-              onClick={() => download("yearly")}
-            >
-              <Download className="h-4 w-4" />
-              Yearly report
-            </Button>
+            {REPORTS.map(({ period, label }) => {
+              const busy = downloadingPeriod === period;
+              return (
+                <Button
+                  key={period}
+                  type="button"
+                  variant="secondary"
+                  className="gap-2"
+                  disabled={busy}
+                  onClick={() => void handleDownload(period)}
+                >
+                  {busy ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Download className="h-4 w-4" />
+                  )}
+                  {busy ? "Downloading…" : label}
+                </Button>
+              );
+            })}
           </div>
           <p className="text-xs text-slate-400">
             Daily: since midnight today · Monthly: since the 1st of this month · Yearly: since Jan 1

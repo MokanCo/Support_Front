@@ -139,5 +139,18 @@ export const queryKeys = {
       [...queryKeys.assets.all, "folders", category, parentId ?? "root"] as const,
     folderPath: (category: "documents" | "marketing_assets", folderId: string) =>
       [...queryKeys.assets.all, "folder-path", category, folderId] as const,
+    thumbnail: (
+      category: "documents" | "marketing_assets",
+      id: string,
+    ) => [...queryKeys.assets.all, "thumbnail", category, id] as const,
+    file: (
+      category: "documents" | "marketing_assets",
+      id: string,
+      mode: "inline" | "download" = "inline",
+    ) => [...queryKeys.assets.all, "file", category, id, mode] as const,
+    previewUrl: (
+      category: "documents" | "marketing_assets",
+      id: string,
+    ) => [...queryKeys.assets.all, "preview-url", category, id] as const,
   },
 } as const;

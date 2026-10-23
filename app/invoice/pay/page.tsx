@@ -436,7 +436,7 @@ function PublicPayInner() {
                   )}
 
                   <dl className="mt-5 space-y-2 text-sm">
-                    {zelle.displayName ? (
+                    {zelle?.displayName ? (
                       <Row label="Display name" value={zelle.displayName} />
                     ) : null}
                     {recipient ? <Row label="Zelle recipient" value={recipient} /> : null}

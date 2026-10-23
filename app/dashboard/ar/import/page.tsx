@@ -84,6 +84,7 @@ export default function ArImportPage() {
   > | null>(null);
   const [dragging, setDragging] = useState(false);
   const [step, setStep] = useState(1);
+  const [downloadingTemplate, setDownloadingTemplate] = useState<string | null>(null);
 
   const createMutation = useMutation({
     mutationFn: () =>
@@ -152,12 +153,15 @@ export default function ArImportPage() {
   }
 
   async function handleDownloadTemplate(type: string) {
+    setDownloadingTemplate(type);
     try {
       const blob = await downloadImportTemplate(type);
       downloadBlob(blob, `${type}-template.csv`);
       toast.success("Template downloaded", `${type}-template.csv`);
     } catch (e) {
       toast.error("Template download failed", (e as Error).message);
+    } finally {
+      setDownloadingTemplate(null);
     }
   }
 
@@ -336,10 +340,17 @@ export default function ArImportPage() {
                     key={t}
                     size="sm"
                     variant="secondary"
-                    onClick={() => handleDownloadTemplate(t)}
+                    disabled={downloadingTemplate === t}
+                    onClick={() => void handleDownloadTemplate(t)}
                   >
-                    <FileSpreadsheet className="mr-1.5 h-3.5 w-3.5" />
-                    {humanize(t)}
+                    {downloadingTemplate === t ? (
+                      <InlineSpinner label="Downloading…" />
+                    ) : (
+                      <>
+                        <FileSpreadsheet className="mr-1.5 h-3.5 w-3.5" />
+                        {humanize(t)}
+                      </>
+                    )}
                   </Button>
                 ))}
               </div>

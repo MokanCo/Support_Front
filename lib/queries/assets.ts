@@ -8,7 +8,23 @@ export type AssetCategory = "documents" | "marketing_assets";
 export type AssetVisibility = "global" | "location";
 export type MarketingAssetType = "postcard" | "banner" | "logo" | "video" | "other";
 
-export const MARKETING_ASSET_TYPES: { value: MarketingAssetType; label: string }[] = [
+export function isPdfAsset(mimeType: string, filename = "") {
+  const mime = String(mimeType || "").toLowerCase();
+  const name = String(filename || "").toLowerCase();
+  return mime.includes("pdf") || name.endsWith(".pdf");
+}
+
+/** PSD reports an image/* mimeType but browsers cannot render it — needs its own icon/no-preview path. */
+export function isPsdAsset(mimeType: string, filename = "") {
+  const mime = String(mimeType || "").toLowerCase();
+  const name = String(filename || "").toLowerCase();
+  return mime.includes("photoshop") || name.endsWith(".psd") || name.endsWith(".psb");
+}
+
+export const MARKETING_ASSET_TYPES: {
+  value: MarketingAssetType;
+  label: string;
+}[] = [
   { value: "postcard", label: "Post card" },
   { value: "banner", label: "Banners" },
   { value: "logo", label: "Logo" },
@@ -53,6 +69,10 @@ export interface AssetFolder {
 
 function categoryBasePath(category: AssetCategory): string {
   return category === "documents" ? "/api/documents" : "/api/marketing-assets";
+}
+
+export function assetFileApiPath(category: AssetCategory, id: string): string {
+  return `${categoryBasePath(category)}/${id}/file`;
 }
 
 function normalizeAsset(raw: Record<string, unknown>): Asset {
@@ -125,6 +145,60 @@ export function assetsListQueryOptions(
   return {
     queryKey: assetsListQueryKey(category, folderId),
     queryFn: () => fetchAssets(category, { folderId }),
+  } as const;
+}
+
+export function assetsFoldersQueryOptions(
+  category: AssetCategory,
+  parentId: string | null = null,
+) {
+  return {
+    queryKey: queryKeys.assets.folders(category, parentId),
+    queryFn: () => fetchFolders(category, parentId),
+  } as const;
+}
+
+/** Video card thumbs — long-lived; remounting a card must not refetch. */
+export function assetThumbnailQueryOptions(
+  category: AssetCategory,
+  id: string,
+) {
+  return {
+    queryKey: queryKeys.assets.thumbnail(category, id),
+    queryFn: () => fetchAssetThumbnail(id, category),
+    staleTime: 30 * 60 * 1000,
+    gcTime: 60 * 60 * 1000,
+  } as const;
+}
+
+/** Inline file blob for the viewer modal (videos + PDFs) — cache so reopen is instant. */
+export function assetInlineFileQueryOptions(
+  category: AssetCategory,
+  id: string,
+) {
+  return {
+    queryKey: queryKeys.assets.file(category, id, "inline"),
+    queryFn: async () => {
+      const { blob } = await fetchAssetFile(id, category, undefined, undefined, {
+        download: false,
+      });
+      return blob;
+    },
+    staleTime: 10 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+  } as const;
+}
+
+/** Short-lived R2 URL so the browser can stream a PDF (range requests). */
+export function assetPreviewUrlQueryOptions(
+  category: AssetCategory,
+  id: string,
+) {
+  return {
+    queryKey: queryKeys.assets.previewUrl(category, id),
+    queryFn: () => fetchAssetPreviewUrl(id, category),
+    staleTime: 2 * 60 * 1000,
+    gcTime: 5 * 60 * 1000,
   } as const;
 }
 
@@ -452,6 +526,22 @@ export async function fetchAssetThumbnail(
   return res.blob();
 }
 
+export async function fetchAssetPreviewUrl(
+  id: string,
+  category: AssetCategory = "documents",
+): Promise<string> {
+  const res = await apiFetch(`${categoryBasePath(category)}/${id}/preview-url`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(
+      (err as { message?: string }).message ?? "Could not open this file.",
+    );
+  }
+  const data = (await res.json()) as { url?: string };
+  if (!data.url) throw new Error("Could not open this file.");
+  return data.url;
+}
+
 export async function fetchAssetFile(
   id: string,
   category: AssetCategory = "documents",
@@ -461,9 +551,11 @@ export async function fetchAssetFile(
 ): Promise<{ blob: Blob; filename: string }> {
   // Always go through the API so Content-Disposition/download works reliably
   // (cross-origin R2 URLs ignore the HTML download attribute).
+  // Uses "disposition=attachment" rather than "download=1" — some ad-blocker/
+  // privacy extensions silently block request URLs matching *download* patterns.
   const asDownload = options?.download !== false;
   const res = await apiFetch(
-    `${categoryBasePath(category)}/${id}/file${asDownload ? "?download=1" : ""}`,
+    `${categoryBasePath(category)}/${id}/file${asDownload ? "?disposition=attachment" : ""}`,
   );
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));

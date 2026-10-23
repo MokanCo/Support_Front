@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo, memo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import Swal from "sweetalert2";
 import {
   MoreVertical,
@@ -13,20 +14,35 @@ import {
   ImageOff,
   Play,
   Archive,
+  Loader2,
 } from "lucide-react";
 import type { Asset } from "@/lib/queries/assets";
 import {
   fetchAssetFile,
-  fetchAssetThumbnail,
   deleteAsset,
   removeAssetLocation,
+  assetThumbnailQueryOptions,
+  isPdfAsset,
+  isPsdAsset,
 } from "@/lib/queries/assets";
 import { AssetViewerModal } from "@/components/assets/AssetViewerModal";
+import { PhotoshopLogo } from "@/components/assets/PhotoshopLogo";
 import { Skeleton } from "@/components/ui/skeleton";
+import { acquireThumbSlot } from "@/lib/thumb-load-pool";
 
-function PreviewIcon({ mimeType, className = "h-14 w-14" }: { mimeType: string; className?: string }) {
-  if (mimeType.startsWith("image/")) return <FileImage className={`${className} text-slate-400`} />;
-  if (mimeType === "application/pdf") return <FileText className={`${className} text-red-400`} />;
+function PreviewIcon({
+  mimeType,
+  filename = "",
+  className = "h-14 w-14",
+}: {
+  mimeType: string;
+  filename?: string;
+  className?: string;
+}) {
+  if (mimeType.startsWith("image/") && !isPdfAsset(mimeType, filename)) {
+    return <FileImage className={`${className} text-slate-400`} />;
+  }
+  if (isPdfAsset(mimeType, filename)) return <FileText className={`${className} text-red-400`} />;
   if (
     mimeType.includes("zip") ||
     mimeType.includes("compressed") ||
@@ -37,9 +53,10 @@ function PreviewIcon({ mimeType, className = "h-14 w-14" }: { mimeType: string; 
   return <File className={`${className} text-slate-400`} />;
 }
 
-function HeaderIcon({ mimeType }: { mimeType: string }) {
+function HeaderIcon({ mimeType, filename = "" }: { mimeType: string; filename?: string }) {
+  if (isPsdAsset(mimeType, filename)) return <PhotoshopLogo className="h-4 w-4 rounded-[3px]" textClassName="text-[6px]" />;
   if (mimeType.startsWith("image/")) return <FileImage className="h-4 w-4 shrink-0 text-slate-500" />;
-  if (mimeType === "application/pdf") return <FileText className="h-4 w-4 shrink-0 text-red-500" />;
+  if (isPdfAsset(mimeType, filename)) return <FileText className="h-4 w-4 shrink-0 text-red-500" />;
   if (mimeType.includes("zip") || mimeType.includes("compressed")) {
     return <Archive className="h-4 w-4 shrink-0 text-slate-500" />;
   }
@@ -75,7 +92,34 @@ interface Props {
   onDragEnd?: () => void;
 }
 
-export function AssetCard({
+function useInView(rootMargin = "200px") {
+  const ref = useRef<HTMLDivElement>(null);
+  const [inView, setInView] = useState(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || inView) return;
+    if (typeof IntersectionObserver === "undefined") {
+      setInView(true);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting) {
+          setInView(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [inView, rootMargin]);
+
+  return { ref, inView };
+}
+
+function AssetCardInner({
   asset,
   role,
   onDeleted,
@@ -90,21 +134,74 @@ export function AssetCard({
 }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [openBadge, setOpenBadge] = useState<number | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewFailed, setPreviewFailed] = useState(false);
-  const [videoThumbUrl, setVideoThumbUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [viewerOpen, setViewerOpen] = useState(false);
   const [viewerUrl, setViewerUrl] = useState<string | null>(null);
-  const [viewerBlob, setViewerBlob] = useState<Blob | null>(null);
   const [viewerIsRemote, setViewerIsRemote] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const { ref: previewRef, inView } = useInView("280px");
+  const [slotReady, setSlotReady] = useState(false);
+  const releaseSlotRef = useRef<(() => void) | null>(null);
 
   const displayName = asset.name || asset.originalFileName || asset.originalName;
   const category = asset.category;
-  const isImage = asset.mimeType.startsWith("image/");
+  const isPsd = isPsdAsset(asset.mimeType, displayName);
+  // PSD reports an image/* mimeType but browsers can't render it — treat it like
+  // any other non-previewable document (generic icon, no inline thumb/viewer).
+  const isImage = asset.mimeType.startsWith("image/") && !isPsd;
   const isVideo = asset.mimeType.startsWith("video/");
+  const isPdf = isPdfAsset(asset.mimeType, displayName);
   const canDownload = role === "admin" || !isVideo;
   const canDelete = role === "admin";
+  const cdnThumbUrl = asset.thumbnailUrl?.trim() || "";
+  // PSD always shows the Photoshop logo — no thumbnail fetch needed.
+  const needsThumb = (isImage || isVideo) && !previewFailed;
+
+  useEffect(() => {
+    if (!inView || !needsThumb) return;
+    let cancelled = false;
+    void acquireThumbSlot().then((release) => {
+      if (cancelled) {
+        release();
+        return;
+      }
+      releaseSlotRef.current = release;
+      setSlotReady(true);
+    });
+    return () => {
+      cancelled = true;
+      releaseSlotRef.current?.();
+      releaseSlotRef.current = null;
+    };
+  }, [inView, needsThumb, asset.id]);
+
+  function releaseThumbSlot() {
+    releaseSlotRef.current?.();
+    releaseSlotRef.current = null;
+  }
+
+  // Proxy-fetch a small WebP thumb only when there is no public CDN URL.
+  const thumbQuery = useQuery({
+    ...assetThumbnailQueryOptions(category, asset.id),
+    enabled: needsThumb && inView && slotReady && !cdnThumbUrl,
+  });
+
+  const proxiedThumbUrl = useMemo(() => {
+    if (!thumbQuery.data) return null;
+    return URL.createObjectURL(thumbQuery.data);
+  }, [thumbQuery.data]);
+
+  useEffect(() => {
+    return () => {
+      if (proxiedThumbUrl) URL.revokeObjectURL(proxiedThumbUrl);
+    };
+  }, [proxiedThumbUrl]);
+
+  const videoThumbUrl = cdnThumbUrl || proxiedThumbUrl;
+  // Never use the full fileUrl on the grid — that decodes large originals and freezes scroll.
+  const imagePreviewUrl = (isImage && (cdnThumbUrl || proxiedThumbUrl)) || null;
+  const canShowPreview = inView && slotReady;
 
   async function handleDownload() {
     if (!canDownload) return;
@@ -138,43 +235,41 @@ export function AssetCard({
     }
   }
 
-  async function handleView() {
+  function handleView() {
     setMenuOpen(false);
-    setBusy(true);
-    try {
-      if (isVideo || !asset.fileUrl) {
-        const { blob } = await fetchAssetFile(asset.id, category, undefined, undefined, {
-          download: false,
-        });
-        setViewerIsRemote(false);
-        if (isVideo) {
-          setViewerBlob(blob);
-          setViewerUrl(null);
-        } else {
-          setViewerBlob(null);
-          setViewerUrl(URL.createObjectURL(blob));
-        }
-        return;
-      }
-      setViewerBlob(null);
+    if (isVideo || isPdf) {
+      // Open immediately; PDFs stream from R2 (first pages in a few seconds).
+      setViewerOpen(true);
+      return;
+    }
+    if (asset.fileUrl) {
       setViewerIsRemote(true);
       setViewerUrl(asset.fileUrl);
-    } catch (err) {
-      void Swal.fire({
-        icon: "error",
-        title: "Could not open file",
-        text: err instanceof Error ? err.message : "The file may no longer be available.",
-      });
-    } finally {
-      setBusy(false);
+      setViewerOpen(true);
+      return;
     }
+    setBusy(true);
+    void fetchAssetFile(asset.id, category, undefined, undefined, { download: false })
+      .then(({ blob }) => {
+        setViewerIsRemote(false);
+        setViewerUrl(URL.createObjectURL(blob));
+        setViewerOpen(true);
+      })
+      .catch((err) => {
+        void Swal.fire({
+          icon: "error",
+          title: "Could not open file",
+          text: err instanceof Error ? err.message : "The file may no longer be available.",
+        });
+      })
+      .finally(() => setBusy(false));
   }
 
   function closeViewer() {
     if (viewerUrl && !viewerIsRemote) URL.revokeObjectURL(viewerUrl);
     setViewerUrl(null);
-    setViewerBlob(null);
     setViewerIsRemote(false);
+    setViewerOpen(false);
   }
 
   async function handleDelete() {
@@ -215,65 +310,13 @@ export function AssetCard({
     }
   }
 
-  useEffect(() => {
-    if (!isImage) return;
-    let objectUrl: string | null = null;
-    let cancelled = false;
-    setPreviewFailed(false);
-    setPreviewUrl(null);
-
-    if (asset.fileUrl) {
-      setPreviewUrl(asset.fileUrl);
-      return () => {
-        cancelled = true;
-      };
-    }
-
-    fetchAssetFile(asset.id, category)
-      .then(({ blob }) => {
-        if (cancelled) return;
-        objectUrl = URL.createObjectURL(blob);
-        setPreviewUrl(objectUrl);
-      })
-      .catch(() => {
-        if (!cancelled) setPreviewFailed(true);
-      });
-
-    return () => {
-      cancelled = true;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
-  }, [asset.id, asset.fileUrl, category, isImage]);
-
-  useEffect(() => {
-    if (!isVideo) return;
-    let objectUrl: string | null = null;
-    let cancelled = false;
-    setVideoThumbUrl(null);
-
-    fetchAssetThumbnail(asset.id, category)
-      .then((blob) => {
-        if (cancelled) return;
-        objectUrl = URL.createObjectURL(blob);
-        setVideoThumbUrl(objectUrl);
-      })
-      .catch(() => {
-        /* play button only */
-      });
-
-    return () => {
-      cancelled = true;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
-  }, [asset.id, category, isVideo]);
-
   function handleCardClick(e: React.MouseEvent) {
     if ((e.target as HTMLElement).closest("[data-menu]")) return;
     if (onSelect) {
       onSelect();
       return;
     }
-    void handleView();
+    handleView();
   }
 
   return (
@@ -284,7 +327,7 @@ export function AssetCard({
       onClick={handleCardClick}
       onDoubleClick={(e) => {
         e.preventDefault();
-        void handleView();
+        handleView();
       }}
       className={`group relative flex cursor-pointer flex-col overflow-hidden rounded-xl border bg-white transition ${
         selected
@@ -297,14 +340,13 @@ export function AssetCard({
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
           if (onSelect) onSelect();
-          else void handleView();
+          else handleView();
         }
       }}
       aria-selected={selected}
     >
-      {/* Drive-style header: icon + name + ⋮ */}
       <div className="flex items-center gap-2 border-b border-slate-100 bg-slate-50 px-2.5 py-2">
-        <HeaderIcon mimeType={asset.mimeType} />
+        <HeaderIcon mimeType={asset.mimeType} filename={displayName} />
         <span title={displayName} className="min-w-0 flex-1 truncate text-sm font-medium text-slate-800">
           {displayName}
         </span>
@@ -317,9 +359,13 @@ export function AssetCard({
               setMenuOpen((v) => !v);
             }}
             className="flex h-7 w-7 items-center justify-center rounded-full text-slate-500 hover:bg-slate-200/80 hover:text-slate-800"
-            aria-label="More actions"
+            aria-label={busy ? "Working…" : "More actions"}
           >
-            <MoreVertical className="h-4 w-4" />
+            {busy ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <MoreVertical className="h-4 w-4" />
+            )}
           </button>
           {menuOpen && (
             <>
@@ -335,7 +381,7 @@ export function AssetCard({
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
-                    void handleView();
+                    handleView();
                   }}
                   className="flex w-full items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
                 >
@@ -371,91 +417,118 @@ export function AssetCard({
         </div>
       </div>
 
-      {/* Preview body */}
-      <div className="p-2">
-        <div className="relative flex h-36 w-full items-center justify-center overflow-hidden rounded-lg bg-slate-100">
-        {badges && badges.length > 0 && (
-          <div className="absolute left-2 top-2 z-10 flex max-w-[calc(100%-1rem)] flex-wrap gap-1">
-            {badges.map((b, i) => {
-              const hasMore = (b.details?.length ?? 0) > 1;
-              return (
-                <div
-                  key={i}
-                  className="relative leading-none"
-                  onMouseEnter={() => hasMore && setOpenBadge(i)}
-                  onMouseLeave={() => hasMore && setOpenBadge(null)}
-                >
-                  <span
-                    className={`inline-block truncate rounded-full px-2 py-0.5 align-middle text-[10px] font-medium leading-[14px] ring-1 ring-inset ${BADGE_TONE_CLASSES[b.tone ?? "slate"]}`}
+      <div className="p-2" ref={previewRef}>
+        <div className="relative flex h-36 w-full items-center justify-center overflow-hidden rounded-lg bg-slate-100 contain-content">
+          {badges && badges.length > 0 && (
+            <div className="absolute left-2 top-2 z-10 flex max-w-[calc(100%-1rem)] flex-wrap gap-1">
+              {badges.map((b, i) => {
+                const hasMore = (b.details?.length ?? 0) > 1;
+                return (
+                  <div
+                    key={i}
+                    className="relative leading-none"
+                    onMouseEnter={() => hasMore && setOpenBadge(i)}
+                    onMouseLeave={() => hasMore && setOpenBadge(null)}
                   >
-                    {b.label}
-                  </span>
-                  {hasMore && openBadge === i && (
-                    <div className="absolute left-0 top-full z-20 mt-1 min-w-[160px] max-w-[220px] rounded-xl border border-slate-200 bg-white p-2 text-xs shadow-lg">
-                      <ul className="space-y-1">
-                        {b.details?.map((d, di) => (
-                          <li key={di} className="truncate text-slate-700">
-                            {d}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {isImage ? (
-          previewUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={previewUrl}
-              alt=""
-              className="pointer-events-none h-full w-full object-cover"
-              onError={() => setPreviewFailed(true)}
-            />
-          ) : previewFailed ? (
-            <div className="flex flex-col items-center gap-1 text-slate-400">
-              <ImageOff className="h-8 w-8" />
-              <span className="text-xs">Unavailable</span>
+                    <span
+                      className={`inline-block truncate rounded-full px-2 py-0.5 align-middle text-[10px] font-medium leading-[14px] ring-1 ring-inset ${BADGE_TONE_CLASSES[b.tone ?? "slate"]}`}
+                    >
+                      {b.label}
+                    </span>
+                    {hasMore && openBadge === i && (
+                      <div className="absolute left-0 top-full z-20 mt-1 min-w-[160px] max-w-[220px] rounded-xl border border-slate-200 bg-white p-2 text-xs shadow-lg">
+                        <ul className="space-y-1">
+                          {b.details?.map((d, di) => (
+                            <li key={di} className="truncate text-slate-700">
+                              {d}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
-          ) : (
-            <Skeleton className="h-full w-full rounded-none" />
-          )
-        ) : isVideo ? (
-          <>
-            {videoThumbUrl ? (
+          )}
+
+          {isPsd ? (
+            <PhotoshopLogo className="h-20 w-20" textClassName="text-3xl" />
+          ) : isImage ? (
+            canShowPreview && imagePreviewUrl && !previewFailed ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
-                src={videoThumbUrl}
+                src={imagePreviewUrl}
                 alt=""
-                className="pointer-events-none absolute inset-0 h-full w-full object-cover"
+                width={320}
+                height={144}
+                loading="lazy"
+                decoding="async"
+                fetchPriority="low"
+                sizes="(max-width: 640px) 50vw, 200px"
+                className="pointer-events-none h-full w-full object-cover"
+                onLoad={releaseThumbSlot}
+                onError={() => {
+                  releaseThumbSlot();
+                  setPreviewFailed(true);
+                }}
               />
-            ) : null}
-            <span className="pointer-events-none absolute inset-0 bg-slate-900/20" />
-            <span className="relative z-[1] flex h-12 w-12 items-center justify-center rounded-full bg-white/95 text-slate-900 shadow-md ring-1 ring-slate-200/80">
-              <Play className="ml-0.5 h-6 w-6 fill-current" aria-hidden />
-            </span>
-          </>
-        ) : (
-          <PreviewIcon mimeType={asset.mimeType} />
-        )}
+            ) : previewFailed ? (
+              <div className="flex flex-col items-center gap-1 text-slate-400">
+                <ImageOff className="h-8 w-8" />
+                <span className="text-xs">Unavailable</span>
+              </div>
+            ) : (
+              <Skeleton className="h-full w-full rounded-none" />
+            )
+          ) : isVideo ? (
+            <>
+              {canShowPreview && videoThumbUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={videoThumbUrl}
+                  alt=""
+                  width={320}
+                  height={144}
+                  loading="lazy"
+                  decoding="async"
+                  fetchPriority="low"
+                  sizes="(max-width: 640px) 50vw, 200px"
+                  className="pointer-events-none absolute inset-0 h-full w-full object-cover"
+                  onLoad={releaseThumbSlot}
+                  onError={releaseThumbSlot}
+                />
+              ) : inView && slotReady && !cdnThumbUrl && thumbQuery.isPending ? (
+                <Skeleton className="absolute inset-0 h-full w-full rounded-none" />
+              ) : !videoThumbUrl ? (
+                <Skeleton className="absolute inset-0 h-full w-full rounded-none" />
+              ) : null}
+              <span className="pointer-events-none absolute inset-0 bg-slate-900/20" />
+              <span className="relative z-[1] flex h-12 w-12 items-center justify-center rounded-full bg-white/95 text-slate-900 shadow-md ring-1 ring-slate-200/80">
+                <Play className="ml-0.5 h-6 w-6 fill-current" aria-hidden />
+              </span>
+            </>
+          ) : (
+            <PreviewIcon mimeType={asset.mimeType} filename={displayName} />
+          )}
         </div>
       </div>
 
-      {(viewerUrl || viewerBlob) && (
+      {viewerOpen && (
         <AssetViewerModal
-          fileUrl={viewerUrl || ""}
-          videoBlob={viewerBlob}
-          mimeType={asset.mimeType}
+          fileUrl={isVideo ? "" : isPdf ? asset.fileUrl || "" : viewerUrl || ""}
+          mimeType={isPdf ? "application/pdf" : asset.mimeType}
           filename={displayName}
           onClose={closeViewer}
           onDownload={canDownload ? handleDownload : undefined}
           canDownload={canDownload}
+          assetId={isVideo || isPdf ? asset.id : undefined}
+          category={isVideo || isPdf ? category : undefined}
+          fileSize={asset.size || asset.fileSize || 0}
         />
       )}
     </div>
   );
 }
+
+export const AssetCard = memo(AssetCardInner);
