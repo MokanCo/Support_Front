@@ -74,7 +74,7 @@ export function DashboardShell({
   return (
     <>
       <AppDataPrefetcher role={role} />
-    <div className="flex min-h-dvh flex-col bg-slate-100">
+    <div className="dashboard-shell-root flex min-h-dvh flex-col bg-slate-100">
       {mobileOpen ? (
         <button
           type="button"
@@ -93,7 +93,7 @@ export function DashboardShell({
       />
 
       <div
-        className={`flex min-h-dvh flex-1 flex-col transition-[padding] duration-300 ease-out ${sidebarWidth}`}
+        className={`dashboard-shell-column flex min-h-dvh flex-1 flex-col transition-[padding] duration-300 ease-out ${sidebarWidth}`}
       >
         <AppHeader
           name={userName}
@@ -103,7 +103,7 @@ export function DashboardShell({
           onMenuClick={() => setMobileOpen(true)}
           onLogout={logout}
         />
-        <main className="flex min-h-0 w-full flex-1 flex-col overflow-y-auto px-4 py-8 lg:px-8">
+        <main className="dashboard-shell-main flex min-h-0 w-full flex-1 flex-col overflow-y-auto px-4 py-8 lg:px-8">
           {children}
         </main>
       </div>

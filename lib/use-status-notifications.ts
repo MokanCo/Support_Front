@@ -13,6 +13,8 @@ export type StatusNotificationRow = {
   channel: string;
   kind: string;
   ticketId: string | null;
+  entityType: string | null;
+  entityId: string | null;
   title: string;
   body: string;
   createdAt: string;
@@ -33,6 +35,8 @@ export function parseStatusNotificationsList(data: unknown): StatusNotificationR
         channel: o.channel != null ? String(o.channel) : "status",
         kind: o.kind != null ? String(o.kind) : "",
         ticketId: o.ticketId != null ? String(o.ticketId) : null,
+        entityType: o.entityType != null ? String(o.entityType) : null,
+        entityId: o.entityId != null ? String(o.entityId) : null,
         title: o.title != null ? String(o.title) : "",
         body: o.body != null ? String(o.body) : "",
         createdAt: normalizeIso(o.createdAt),
@@ -88,6 +92,8 @@ export function parseNotificationSocketPayload(raw: unknown): StatusNotification
     channel,
     kind: n.kind != null ? String(n.kind) : "",
     ticketId: n.ticketId != null ? String(n.ticketId) : null,
+    entityType: n.entityType != null ? String(n.entityType) : null,
+    entityId: n.entityId != null ? String(n.entityId) : null,
     title: n.title != null ? String(n.title) : "",
     body: n.body != null ? String(n.body) : "",
     createdAt: normalizeIso(n.createdAt),
