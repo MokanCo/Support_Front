@@ -30,12 +30,17 @@ export function achFeeFor(invoiceAmount: number): number {
   return Math.round(Math.min(invoiceAmount * ACH_FEE_PERCENT, ACH_FEE_CAP) * 100) / 100;
 }
 
-/** Standard US domestic card pricing (2.9% + $0.30), gross-up formula so the
- *  business nets the invoice amount — matches the server's default
- *  STRIPE_FEE_PERCENT/STRIPE_FEE_FIXED_CENTS. Used to preview a saved-card
- *  direct charge before the server computes the authoritative amount. */
-export const CARD_FEE_PERCENT = 2.9;
-export const CARD_FEE_FIXED = 0.3;
+/** Combined card pricing — US domestic (2.9% + $0.30) plus the
+ *  international-card surcharge (1.5%) and Radar Standard screening fee
+ *  ($0.05) this account is charged on every card, since the card's country
+ *  isn't known until after payment. Gross-up formula so the business nets
+ *  the invoice amount regardless of which fees actually applied — matches
+ *  the server's default STRIPE_FEE_PERCENT + STRIPE_FEE_INTERNATIONAL_PERCENT
+ *  / STRIPE_FEE_FIXED_CENTS + STRIPE_RADAR_FEE_CENTS. Used to preview a
+ *  saved-card direct charge before the server computes the authoritative
+ *  amount. */
+export const CARD_FEE_PERCENT = 4.4;
+export const CARD_FEE_FIXED = 0.35;
 
 export function cardFeeFor(invoiceAmount: number): { fee: number; total: number } {
   if (!Number.isFinite(invoiceAmount) || invoiceAmount <= 0) return { fee: 0, total: 0 };
