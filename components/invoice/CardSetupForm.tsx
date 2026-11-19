@@ -25,19 +25,16 @@ function stripePromiseFor(publishableKey: string) {
 type Props = {
   token: string;
   onLinked: () => void;
-  onSkip: () => void;
   onError: (message: string) => void;
 };
 
 function IntroStep({
   token,
   onError,
-  onSkip,
   onReady,
 }: {
   token: string;
   onError: (message: string) => void;
-  onSkip: () => void;
   onReady: (clientSecret: string, publishableKey: string) => void;
 }) {
   const [loading, setLoading] = useState(false);
@@ -58,24 +55,19 @@ function IntroStep({
   return (
     <div className="space-y-4">
       <p className="text-sm text-slate-600">
-        Optionally add a backup card. It&apos;s never charged automatically —
-        it&apos;s only used if the business manually chooses to charge it, for
-        example if a bank debit doesn&apos;t go through.
+        A backup card is required to finish setup. It&apos;s never charged
+        automatically — it&apos;s only used if the business manually chooses to
+        charge it, for example if a bank debit doesn&apos;t go through.
       </p>
-      <div className="flex gap-2">
-        <Button variant="secondary" className="flex-1" onClick={onSkip} disabled={loading}>
-          Skip for now
-        </Button>
-        <Button className="flex-1" disabled={loading} onClick={start}>
-          {loading ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Preparing…
-            </>
-          ) : (
-            "Add a card"
-          )}
-        </Button>
-      </div>
+      <Button className="w-full" disabled={loading} onClick={start}>
+        {loading ? (
+          <>
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Preparing…
+          </>
+        ) : (
+          "Add a card"
+        )}
+      </Button>
     </div>
   );
 }
@@ -126,9 +118,9 @@ function ConfirmStep({
   );
 }
 
-/** Optional second step of the setup wizard — saves a backup credit card on
+/** Required second step of the setup wizard — saves a backup credit card on
  *  the same Stripe customer as the linked bank account. */
-export function CardSetupForm({ token, onLinked, onSkip, onError }: Props) {
+export function CardSetupForm({ token, onLinked, onError }: Props) {
   const [intent, setIntent] = useState<{ clientSecret: string; publishableKey: string } | null>(
     null,
   );
@@ -143,7 +135,6 @@ export function CardSetupForm({ token, onLinked, onSkip, onError }: Props) {
       <IntroStep
         token={token}
         onError={onError}
-        onSkip={onSkip}
         onReady={(clientSecret, publishableKey) => setIntent({ clientSecret, publishableKey })}
       />
     );

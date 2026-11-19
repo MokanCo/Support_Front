@@ -56,7 +56,6 @@ function AchSetupInner() {
   const [error, setError] = useState<string | null>(null);
   const [bankLinked, setBankLinked] = useState(false);
   const [cardLinked, setCardLinked] = useState(false);
-  const [cardSkipped, setCardSkipped] = useState(false);
 
   const query = useQuery({
     queryKey: ["public-ach-setup", token],
@@ -104,8 +103,7 @@ function AchSetupInner() {
 
   const data = query.data;
   const bankDone = bankLinked || Boolean(data.alreadyLinked);
-  const cardStepDone = cardLinked || cardSkipped || Boolean(data.cardAlreadyLinked);
-  const hasCard = cardLinked || Boolean(data.cardAlreadyLinked);
+  const cardStepDone = cardLinked || Boolean(data.cardAlreadyLinked);
 
   return (
     <Shell company={data.company.name} logoUrl={data.company.logoUrl}>
@@ -139,14 +137,16 @@ function AchSetupInner() {
               Bank account linked
             </p>
             <h1 className="mt-1 text-xl font-semibold text-slate-900">
-              Add a backup card? (optional)
+              Add a backup card
             </h1>
+            <p className="mt-2 text-sm text-slate-500">
+              One last step — a backup card is required to finish setup.
+            </p>
             {error ? <p className="mt-3 text-sm text-rose-600">{error}</p> : null}
             <div className="mt-5">
               <CardSetupForm
                 token={token}
                 onLinked={() => setCardLinked(true)}
-                onSkip={() => setCardSkipped(true)}
                 onError={(message) => setError(message || null)}
               />
             </div>
@@ -154,18 +154,15 @@ function AchSetupInner() {
         ) : (
           <div className="text-center">
             <p className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-700">
-              {hasCard ? "Bank account and card linked" : "Bank account linked"}
+              Bank account and card linked
             </p>
             <h1 className="mt-2 text-xl font-semibold text-slate-900">You&apos;re all set</h1>
             <p className="mt-2 text-sm text-slate-600">
               Future invoices from {data.company.name} will be automatically
               debited from your bank account — you won&apos;t need to do anything
-              further.
-              {hasCard
-                ? " Your backup card is on file too, in case a bank debit ever doesn't go through."
-                : ""}{" "}
-              You can withdraw this authorization anytime by contacting{" "}
-              {data.company.name}.
+              further. Your backup card is on file too, in case a bank debit
+              ever doesn't go through. You can withdraw this authorization
+              anytime by contacting {data.company.name}.
             </p>
           </div>
         )}
