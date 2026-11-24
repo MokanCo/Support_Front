@@ -55,3 +55,41 @@ Internal Trello-style boards for **admin** and **support** only (`/dashboard/boa
 - **Drag and drop**: Moving a card calls `POST /api/tasks/move` with `{ taskId, destinationColumnId, newOrder }`. If the task has a `ticketId`, ticket **status** follows the destination column name (e.g. Done-like columns map to `completed`).
 
 - **Email**: When a card enters a Done-like column, completion notifications use **SMTP env vars on the backend** (`backend/.env.example`). If SMTP is not configured, the backend logs instead of sending.
+
+## AI Receptionist
+
+The module lives in the existing portal at `/dashboard/ai-receptionist` and is limited to admins. Its API is the same Express app. Swagger UI is `{API_PUBLIC_URL}/api-docs`, with the Phone Numbers, AI Agent, Knowledge Base, Branches, Call History, Recordings & Transcripts, Analytics, Telephony, System Settings, and Webhooks tags. The spec JSON is `/api-docs.json`.
+
+Authorize with the portal JWT from `POST /api/auth/login`. Voice webhooks do not use that JWT. They require Bandwidth HTTP Basic auth and `API_PUBLIC_URL`.
+
+Set these only on the API server:
+
+- `OPENAI_API_KEY` and optional `OPENAI_MODEL`
+- `BANDWIDTH_CLIENT_ID` and `BANDWIDTH_CLIENT_SECRET` (from Bandwidth Build → Your API credentials, used to download recordings)
+- `BANDWIDTH_VOICE_APPLICATION_ID`
+- `BANDWIDTH_WEBHOOK_USERNAME` and `BANDWIDTH_WEBHOOK_PASSWORD` (a pair you choose and enter on the Bandwidth voice application)
+- `API_PUBLIC_URL` (public HTTPS origin Bandwidth can reach, no trailing slash)
+
+Webhook paths, after a carrier change is explicitly approved:
+
+- `POST /api/ai-receptionist/voice/inbound`
+- `POST /api/ai-receptionist/voice/gather`
+- `POST /api/ai-receptionist/voice/dial-status`
+- `POST /api/ai-receptionist/voice/status`
+- `POST /api/ai-receptionist/voice/recording`
+
+Admin endpoints (portal JWT, role `admin`):
+
+- `GET/POST /api/ai-receptionist/phone-numbers`, `GET/PATCH/DELETE /api/ai-receptionist/phone-numbers/{id}`, `POST /api/ai-receptionist/phone-numbers/{id}/test`
+- `GET /api/ai-receptionist/overview`
+- `GET/PUT/DELETE /api/ai-receptionist/agent-settings`
+- `GET/POST /api/ai-receptionist/knowledge`, `POST /api/ai-receptionist/knowledge/import`, `GET/PATCH/DELETE /api/ai-receptionist/knowledge/{id}`
+- `GET /api/ai-receptionist/branches`, `GET/PUT /api/ai-receptionist/branches/{locationId}`
+- `GET /api/ai-receptionist/calls`, `GET/PATCH /api/ai-receptionist/calls/{id}`
+- `GET /api/ai-receptionist/recordings`, `GET /api/ai-receptionist/recordings/{callId}`, `GET /api/ai-receptionist/recordings/{callId}/audio`
+- `GET /api/ai-receptionist/analytics`, `GET /api/ai-receptionist/analytics/export`
+- `GET/PATCH /api/ai-receptionist/settings`, `GET /api/ai-receptionist/health`, `GET /api/ai-receptionist/audit`
+
+Do not point a production number at the voice URLs until that approval. Saving a phone configuration does not transfer, port, or disconnect the carrier number. The receptionist refuses orders and card details and offers a transfer instead. Recording audio is proxied to signed-in admins and is not returned as a public media URL.
+
+Deploy the API with the existing process (`npm start` in `Support_Backend`) and the frontend with the existing static export (`npm run build`, then serve `out`). Existing portal routes are unchanged.

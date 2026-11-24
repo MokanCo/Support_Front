@@ -74,3 +74,8 @@ export function canViewAr(role: UserRole): boolean {
 export function canManageAr(role: UserRole): boolean {
   return role === "admin";
 }
+
+/** AI Receptionist module. Limited to admins until call operations need a broader role. */
+export function canViewAiReceptionist(role: UserRole): boolean {
+  return role === "admin";
+}

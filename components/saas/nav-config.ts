@@ -8,6 +8,7 @@ import {
   Ticket,
   ClipboardList,
   FileText,
+  Headset,
   ImageIcon,
   Wallet,
 } from "lucide-react";
@@ -35,6 +36,12 @@ export const NAV_ITEMS: NavItem[] = [
     href: "/dashboard/locations",
     label: "Locations",
     icon: MapPin,
+    roles: ["admin"],
+  },
+  {
+    href: "/dashboard/ai-receptionist",
+    label: "AI Receptionist",
+    icon: Headset,
     roles: ["admin"],
   },
   {
@@ -107,6 +114,9 @@ export function titleForPath(pathname: string): string {
   if (pathname.startsWith("/dashboard/ar")) {
     return "Accounts";
   }
+  if (pathname.startsWith("/dashboard/ai-receptionist")) {
+    return "AI Receptionist";
+  }
   const map: Record<string, string> = {
     "/dashboard": "Dashboard",
     "/dashboard/tickets": "Tickets",
@@ -119,6 +129,7 @@ export function titleForPath(pathname: string): string {
     "/dashboard/documents": "Documents",
     "/dashboard/marketing-assets": "Marketing Assets",
     "/dashboard/ar": "Accounts",
+    "/dashboard/ai-receptionist": "AI Receptionist",
   };
   return map[pathname] ?? "Dashboard";
 }
