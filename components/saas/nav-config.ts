@@ -10,7 +10,7 @@ import {
   FileText,
   Headset,
   ImageIcon,
-  // Wallet,
+  Wallet,
 } from "lucide-react";
 import type { UserRole } from "@/lib/user-roles";
 
@@ -57,12 +57,12 @@ export const NAV_ITEMS: NavItem[] = [
     roles: ["admin", "support"],
     badgeSource: "conversations",
   },
-  // {
-  //   href: "/dashboard/ar",
-  //   label: "Accounts Receivable",
-  //   icon: Wallet,
-  //   roles: ["admin", "support", "partner"],
-  // },
+  {
+    href: "/dashboard/ar",
+    label: "Accounts",
+    icon: Wallet,
+    roles: ["admin", "support", "partner"],
+  },
   {
     href: "/dashboard/documents",
     label: "Documents",
@@ -112,7 +112,7 @@ export function titleForPath(pathname: string): string {
     return "Onboardings";
   }
   if (pathname.startsWith("/dashboard/ar")) {
-    return "Accounts Receivable";
+    return "Accounts";
   }
   if (pathname.startsWith("/dashboard/ai-receptionist")) {
     return "AI Receptionist";
@@ -128,7 +128,7 @@ export function titleForPath(pathname: string): string {
     "/dashboard/boards": "Boards",
     "/dashboard/documents": "Documents",
     "/dashboard/marketing-assets": "Marketing Assets",
-    "/dashboard/ar": "Accounts Receivable",
+    "/dashboard/ar": "Accounts",
     "/dashboard/ai-receptionist": "AI Receptionist",
   };
   return map[pathname] ?? "Dashboard";

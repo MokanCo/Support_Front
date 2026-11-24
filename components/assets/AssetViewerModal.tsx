@@ -7,9 +7,11 @@ import { Download, Loader2, Maximize, Pause, Play, Volume2, VolumeX, X } from "l
 import {
   assetInlineFileQueryOptions,
   isPdfAsset,
+  isPsdAsset,
   type AssetCategory,
 } from "@/lib/queries/assets";
 import { PdfPageViewer } from "@/components/assets/PdfPageViewer";
+import { PhotoshopLogo } from "@/components/assets/PhotoshopLogo";
 
 interface Props {
   fileUrl: string;
@@ -271,7 +273,9 @@ export function AssetViewerModal({
   videoLoading = false,
   videoError = null,
 }: Props) {
-  const isImage = mimeType.startsWith("image/") && !isPdfAsset(mimeType, filename);
+  const isPsd = isPsdAsset(mimeType, filename);
+  const isImage =
+    mimeType.startsWith("image/") && !isPdfAsset(mimeType, filename) && !isPsd;
   const isPdf = isPdfAsset(mimeType, filename);
   const isVideo = mimeType.startsWith("video/");
   const [downloading, setDownloading] = useState(false);
@@ -349,7 +353,11 @@ export function AssetViewerModal({
                 className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 disabled:opacity-50"
                 title="Download"
               >
-                <Download className="h-4 w-4" />
+                {downloading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Download className="h-4 w-4" />
+                )}
                 {downloading ? "Downloading…" : "Download"}
               </button>
             ) : null}
@@ -403,6 +411,11 @@ export function AssetViewerModal({
                 {loadError || "Preview not available for this file type."}
               </p>
             )
+          ) : isPsd ? (
+            <div className="flex flex-col items-center gap-3">
+              <PhotoshopLogo className="h-28 w-28" textClassName="text-4xl" />
+              <p className="text-sm text-slate-500">Photoshop file — download to view.</p>
+            </div>
           ) : (
             <p className="text-sm text-slate-500">
               Preview not available for this file type.

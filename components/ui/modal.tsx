@@ -16,7 +16,7 @@ export function Modal({
 }: {
   open: boolean;
   title?: string;
-  description?: string;
+  description?: ReactNode;
   titleNode?: ReactNode;
   children: React.ReactNode;
   onClose: () => void;
@@ -85,7 +85,7 @@ export function Modal({
                 {title ?? ""}
               </h2>
               {description ? (
-                <p className="mt-1 text-sm text-slate-500">{description}</p>
+                <div className="mt-1 text-sm text-slate-500">{description}</div>
               ) : null}
             </div>
           )}

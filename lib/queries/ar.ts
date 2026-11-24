@@ -84,6 +84,75 @@ export async function updateArSettings(body: Record<string, unknown>) {
   return data.settings;
 }
 
+export type ArInvoiceBlock = {
+  id: string;
+  type: string;
+  enabled: boolean;
+  label: string;
+  content?: string;
+  align?: "left" | "center" | "right";
+  fontSize?: number;
+};
+
+export type ArInvoiceTemplate = {
+  id: string;
+  name: string;
+  description?: string;
+  isDefault?: boolean;
+  isActive?: boolean;
+  blocks: ArInvoiceBlock[];
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export async function fetchArInvoiceTemplates() {
+  const data = await arJson<{ templates: ArInvoiceTemplate[] }>("/api/ar/invoice-templates");
+  return data.templates;
+}
+
+export async function fetchArInvoiceTemplatePalette() {
+  return arJson<{
+    blocks: ArInvoiceBlock[];
+    blockTypes: { type: string; label: string }[];
+  }>("/api/ar/invoice-templates/palette");
+}
+
+export async function createArInvoiceTemplate(body: {
+  name: string;
+  description?: string;
+  blocks: ArInvoiceBlock[];
+  isDefault?: boolean;
+}) {
+  const data = await arJson<{ template: ArInvoiceTemplate }>("/api/ar/invoice-templates", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return data.template;
+}
+
+export async function updateArInvoiceTemplate(
+  id: string,
+  body: Partial<{
+    name: string;
+    description: string;
+    blocks: ArInvoiceBlock[];
+    isDefault: boolean;
+    isActive: boolean;
+  }>,
+) {
+  const data = await arJson<{ template: ArInvoiceTemplate }>(`/api/ar/invoice-templates/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return data.template;
+}
+
+export async function deleteArInvoiceTemplate(id: string) {
+  return arJson(`/api/ar/invoice-templates/${id}`, { method: "DELETE" });
+}
+
 export type ArProduct = {
   id: string;
   name: string;
@@ -92,6 +161,8 @@ export type ArProduct = {
   price: number;
   taxable?: boolean;
   taxPercentage?: number;
+  /** Auto-populate on new invoices when true. */
+  isRequired?: boolean;
   isActive?: boolean;
   accountingCategory?: string;
 };
@@ -127,6 +198,27 @@ export async function deleteArProduct(id: string) {
   return arJson(`/api/ar/products/${id}`, { method: "DELETE" });
 }
 
+/** A bank account the customer has authorized us to debit via Stripe ACH
+ *  Direct Debit — saved once, then reused for off-session charges without
+ *  sending the customer another invoice/checkout link. */
+export type ArAchPaymentMethod = {
+  status: "active" | "pending_verification" | "failed" | "revoked";
+  bankName?: string;
+  last4?: string;
+  mandateId?: string;
+  authorizedAt?: string;
+};
+
+/** A backup credit card the customer added (same one-time setup link, second
+ *  step) — used as a manual fallback an admin chooses per invoice when a
+ *  scheduled ACH debit bounces. Never charged automatically. */
+export type ArCardPaymentMethod = {
+  status: "active" | "revoked";
+  brand?: string;
+  last4?: string;
+  authorizedAt?: string;
+};
+
 export type ArBillingProfile = {
   id?: string;
   locationId: string;
@@ -146,6 +238,8 @@ export type ArBillingProfile = {
   lateFeeType?: string;
   lateFeeAmount?: number;
   internalNotes?: string;
+  achPaymentMethod?: ArAchPaymentMethod | null;
+  cardPaymentMethod?: ArCardPaymentMethod | null;
 };
 
 export async function fetchArBillingProfiles(params?: ArListParams) {
@@ -156,6 +250,39 @@ export async function fetchArBillingProfiles(params?: ArListParams) {
     page: number;
     pageSize: number;
   }>(`/api/ar/billing-profiles${q ? `?${q}` : ""}`);
+}
+
+/** Creates a one-time link for the customer to link/authorize a bank account
+ *  for automatic ACH billing — separate from any specific invoice — and
+ *  emails it directly to their billing address. Once completed, every future
+ *  invoice for this customer can be charged directly (see chargeArInvoiceAch)
+ *  with no further customer action. */
+export async function sendArAchSetupLink(locationId: string) {
+  return arJson<{ emailedTo: string }>(
+    `/api/ar/billing-profiles/${locationId}/ach-setup-link`,
+    { method: "POST" },
+  );
+}
+
+/** Revokes a customer's saved ACH bank account — the only way back to a
+ *  linkable state once active, since a fresh setup link is refused while one
+ *  is already linked. */
+export async function unlinkArAchAccount(locationId: string) {
+  const data = await arJson<{ profile: ArBillingProfile }>(
+    `/api/ar/billing-profiles/${locationId}/ach-unlink`,
+    { method: "POST" },
+  );
+  return data.profile;
+}
+
+/** Revokes a customer's saved backup card — the ACH bank account (if any) is
+ *  untouched. */
+export async function unlinkArCardAccount(locationId: string) {
+  const data = await arJson<{ profile: ArBillingProfile }>(
+    `/api/ar/billing-profiles/${locationId}/card-unlink`,
+    { method: "POST" },
+  );
+  return data.profile;
 }
 
 export async function fetchArBillingProfile(locationId: string) {
@@ -185,12 +312,21 @@ export type ArInvoice = {
   invoiceNumber: string;
   locationId: string;
   locationName?: string;
+  invoiceTemplateId?: string | null;
   status: string;
   invoiceDate?: string;
   dueDate?: string;
+  currency?: string;
+  subtotal?: number;
+  taxAmount?: number;
+  discountAmount?: number;
+  lateFeeAmount?: number;
+  creditApplied?: number;
   total: number;
   amountPaid: number;
   balanceDue: number;
+  sentAt?: string | null;
+  paidAt?: string | null;
   notes?: string;
   items?: {
     name: string;
@@ -198,6 +334,8 @@ export type ArInvoice = {
     unitPrice: number;
     lineTotal?: number;
   }[];
+  /** Secure token for the canonical public /invoice/pay page (email + partner Pay Now). */
+  publicPaymentToken?: string | null;
   timeline?: {
     eventType: string;
     title: string;
@@ -205,6 +343,17 @@ export type ArInvoice = {
     userName?: string;
     createdAt?: string;
   }[];
+  /** Set once an admin triggers a direct off-session charge (ACH or saved
+   *  card) — ACH stays "processing" until Stripe's webhook confirms or
+   *  rejects the pull (typically 3-5 business days); a card charge resolves
+   *  almost immediately, so "processing" is rare for it. */
+  directCharge?: {
+    method: "ach" | "card";
+    status: "processing" | "failed";
+    amount?: number;
+    initiatedAt?: string;
+    failureReason?: string;
+  } | null;
 };
 
 export async function fetchArInvoices(params?: ArListParams) {
@@ -232,6 +381,30 @@ export async function invoiceAction(id: string, action: string) {
   return arJson(`/api/ar/invoices/${id}/${action}`, { method: "POST" });
 }
 
+/** Charges the customer's saved ACH bank account for this invoice's balance
+ *  directly — no checkout link is sent, no customer action is required. The
+ *  debit is still asynchronous: the invoice moves to an "ACH processing"
+ *  state until Stripe's webhook confirms the pull succeeded or failed. */
+export async function chargeArInvoiceAch(id: string) {
+  const data = await arJson<{ invoice: ArInvoice }>(
+    `/api/ar/invoices/${id}/charge-saved-ach`,
+    { method: "POST" },
+  );
+  return data.invoice;
+}
+
+/** Charges the customer's saved backup card for this invoice's balance
+ *  directly — the manual fallback for when a linked ACH debit bounces.
+ *  Unlike ACH this typically resolves immediately (paid or failed), not a
+ *  multi-day "processing" state. */
+export async function chargeArInvoiceCard(id: string) {
+  const data = await arJson<{ invoice: ArInvoice }>(
+    `/api/ar/invoices/${id}/charge-saved-card`,
+    { method: "POST" },
+  );
+  return data.invoice;
+}
+
 export async function downloadArInvoicePdf(id: string) {
   const res = await apiFetch(`/api/ar/invoices/${id}/pdf`);
   if (!res.ok) throw new Error("Failed to download PDF");
@@ -242,12 +415,23 @@ export type ArPayment = {
   id: string;
   invoiceId: string;
   invoiceNumber?: string;
+  locationId?: string;
   locationName?: string;
   amount: number;
+  originalAmount?: number;
+  stripeProcessingFee?: number;
+  stripeChargeAmount?: number;
+  currency?: string;
   paymentDate?: string;
   paymentMethod?: string;
+  stripePaymentMethodType?: string;
+  paymentStatus?: string;
+  failureReason?: string;
   transactionReference?: string;
+  stripePaymentIntentId?: string;
+  stripeCheckoutSessionId?: string;
   notes?: string;
+  createdAt?: string;
 };
 
 export async function fetchArPayments(params?: ArListParams) {
@@ -265,6 +449,69 @@ export async function recordArPayment(body: Record<string, unknown>) {
   });
 }
 
+export type ArPaymentSubmissionStatus = "pending" | "approved" | "rejected";
+
+export type ArPaymentSubmission = {
+  id: string;
+  invoiceId: string;
+  invoiceNumber?: string;
+  locationId: string;
+  locationName?: string;
+  submittedBy: string | null;
+  submittedByName?: string;
+  amount: number;
+  paymentMethod: string;
+  paymentDate?: string;
+  transactionReference?: string;
+  notes?: string;
+  proofUrl?: string;
+  source?: string;
+  status: ArPaymentSubmissionStatus;
+  reviewedBy?: string | null;
+  reviewedAt?: string | null;
+  reviewNote?: string;
+  resultingPaymentId?: string | null;
+  createdAt?: string;
+};
+
+/** Partner reports "I sent payment" for an invoice — pending admin verification. */
+export async function submitArInvoicePayment(
+  invoiceId: string,
+  body: { amount: number; paymentMethod: string; transactionReference?: string; notes?: string },
+) {
+  const data = await arJson<{ submission: ArPaymentSubmission }>(
+    `/api/ar/invoices/${invoiceId}/payment-submissions`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+  return data.submission;
+}
+
+export async function fetchArPaymentSubmissions(status: ArPaymentSubmissionStatus | "all" = "pending") {
+  const data = await arJson<{ submissions: ArPaymentSubmission[] }>(
+    `/api/ar/payment-submissions?status=${encodeURIComponent(status)}`,
+  );
+  return data.submissions;
+}
+
+export async function reviewArPaymentSubmission(
+  id: string,
+  body: { decision: "approve" | "reject"; note?: string },
+) {
+  const data = await arJson<{ submission: ArPaymentSubmission }>(
+    `/api/ar/payment-submissions/${id}/review`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+  return data.submission;
+}
+
 export type ArCredit = {
   id: string;
   locationId: string;
@@ -274,6 +521,9 @@ export type ArCredit = {
   type?: string;
   reason?: string;
   status?: string;
+  createdAt?: string;
+  issuedAt?: string;
+  creditDate?: string;
 };
 
 export async function fetchArCredits(params?: ArListParams) {

@@ -14,6 +14,13 @@ export function isPdfAsset(mimeType: string, filename = "") {
   return mime.includes("pdf") || name.endsWith(".pdf");
 }
 
+/** PSD reports an image/* mimeType but browsers cannot render it — needs its own icon/no-preview path. */
+export function isPsdAsset(mimeType: string, filename = "") {
+  const mime = String(mimeType || "").toLowerCase();
+  const name = String(filename || "").toLowerCase();
+  return mime.includes("photoshop") || name.endsWith(".psd") || name.endsWith(".psb");
+}
+
 export const MARKETING_ASSET_TYPES: {
   value: MarketingAssetType;
   label: string;
@@ -544,9 +551,11 @@ export async function fetchAssetFile(
 ): Promise<{ blob: Blob; filename: string }> {
   // Always go through the API so Content-Disposition/download works reliably
   // (cross-origin R2 URLs ignore the HTML download attribute).
+  // Uses "disposition=attachment" rather than "download=1" — some ad-blocker/
+  // privacy extensions silently block request URLs matching *download* patterns.
   const asDownload = options?.download !== false;
   const res = await apiFetch(
-    `${categoryBasePath(category)}/${id}/file${asDownload ? "?download=1" : ""}`,
+    `${categoryBasePath(category)}/${id}/file${asDownload ? "?disposition=attachment" : ""}`,
   );
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
