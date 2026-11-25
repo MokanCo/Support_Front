@@ -7,6 +7,7 @@ import {
   History,
   LayoutDashboard,
   MapPin,
+  MessageSquare,
   Phone,
   Settings,
 } from "lucide-react";
@@ -30,6 +31,7 @@ export const AI_RECEPTIONIST_NAV: AiReceptionistNavItem[] = [
   { href: `${AI_RECEPTIONIST_BASE}/knowledge`, label: "Knowledge Base", icon: BookOpen },
   { href: `${AI_RECEPTIONIST_BASE}/branches`, label: "Branch Information", icon: MapPin },
   { href: `${AI_RECEPTIONIST_BASE}/calls`, label: "Call History", icon: History },
+  { href: `${AI_RECEPTIONIST_BASE}/sms`, label: "SMS Inbox", icon: MessageSquare },
   {
     href: `${AI_RECEPTIONIST_BASE}/recordings`,
     label: "Recordings & Transcripts",
