@@ -34,6 +34,7 @@ import {
   testPhoneNumber,
   updatePhoneNumber,
   type BranchPhoneNumber,
+  type ForwardingStatus,
   type ForwardMode,
   type PhoneNumberTestResult,
   type PhoneProvider,
@@ -42,7 +43,8 @@ import {
 
 const COLUMNS = [
   "Branch",
-  "Existing number",
+  "Public number",
+  "AI destination",
   "Provider",
   "Assigned branch",
   "AI",
@@ -57,6 +59,7 @@ const COLUMNS = [
 type FormState = {
   locationId: string;
   existingPhoneNumber: string;
+  aiDestinationNumber: string;
   provider: PhoneProvider;
   providerLabel: string;
   aiEnabled: boolean;
@@ -65,6 +68,7 @@ type FormState = {
   humanFallbackNumber: string;
   transferNumber: string;
   forwardingMode: ForwardMode;
+  forwardingStatus: ForwardingStatus;
   forwardingDestination: string;
   forwardingNotes: string;
 };
@@ -73,6 +77,7 @@ function emptyForm(): FormState {
   return {
     locationId: "",
     existingPhoneNumber: "",
+    aiDestinationNumber: "",
     provider: "unknown",
     providerLabel: "",
     aiEnabled: false,
@@ -81,6 +86,7 @@ function emptyForm(): FormState {
     humanFallbackNumber: "",
     transferNumber: "",
     forwardingMode: "none",
+    forwardingStatus: "not_configured",
     forwardingDestination: "",
     forwardingNotes: "",
   };
@@ -94,6 +100,7 @@ function formFromRecord(row: BranchPhoneNumber): FormState {
   return {
     locationId: row.locationId,
     existingPhoneNumber: row.existingPhoneNumber,
+    aiDestinationNumber: row.aiDestinationNumber || "",
     provider: row.provider,
     providerLabel: row.providerLabel,
     aiEnabled: row.aiEnabled,
@@ -102,6 +109,7 @@ function formFromRecord(row: BranchPhoneNumber): FormState {
     humanFallbackNumber: row.humanFallbackNumber,
     transferNumber: row.transferNumber,
     forwardingMode: row.forwarding.mode,
+    forwardingStatus: row.forwarding.status || "not_configured",
     forwardingDestination: row.forwarding.destination,
     forwardingNotes: row.forwarding.notes,
   };
@@ -183,6 +191,7 @@ export function PhoneNumbersPage() {
       const body = {
         locationId: form.locationId,
         existingPhoneNumber: form.existingPhoneNumber,
+        aiDestinationNumber: form.aiDestinationNumber,
         provider: form.provider,
         providerLabel: form.providerLabel,
         aiEnabled: form.aiEnabled,
@@ -191,7 +200,8 @@ export function PhoneNumbersPage() {
         transferNumber: form.transferNumber,
         forwarding: {
           mode: form.forwardingMode,
-          destination: form.forwardingMode === "none" ? "" : form.forwardingDestination,
+          status: form.forwardingMode === "none" ? "not_configured" : form.forwardingStatus,
+          destination: form.forwardingMode === "none" ? "" : form.forwardingDestination || form.aiDestinationNumber,
           notes: form.forwardingNotes,
           routingLive: false as const,
         },
@@ -237,7 +247,7 @@ export function PhoneNumbersPage() {
     <div>
       <PageIntro
         title="Branch Phone Numbers"
-        description="Configuration for the numbers branches already use. Assign a branch, hours, fallback, and whether AI should answer once telephony is connected."
+        description="Customers keep calling each franchise number. The carrier forwards that call to the Bandwidth AI destination. Saving here does not change the carrier."
       />
       <StageNotice>
         Saving a number stores it in the portal only. It does not forward, port, test-dial, or disconnect the carrier line. Live routing stays off.
@@ -301,6 +311,9 @@ export function PhoneNumbersPage() {
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-slate-700">
                       {row.existingPhoneNumber}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-slate-700">
+                      {row.aiDestinationNumber || "—"}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-slate-700">{providerLabel(row)}</td>
                     <td className="whitespace-nowrap px-4 py-3 text-slate-700">
@@ -407,14 +420,14 @@ export function PhoneNumbersPage() {
               ))}
             </Select>
             <label className="block space-y-1.5">
-              <span className="text-sm font-medium text-slate-700">Existing phone number</span>
+              <span className="text-sm font-medium text-slate-700">Public branch number</span>
               <input
                 required
                 value={form.existingPhoneNumber}
                 onChange={(event) =>
                   setForm((current) => ({ ...current, existingPhoneNumber: event.target.value }))
                 }
-                placeholder="Landline customers call for this branch"
+                placeholder="+13132304482"
                 className={fieldClass}
               />
               {locationPhone ? (
@@ -423,8 +436,22 @@ export function PhoneNumbersPage() {
                 </span>
               ) : null}
             </label>
+            <label className="block space-y-1.5">
+              <span className="text-sm font-medium text-slate-700">AI destination number</span>
+              <input
+                value={form.aiDestinationNumber}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, aiDestinationNumber: event.target.value }))
+                }
+                placeholder="+13376040529"
+                className={fieldClass}
+              />
+              <span className="block text-xs text-slate-500">
+                Bandwidth number that receives the forwarded call. This does not replace the public number.
+              </span>
+            </label>
             <Select
-              label="Phone provider"
+              label="Carrier provider"
               value={form.provider}
               onChange={(event) =>
                 setForm((current) => ({
@@ -504,22 +531,44 @@ export function PhoneNumbersPage() {
             <Select
               label="Forwarding"
               value={form.forwardingMode}
-              onChange={(event) =>
+              onChange={(event) => {
+                const mode = event.target.value as ForwardMode;
                 setForm((current) => ({
                   ...current,
-                  forwardingMode: event.target.value as ForwardMode,
-                }))
-              }
+                  forwardingMode: mode,
+                  forwardingStatus: mode === "none" ? "not_configured" : current.forwardingStatus === "not_configured" ? "pending" : current.forwardingStatus,
+                  forwardingDestination:
+                    mode === "forward" && !current.forwardingDestination
+                      ? current.aiDestinationNumber
+                      : current.forwardingDestination,
+                }));
+              }}
             >
               <option value="none">Not configured</option>
-              <option value="forward">Carrier forward, stored only</option>
-              <option value="sip">SIP destination, stored only</option>
-              <option value="manual">Manual notes</option>
+              <option value="forward">Carrier forwarding</option>
+              <option value="sip">SIP forwarding</option>
+              <option value="manual">Manual configuration</option>
             </Select>
             {form.forwardingMode !== "none" ? (
-              <label className="block space-y-1.5">
+              <Select
+                label="Forwarding status"
+                value={form.forwardingStatus}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    forwardingStatus: event.target.value as ForwardingStatus,
+                  }))
+                }
+              >
+                <option value="not_configured">Not configured</option>
+                <option value="pending">Pending</option>
+                <option value="active">Active</option>
+              </Select>
+            ) : null}
+            {form.forwardingMode === "forward" || form.forwardingMode === "sip" ? (
+              <label className="block space-y-1.5 sm:col-span-2">
                 <span className="text-sm font-medium text-slate-700">
-                  {form.forwardingMode === "sip" ? "SIP destination" : "Forward destination"}
+                  {form.forwardingMode === "sip" ? "SIP destination" : "Forward-to number"}
                 </span>
                 <input
                   value={form.forwardingDestination}
@@ -529,16 +578,22 @@ export function PhoneNumbersPage() {
                       forwardingDestination: event.target.value,
                     }))
                   }
-                  placeholder={form.forwardingMode === "sip" ? "sip:user@host" : "Fallback destination"}
+                  placeholder={form.forwardingMode === "sip" ? "sip:user@host" : form.aiDestinationNumber || "+13376040529"}
                   className={fieldClass}
                 />
               </label>
             ) : null}
           </div>
 
-          {form.forwardingMode === "manual" ? (
+          <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            Saving this form does not turn on call forwarding at the phone company. Ask the carrier to forward the public branch number to the AI destination number, then set the status here.
+          </p>
+
+          {form.forwardingMode === "manual" || form.forwardingMode === "forward" ? (
             <label className="block space-y-1.5">
-              <span className="text-sm font-medium text-slate-700">Forwarding notes</span>
+              <span className="text-sm font-medium text-slate-700">
+                {form.forwardingMode === "forward" ? "Carrier setup notes" : "Forwarding notes"}
+              </span>
               <textarea
                 value={form.forwardingNotes}
                 onChange={(event) =>

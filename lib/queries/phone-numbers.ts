@@ -15,7 +15,8 @@ export const DAY_LABEL: Record<Weekday, string> = {
 
 export const PROVIDERS = [
   { value: "unknown", label: "Not identified" },
-  { value: "existing_carrier", label: "Current carrier" },
+  { value: "existing_carrier", label: "Existing carrier" },
+  { value: "ptcl", label: "PTCL" },
   { value: "forwarded", label: "Forward later" },
   { value: "sip", label: "SIP later" },
   { value: "bandwidth", label: "Bandwidth" },
@@ -24,6 +25,7 @@ export const PROVIDERS = [
 
 export type PhoneProvider = (typeof PROVIDERS)[number]["value"];
 export type ForwardMode = "none" | "forward" | "sip" | "manual";
+export type ForwardingStatus = "not_configured" | "pending" | "active";
 
 export const TIMEZONES = [
   "America/New_York",
@@ -42,6 +44,7 @@ export type ScheduleRow = {
 
 export type PhoneForwarding = {
   mode: ForwardMode;
+  status: ForwardingStatus;
   destination: string;
   notes: string;
   routingLive: false;
@@ -54,6 +57,7 @@ export type BranchPhoneNumber = {
   branchPhone: string;
   branchIsDisabled: boolean;
   existingPhoneNumber: string;
+  aiDestinationNumber: string;
   provider: PhoneProvider;
   providerLabel: string;
   aiEnabled: boolean;
@@ -75,6 +79,7 @@ export type BranchPhoneNumber = {
 export type PhoneNumberWrite = {
   locationId?: string;
   existingPhoneNumber?: string;
+  aiDestinationNumber?: string;
   provider?: PhoneProvider;
   providerLabel?: string;
   aiEnabled?: boolean;
@@ -83,6 +88,7 @@ export type PhoneNumberWrite = {
   transferNumber?: string;
   forwarding?: {
     mode: ForwardMode;
+    status: ForwardingStatus;
     destination: string;
     notes: string;
     routingLive: false;
@@ -116,9 +122,10 @@ export function providerLabel(row: Pick<BranchPhoneNumber, "provider" | "provide
 }
 
 export function forwardingLabel(forwarding: PhoneForwarding): string {
-  if (forwarding.mode === "forward") return "Forward saved, not live";
-  if (forwarding.mode === "sip") return "SIP saved, not live";
-  if (forwarding.mode === "manual") return "Manual notes";
+  const status = forwarding.status === "active" ? "Active" : forwarding.status === "pending" ? "Pending" : "Not configured";
+  if (forwarding.mode === "forward") return `Carrier forwarding, ${status}`;
+  if (forwarding.mode === "sip") return `SIP forwarding, ${status}`;
+  if (forwarding.mode === "manual") return `Manual, ${status}`;
   return "Not configured";
 }
 
