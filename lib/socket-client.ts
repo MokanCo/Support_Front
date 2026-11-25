@@ -8,6 +8,7 @@ type MessageHandler = (payload: unknown) => void;
 type NotificationHandler = (payload: unknown) => void;
 type TicketUpdatedHandler = (payload: unknown) => void;
 type PresenceHandler = (payload: unknown) => void;
+type SmsHandler = (payload: unknown) => void;
 
 export type JoinTicketAck = {
   ok?: boolean;
@@ -22,6 +23,7 @@ const messageHandlers = new Set<MessageHandler>();
 const notificationHandlers = new Set<NotificationHandler>();
 const ticketUpdatedHandlers = new Set<TicketUpdatedHandler>();
 const presenceHandlers = new Set<PresenceHandler>();
+const smsHandlers = new Set<SmsHandler>();
 const ticketJoinCounts = new Map<string, number>();
 
 function attachSocketListeners(s: Socket) {
@@ -29,6 +31,7 @@ function attachSocketListeners(s: Socket) {
   s.off("notification:new");
   s.off("ticket:updated");
   s.off("presence:update");
+  s.off("sms:inbound");
   s.on("message:new", (payload: unknown) => {
     for (const h of messageHandlers) h(payload);
   });
@@ -40,6 +43,9 @@ function attachSocketListeners(s: Socket) {
   });
   s.on("presence:update", (payload: unknown) => {
     for (const h of presenceHandlers) h(payload);
+  });
+  s.on("sms:inbound", (payload: unknown) => {
+    for (const h of smsHandlers) h(payload);
   });
 }
 
@@ -111,6 +117,14 @@ export function subscribeTicketUpdated(handler: TicketUpdatedHandler): () => voi
   getOrCreateSocket();
   return () => {
     ticketUpdatedHandlers.delete(handler);
+  };
+}
+
+export function subscribeSmsInbound(handler: SmsHandler): () => void {
+  smsHandlers.add(handler);
+  getOrCreateSocket();
+  return () => {
+    smsHandlers.delete(handler);
   };
 }
 
