@@ -414,7 +414,7 @@ export function PhoneNumbersPage() {
                 onChange={(event) =>
                   setForm((current) => ({ ...current, existingPhoneNumber: event.target.value }))
                 }
-                placeholder="Number the branch already uses"
+                placeholder="Landline customers call for this branch"
                 className={fieldClass}
               />
               {locationPhone ? (

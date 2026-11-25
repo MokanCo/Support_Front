@@ -218,8 +218,58 @@ export function deleteKnowledge(id: string) {
   return send(apiFetch(`/api/ai-receptionist/knowledge/${id}`, { method: "DELETE" }));
 }
 
-export function importKnowledge(body: Record<string, unknown>) {
-  return send<{ imported: number }>(
+export type KnowledgeImportEntry = {
+  index: number;
+  title: string;
+  body: string;
+  category: string;
+  scope: "global" | "branch" | "";
+  valid: boolean;
+  duplicate: boolean;
+  duplicateOf: "file" | "database" | null;
+  errors: string[];
+};
+
+export type KnowledgeImportPreview = {
+  kind: "faq" | "legacy";
+  parseError: string;
+  total: number;
+  valid: number;
+  invalid: number;
+  duplicates: number;
+  byCategory: { category: string; total: number; valid: number }[];
+  entries: KnowledgeImportEntry[];
+};
+
+export type KnowledgeImportResult = {
+  imported: number;
+  created: number;
+  skipped: { index: number; title: string; errors: string[] }[];
+  duplicates: { index: number; title: string; reason: string }[];
+  failed: { index: number; title: string; error: string }[];
+  entries: KnowledgeEntry[];
+};
+
+export type KnowledgeImportRequest = {
+  filename: string;
+  text: string;
+  category?: string;
+  scope?: "global" | "branch";
+  locationId?: string;
+};
+
+export function previewKnowledgeImport(body: KnowledgeImportRequest) {
+  return send<KnowledgeImportPreview>(
+    apiFetch("/api/ai-receptionist/knowledge/import/preview", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  );
+}
+
+export function importKnowledge(body: KnowledgeImportRequest) {
+  return send<KnowledgeImportResult>(
     apiFetch("/api/ai-receptionist/knowledge/import", {
       method: "POST",
       headers: { "Content-Type": "application/json" },

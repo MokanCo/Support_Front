@@ -83,7 +83,7 @@ Admin endpoints (portal JWT, role `admin`):
 - `GET/POST /api/ai-receptionist/phone-numbers`, `GET/PATCH/DELETE /api/ai-receptionist/phone-numbers/{id}`, `POST /api/ai-receptionist/phone-numbers/{id}/test`
 - `GET /api/ai-receptionist/overview`
 - `GET/PUT/DELETE /api/ai-receptionist/agent-settings`
-- `GET/POST /api/ai-receptionist/knowledge`, `POST /api/ai-receptionist/knowledge/import`, `GET/PATCH/DELETE /api/ai-receptionist/knowledge/{id}`
+- `GET/POST /api/ai-receptionist/knowledge`, `POST /api/ai-receptionist/knowledge/import/preview`, `POST /api/ai-receptionist/knowledge/import`, `GET/PATCH/DELETE /api/ai-receptionist/knowledge/{id}`
 - `GET /api/ai-receptionist/branches`, `GET/PUT /api/ai-receptionist/branches/{locationId}`
 - `GET /api/ai-receptionist/calls`, `GET/PATCH /api/ai-receptionist/calls/{id}`
 - `GET /api/ai-receptionist/recordings`, `GET /api/ai-receptionist/recordings/{callId}`, `GET /api/ai-receptionist/recordings/{callId}/audio`

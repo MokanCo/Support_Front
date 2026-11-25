@@ -9,13 +9,13 @@ import { Modal } from "@/components/ui/modal";
 import { Select } from "@/components/ui/Select";
 import { Textarea } from "@/components/ui/Textarea";
 import { Input } from "@/components/ui/Input";
+import { KnowledgeImportControl } from "@/components/ai-receptionist/knowledge-import";
 import { fetchReceptionistLocations, receptionistLocationsQueryKey } from "@/components/ai-receptionist/locations";
 import { EmptyRow, FilterField, PageIntro, StageNotice, fieldClass } from "@/components/ai-receptionist/ui";
 import {
   KNOWLEDGE_CATEGORIES,
   deleteKnowledge,
   fetchKnowledge,
-  importKnowledge,
   saveKnowledge,
   type KnowledgeEntry,
 } from "@/lib/queries/receptionist";
@@ -72,14 +72,6 @@ export function KnowledgeBasePage() {
       await queryClient.invalidateQueries({ queryKey: ["ai-receptionist", "knowledge"] });
     },
   });
-  const importer = useMutation({
-    mutationFn: importKnowledge,
-    onSuccess: async () => {
-      setError("");
-      await queryClient.invalidateQueries({ queryKey: ["ai-receptionist", "knowledge"] });
-    },
-    onError: (reason: Error) => setError(reason.message),
-  });
 
   function openEdit(entry?: KnowledgeEntry) {
     setError("");
@@ -91,20 +83,6 @@ export function KnowledgeBasePage() {
       scope: entry.scope,
       locationId: entry.locationId ?? "",
     } : { ...empty });
-  }
-
-  async function onImport(file: File) {
-    if (!/\.(txt|md)$/i.test(file.name)) {
-      setError("Only .txt and .md files can be imported.");
-      return;
-    }
-    const text = await file.text();
-    importer.mutate({
-      filename: file.name,
-      text,
-      category: category === "all" ? KNOWLEDGE_CATEGORIES[0] : category,
-      scope: "global",
-    });
   }
 
   const rows = list.data?.entries ?? [];
@@ -123,14 +101,7 @@ export function KnowledgeBasePage() {
           title="Entries"
           action={
             <div className="flex gap-2">
-              <label className="inline-flex cursor-pointer items-center rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700">
-                Import .txt or .md
-                <input type="file" accept=".txt,.md,text/plain,text/markdown" className="sr-only" onChange={(event) => {
-                  const file = event.target.files?.[0];
-                  if (file) void onImport(file);
-                  event.target.value = "";
-                }} />
-              </label>
+              <KnowledgeImportControl onImported={() => { void queryClient.invalidateQueries({ queryKey: ["ai-receptionist", "knowledge"] }); }} />
               <Button onClick={() => openEdit()}>Add entry</Button>
             </div>
           }
